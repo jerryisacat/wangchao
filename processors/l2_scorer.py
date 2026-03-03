@@ -7,12 +7,16 @@ from ranking import calculate_gravity_score
 
 class L2Scorer:
     def __init__(self):
-        self.prompt_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'prompts', 'l2.md')
+        self.profile_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'prompts', 'user_profile.md')
+        self.rules_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'prompts', 'l2_rules.md')
         self.model = config.AI_MODEL_L2
 
     def _load_prompt(self) -> str:
-        with open(self.prompt_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        with open(self.profile_path, 'r', encoding='utf-8') as f1:
+            profile = f1.read()
+        with open(self.rules_path, 'r', encoding='utf-8') as f2:
+            rules = f2.read()
+        return f"{profile}\n\n{rules}"
 
     def process_l1_passed(self):
         # Items that passed L1 but pending L2
