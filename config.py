@@ -26,6 +26,7 @@ class AppConfig:
     GRAVITY: float = float(os.getenv("GRAVITY", "1.1")) # Gravity factor (Lower = less time decay, 0.8-1.2 recommended for 72h window)
     RANKING_WINDOW_HOURS: int = int(os.getenv("RANKING_WINDOW_HOURS", "72")) # Hours to look back for ranking
     DASHBOARD_OUTPUT_PATH: str = os.getenv("DASHBOARD_OUTPUT_PATH", "data/dashboard.json")
+    TOP_N_ITEMS: int = int(os.getenv("TOP_N_ITEMS", "5")) # Number of items to output in top5.json
     
     # Sources
     RSS_FEEDS: List[str] = [

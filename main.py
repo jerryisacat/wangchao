@@ -31,8 +31,8 @@ def format_time_ago(timestamp: float) -> str:
 def generate_simplified_top5(items: list):
     """Generate simplified top 5 JSON."""
     top5 = []
-    # Take up to 5 items
-    for item, _ in items[:5]:
+    # Take up to configured number of items
+    for item, _ in items[:config.TOP_N_ITEMS]:
         top5.append({
             "title": item.get('l2_title_zh') or item.get('title'),
             "meta": format_time_ago(item.get('published_at'))
