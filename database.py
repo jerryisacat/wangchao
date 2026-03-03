@@ -25,6 +25,7 @@ class Database:
                 source_name TEXT,
                 published_at REAL,
                 fetched_at REAL,
+                summary TEXT,
                 
                 -- L1 Analysis
                 l1_score INTEGER DEFAULT 0,
@@ -44,15 +45,15 @@ class Database:
         conn.commit()
         conn.close()
 
-    def add_news(self, url: str, title: str, source_name: str, published_at: float) -> bool:
+    def add_news(self, url: str, title: str, source_name: str, published_at: float, summary: str = "") -> bool:
         """Returns True if added, False if already exists."""
         conn = self._get_conn()
         cursor = conn.cursor()
         try:
             cursor.execute('''
-                INSERT INTO news (url, title, source_name, published_at, fetched_at, status)
-                VALUES (?, ?, ?, ?, ?, 'pending')
-            ''', (url, title, source_name, published_at, time.time()))
+                INSERT INTO news (url, title, source_name, published_at, fetched_at, summary, status)
+                VALUES (?, ?, ?, ?, ?, ?, 'pending')
+            ''', (url, title, source_name, published_at, time.time(), summary))
             conn.commit()
             return True
         except sqlite3.IntegrityError:

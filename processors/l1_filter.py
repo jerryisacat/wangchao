@@ -29,10 +29,29 @@ class L1Filter:
         news_list_str = ""
         id_map = {} # Map temporary ID to DB ID
         
+        import time # Ensure time is imported
+        
         for idx, item in enumerate(items):
             temp_id = idx + 1
             id_map[temp_id] = item['id']
-            news_list_str += f"{temp_id}. {item['title']} ({item['source_name']})\n"
+            
+            # Calculate readable time
+            pub_time = item.get('published_at', time.time())
+            diff_seconds = int(time.time() - pub_time)
+            hours = diff_seconds // 3600
+            minutes = (diff_seconds % 3600) // 60
+            time_str = f"{hours} hours {minutes} minutes ago" if hours > 0 else f"{minutes} minutes ago"
+            
+            # Trim summary to save tokens (e.g., max 500 chars)
+            summary_snippet = (item.get('summary') or '')[:500]
+            if len(item.get('summary') or '') > 500:
+                summary_snippet += "..."
+                
+            news_list_str += f"{temp_id}. {item['title']} ({item['source_name']}) - Published: {time_str}\n"
+            if summary_snippet:
+                # Remove newlines to keep it compact
+                summary_snippet = " ".join(summary_snippet.split())
+                news_list_str += f"   Snippet: {summary_snippet}\n"
 
         # Construct Prompt
         system_prompt = self._load_prompt()

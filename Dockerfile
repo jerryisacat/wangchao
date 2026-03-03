@@ -33,4 +33,4 @@ RUN mkdir -p /app/data
 VOLUME /app/data
 
 # Run the application
-ENTRYPOINT ["uv", "run", "main.py"]
+ENTRYPOINT ["./start.sh"]

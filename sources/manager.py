@@ -23,7 +23,8 @@ class SourceManager:
                     url=item['url'],
                     title=item['title'],
                     source_name=item['source_name'],
-                    published_at=item['published_at']
+                    published_at=item['published_at'],
+                    summary=item.get('summary', '')
                 )
                 if added:
                     new_count += 1

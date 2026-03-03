@@ -41,9 +41,29 @@ class L2Scorer:
         
         # Prepare input with IDs and Tags
         news_list_str = ""
+        import time # Ensure time is imported
+        
         for idx, item in enumerate(all_batch_items):
             is_new = "NEW" if item in new_items else f"OLD, Score: {item.get('l2_score', 0)}"
-            news_list_str += f"- [ID: {item['id']}] [{is_new}] \"{item['title']}\" ({item['source_name']}) - {item['url']}\n"
+            
+            # Calculate readable time
+            pub_time = item.get('published_at', time.time())
+            diff_seconds = int(time.time() - pub_time)
+            hours = diff_seconds // 3600
+            minutes = (diff_seconds % 3600) // 60
+            time_str = f"{hours} hours {minutes} minutes ago" if hours > 0 else f"{minutes} minutes ago"
+            
+            # Trim summary 
+            summary_snippet = (item.get('summary') or '')[:500]
+            if len(item.get('summary') or '') > 500:
+                summary_snippet += "..."
+                
+            news_list_str += f"- [ID: {item['id']}] [{is_new}] \"{item['title']}\" ({item['source_name']}) - {item['url']} - Published: {time_str}\n"
+            
+            if summary_snippet:
+                summary_snippet = " ".join(summary_snippet.split())
+                news_list_str += f"  Snippet: {summary_snippet}\n"
+                
             if item.get('l2_summary'):
                 news_list_str += f"  Existing Summary: {item['l2_summary']}\n"
 
