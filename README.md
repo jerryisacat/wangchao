@@ -58,9 +58,12 @@ Demo Web: [AI News Dashboard](https://kindledash.t0saki.com/)
       --name news-dashboard \
       --env-file .env \
       -v $(pwd)/data:/app/data \
+      -v $(pwd)/user_profile.md:/app/prompts/user_profile.md \
       ghcr.io/t0saki/ai-news-dashboard:latest
     ```
 
+    > **💡 提示:** 你可以在宿主机创建一个 `user_profile.md` 来覆盖默认的 AI 筛选偏好（Role/Domain/Tier 打分标准）。
+    
     或者你也可以选择自己构建：
     ```bash
     docker build -t news-dashboard .

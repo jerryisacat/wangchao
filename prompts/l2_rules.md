@@ -1,5 +1,3 @@
-# Role: Tech Intelligence Officer for Senior Algorithm Engineer
-
 # Task
 You will receive a mixed list of news items containing "NEW" items and "OLD" items (the current Top 20 news).
 Your job is to process them into a highly curated, deduplicated, and technically accurate JSON feed representing the absolute best news.

@@ -57,8 +57,11 @@ Instead of simple keyword matching, it leverages Large Language Models (LLMs) to
       --name news-dashboard \
       --env-file .env \
       -v $(pwd)/data:/app/data \
+      -v $(pwd)/user_profile.md:/app/prompts/user_profile.md \
       ghcr.io/t0saki/ai-news-dashboard:latest
     ```
+
+    > **💡 Tip:** You can create your own `user_profile.md` on the host to customize AI filtering preferences (Role/Domain/Tier scoring standards).
 
     Or you can build it yourself:
     ```bash
