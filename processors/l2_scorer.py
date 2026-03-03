@@ -3,6 +3,7 @@ import os
 from config import config
 from database import db
 from ai_service import ai_service
+from ranking import calculate_gravity_score
 
 class L2Scorer:
     def __init__(self):
@@ -21,15 +22,35 @@ class L2Scorer:
 
         print(f"L2: Processing {len(items)} items...")
         
-        # Prepare input
-        # L2 prompt asks for "Input list".
+        # Prepare Top 20 context for deduplication
+        recent_processed = db.get_recent_processed_news(hours=config.RANKING_WINDOW_HOURS)
+        ranked_context = []
+        for rp in recent_processed:
+            g_score = calculate_gravity_score(rp['l2_score'], rp['published_at'], config.GRAVITY)
+            ranked_context.append((rp, g_score))
+        
+        ranked_context.sort(key=lambda x: x[1], reverse=True)
+        top_20_context = [x[0] for x in ranked_context[:20]]
+        
+        context_str = ""
+        for idx, item in enumerate(top_20_context):
+            title = item.get('l2_title_zh') or item.get('title')
+            score = item.get('l2_score', 0)
+            context_str += f"{idx+1}. [{score}] \"{title}\" - {item['url']}\n"
+            if item.get('l2_summary'):
+                context_str += f"   Summary: {item['l2_summary']}\n"
+        
+        if not context_str:
+            context_str = "None\n"
+
+        # Prepare new items input
         news_list_str = ""
         for idx, item in enumerate(items):
             # Include URL so AI can return it in the JSON
             news_list_str += f"{idx+1}. \"{item['title']}\" ({item['source_name']}) - {item['url']}\n"
 
         system_prompt = self._load_prompt()
-        user_prompt = f"Input:\n\n{news_list_str}\n\nPlease generate the output JSON feed."
+        user_prompt = f"Current Top News (For Deduplication):\n{context_str}\n\nNew Items to Process:\n{news_list_str}\n\nPlease generate the output JSON feed for the 'New Items to Process'."
 
         response_text = ai_service.chat_completion(
             messages=[
@@ -48,25 +69,10 @@ class L2Scorer:
             clean_json = response_text.replace("```json", "").replace("```", "").strip()
             data = json.loads(clean_json)
             
-            # Output format: { "feed": [ { "category":..., "title_optimized":..., "score":..., "original_sources":..., "technical_summary":..., "url":... } ] }
-            # Again, matching back is tricky because the prompt is designed to "Process raw news list" which implies it handles the list.
-            # But the prompt output example includes "url" which might be missing if I didn't provide it in user prompt?
-            # Wait, I didn't provide URL in user_prompt above: f"{idx+1}. \"{item['title']}\" ({item['source_name']})\n"
-            # So the AI cannot invent the URL.
-            # I should include URL in the input so it can return it, OR I use the title to match back.
-            # L2 prompt says: "url": "String (Link to the best source)".
-            # So I must provide the URL in the input.
-            
-            # Let's Refine the User Prompt construction
-            news_list_str = ""
-            for idx, item in enumerate(items):
-                news_list_str += f"{idx+1}. \"{item['title']}\" ({item['source_name']}) - {item['url']}\n"
-                
-            # Rerun logic with better input (conceptually, I'll just update the code below to use this)
-            
             feed_items = data.get('feed', [])
             
             # Map back strategy: match by Title or URL. URL is safest.
+            processed_urls = set()
             
             for feed_item in feed_items:
                 optimized_title = feed_item.get('title_optimized')
@@ -91,6 +97,7 @@ class L2Scorer:
                     for item in items:
                         if item['url'] == out_url:
                             matched_id = item['id']
+                            processed_urls.add(out_url)
                             break
                 
                 # If ID found
@@ -98,7 +105,13 @@ class L2Scorer:
                     db.update_l2_result(matched_id, score, summary, optimized_title, category)
                     print(f"  - L2 Done {matched_id}: {optimized_title}")
                 else:
-                    print(f"  - Warning: Could not match L2 output to DB: {optimized_title}")
+                    print(f"  - Warning: Could not match L2 output to DB: {optimized_title} (URL: {out_url})")
+
+            # Mark omitted items as processed (score 0) so they don't get stuck in l1_done status
+            for item in items:
+                if item['url'] not in processed_urls:
+                    print(f"  - L2 Deduplicated/Dropped {item['id']}: {item['title']}")
+                    db.update_l2_result(item['id'], 0, "Duplicate or Filtered", "", "")
 
         except Exception as e:
             print(f"L2 Error: {e}")
@@ -106,3 +119,4 @@ class L2Scorer:
         return len(items)
 
 l2_scorer = L2Scorer()
+
