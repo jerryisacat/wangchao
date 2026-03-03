@@ -16,11 +16,11 @@ class L2Scorer:
 
     def process_l1_passed(self):
         # Items that passed L1 but pending L2
-        items = db.get_high_score_pending_l2(limit=config.L2_BATCH_SIZE)
-        if not items:
+        new_items = db.get_high_score_pending_l2(limit=config.L2_BATCH_SIZE)
+        if not new_items:
             return 0
 
-        print(f"L2: Processing {len(items)} items...")
+        print(f"L2: Processing {len(new_items)} new items...")
         
         # Prepare Top 20 context for deduplication
         recent_processed = db.get_recent_processed_news(hours=config.RANKING_WINDOW_HOURS)
@@ -30,27 +30,21 @@ class L2Scorer:
             ranked_context.append((rp, g_score))
         
         ranked_context.sort(key=lambda x: x[1], reverse=True)
-        top_20_context = [x[0] for x in ranked_context[:20]]
+        top_20_old_items = [x[0] for x in ranked_context[:20]]
         
-        context_str = ""
-        for idx, item in enumerate(top_20_context):
-            title = item.get('l2_title_zh') or item.get('title')
-            score = item.get('l2_score', 0)
-            context_str += f"{idx+1}. [{score}] \"{title}\" - {item['url']}\n"
-            if item.get('l2_summary'):
-                context_str += f"   Summary: {item['l2_summary']}\n"
+        # Combine items
+        all_batch_items = top_20_old_items + new_items
         
-        if not context_str:
-            context_str = "None\n"
-
-        # Prepare new items input
+        # Prepare input with IDs and Tags
         news_list_str = ""
-        for idx, item in enumerate(items):
-            # Include URL so AI can return it in the JSON
-            news_list_str += f"{idx+1}. \"{item['title']}\" ({item['source_name']}) - {item['url']}\n"
+        for idx, item in enumerate(all_batch_items):
+            is_new = "NEW" if item in new_items else f"OLD, Score: {item.get('l2_score', 0)}"
+            news_list_str += f"- [ID: {item['id']}] [{is_new}] \"{item['title']}\" ({item['source_name']}) - {item['url']}\n"
+            if item.get('l2_summary'):
+                news_list_str += f"  Existing Summary: {item['l2_summary']}\n"
 
         system_prompt = self._load_prompt()
-        user_prompt = f"Current Top News (For Deduplication):\n{context_str}\n\nNew Items to Process:\n{news_list_str}\n\nPlease generate the output JSON feed for the 'New Items to Process'."
+        user_prompt = f"News Items to Process:\n{news_list_str}\n\nPlease generate the output JSON feed."
 
         response_text = ai_service.chat_completion(
             messages=[
@@ -71,52 +65,50 @@ class L2Scorer:
             
             feed_items = data.get('feed', [])
             
-            # Map back strategy: match by Title or URL. URL is safest.
-            processed_urls = set()
+            # Map back strategy: match by explicit ID
+            processed_primary_ids = set()
+            processed_merged_ids = set()
             
             for feed_item in feed_items:
+                primary_id = feed_item.get('id')
+                if not primary_id:
+                    continue
+                    
                 optimized_title = feed_item.get('title_optimized')
                 score = feed_item.get('score', 0)
                 summary = feed_item.get('technical_summary')
                 category = feed_item.get('category')
                 
-                # We need to find which original item this corresponds to.
-                # The AI might have merged items (Deduplication).
-                # "Group multiple articles about the same event."
-                # If it merged, we might lose track of which specific ID it was.
-                # But typically we want to update the DB record.
-                # If it merges, we should pick one "representative" ID to update and mark others as "merged_out" or similar?
-                # For simplicity, let's assume it picks one.
+                merged_ids = feed_item.get('merged_ids', [])
+                if isinstance(merged_ids, int):
+                    merged_ids = [merged_ids]
                 
-                # We'll try to match by similarity or just loop and see if url matches.
-                # The AI output includes "url".
-                out_url = feed_item.get('url')
+                # Update the primary ID
+                db.update_l2_result(primary_id, score, summary, optimized_title, category)
+                processed_primary_ids.add(primary_id)
+                print(f"  - L2 Primary {primary_id}: {optimized_title}")
                 
-                matched_id = None
-                if out_url:
-                    for item in items:
-                        if item['url'] == out_url:
-                            matched_id = item['id']
-                            processed_urls.add(out_url)
-                            break
-                
-                # If ID found
-                if matched_id:
-                    db.update_l2_result(matched_id, score, summary, optimized_title, category)
-                    print(f"  - L2 Done {matched_id}: {optimized_title}")
-                else:
-                    print(f"  - Warning: Could not match L2 output to DB: {optimized_title} (URL: {out_url})")
+                # Update any merged duplicates to score 0 (demoted/deleted)
+                for mid in merged_ids:
+                    if mid != primary_id:
+                        db.update_l2_result(mid, 0, "Deduplicated/Merged", "", "")
+                        processed_merged_ids.add(mid)
+                        print(f"  - L2 Merged {mid} -> {primary_id}")
 
-            # Mark omitted items as processed (score 0) so they don't get stuck in l1_done status
-            for item in items:
-                if item['url'] not in processed_urls:
-                    print(f"  - L2 Deduplicated/Dropped {item['id']}: {item['title']}")
-                    db.update_l2_result(item['id'], 0, "Duplicate or Filtered", "", "")
+            # Mark any ignored NEW items as dropped so they don't loop
+            for item in new_items:
+                iid = item['id']
+                if iid not in processed_primary_ids and iid not in processed_merged_ids:
+                    print(f"  - L2 Dropped NEW {iid}: {item['title']}")
+                    db.update_l2_result(iid, 0, "Dropped by AI", "", "")
+                    
+            # OLD items that are not primary and not merged are left alone!
+            # They will naturally decay over time unless the AI decides they are completely invalid.
 
         except Exception as e:
             print(f"L2 Error: {e}")
             
-        return len(items)
+        return len(new_items)
 
 l2_scorer = L2Scorer()
 
