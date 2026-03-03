@@ -3,33 +3,52 @@ import os
 from config import config
 from database import db
 from ai_service import ai_service
+from ranking import calculate_gravity_score
 
 class L2Scorer:
     def __init__(self):
-        self.prompt_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'prompts', 'l2.md')
+        self.profile_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'prompts', 'user_profile.md')
+        self.rules_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'prompts', 'l2_rules.md')
         self.model = config.AI_MODEL_L2
 
     def _load_prompt(self) -> str:
-        with open(self.prompt_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        with open(self.profile_path, 'r', encoding='utf-8') as f1:
+            profile = f1.read()
+        with open(self.rules_path, 'r', encoding='utf-8') as f2:
+            rules = f2.read()
+        return f"{profile}\n\n{rules}"
 
     def process_l1_passed(self):
         # Items that passed L1 but pending L2
-        items = db.get_high_score_pending_l2(limit=config.L2_BATCH_SIZE)
-        if not items:
+        new_items = db.get_high_score_pending_l2(limit=config.L2_BATCH_SIZE)
+        if not new_items:
             return 0
 
-        print(f"L2: Processing {len(items)} items...")
+        print(f"L2: Processing {len(new_items)} new items...")
         
-        # Prepare input
-        # L2 prompt asks for "Input list".
+        # Prepare Top 20 context for deduplication
+        recent_processed = db.get_recent_processed_news(hours=config.RANKING_WINDOW_HOURS)
+        ranked_context = []
+        for rp in recent_processed:
+            g_score = calculate_gravity_score(rp['l2_score'], rp['published_at'], config.GRAVITY)
+            ranked_context.append((rp, g_score))
+        
+        ranked_context.sort(key=lambda x: x[1], reverse=True)
+        top_20_old_items = [x[0] for x in ranked_context[:20]]
+        
+        # Combine items
+        all_batch_items = top_20_old_items + new_items
+        
+        # Prepare input with IDs and Tags
         news_list_str = ""
-        for idx, item in enumerate(items):
-            # Include URL so AI can return it in the JSON
-            news_list_str += f"{idx+1}. \"{item['title']}\" ({item['source_name']}) - {item['url']}\n"
+        for idx, item in enumerate(all_batch_items):
+            is_new = "NEW" if item in new_items else f"OLD, Score: {item.get('l2_score', 0)}"
+            news_list_str += f"- [ID: {item['id']}] [{is_new}] \"{item['title']}\" ({item['source_name']}) - {item['url']}\n"
+            if item.get('l2_summary'):
+                news_list_str += f"  Existing Summary: {item['l2_summary']}\n"
 
         system_prompt = self._load_prompt()
-        user_prompt = f"Input:\n\n{news_list_str}\n\nPlease generate the output JSON feed."
+        user_prompt = f"News Items to Process:\n{news_list_str}\n\nPlease generate the output JSON feed."
 
         response_text = ai_service.chat_completion(
             messages=[
@@ -48,61 +67,52 @@ class L2Scorer:
             clean_json = response_text.replace("```json", "").replace("```", "").strip()
             data = json.loads(clean_json)
             
-            # Output format: { "feed": [ { "category":..., "title_optimized":..., "score":..., "original_sources":..., "technical_summary":..., "url":... } ] }
-            # Again, matching back is tricky because the prompt is designed to "Process raw news list" which implies it handles the list.
-            # But the prompt output example includes "url" which might be missing if I didn't provide it in user prompt?
-            # Wait, I didn't provide URL in user_prompt above: f"{idx+1}. \"{item['title']}\" ({item['source_name']})\n"
-            # So the AI cannot invent the URL.
-            # I should include URL in the input so it can return it, OR I use the title to match back.
-            # L2 prompt says: "url": "String (Link to the best source)".
-            # So I must provide the URL in the input.
-            
-            # Let's Refine the User Prompt construction
-            news_list_str = ""
-            for idx, item in enumerate(items):
-                news_list_str += f"{idx+1}. \"{item['title']}\" ({item['source_name']}) - {item['url']}\n"
-                
-            # Rerun logic with better input (conceptually, I'll just update the code below to use this)
-            
             feed_items = data.get('feed', [])
             
-            # Map back strategy: match by Title or URL. URL is safest.
+            # Map back strategy: match by explicit ID
+            processed_primary_ids = set()
+            processed_merged_ids = set()
             
             for feed_item in feed_items:
+                primary_id = feed_item.get('id')
+                if not primary_id:
+                    continue
+                    
                 optimized_title = feed_item.get('title_optimized')
                 score = feed_item.get('score', 0)
                 summary = feed_item.get('technical_summary')
                 category = feed_item.get('category')
                 
-                # We need to find which original item this corresponds to.
-                # The AI might have merged items (Deduplication).
-                # "Group multiple articles about the same event."
-                # If it merged, we might lose track of which specific ID it was.
-                # But typically we want to update the DB record.
-                # If it merges, we should pick one "representative" ID to update and mark others as "merged_out" or similar?
-                # For simplicity, let's assume it picks one.
+                merged_ids = feed_item.get('merged_ids', [])
+                if isinstance(merged_ids, int):
+                    merged_ids = [merged_ids]
                 
-                # We'll try to match by similarity or just loop and see if url matches.
-                # The AI output includes "url".
-                out_url = feed_item.get('url')
+                # Update the primary ID
+                db.update_l2_result(primary_id, score, summary, optimized_title, category)
+                processed_primary_ids.add(primary_id)
+                print(f"  - L2 Primary {primary_id}: {optimized_title}")
                 
-                matched_id = None
-                if out_url:
-                    for item in items:
-                        if item['url'] == out_url:
-                            matched_id = item['id']
-                            break
-                
-                # If ID found
-                if matched_id:
-                    db.update_l2_result(matched_id, score, summary, optimized_title, category)
-                    print(f"  - L2 Done {matched_id}: {optimized_title}")
-                else:
-                    print(f"  - Warning: Could not match L2 output to DB: {optimized_title}")
+                # Update any merged duplicates to score 0 (demoted/deleted)
+                for mid in merged_ids:
+                    if mid != primary_id:
+                        db.update_l2_result(mid, 0, "Deduplicated/Merged", "", "")
+                        processed_merged_ids.add(mid)
+                        print(f"  - L2 Merged {mid} -> {primary_id}")
+
+            # Mark any ignored NEW items as dropped so they don't loop
+            for item in new_items:
+                iid = item['id']
+                if iid not in processed_primary_ids and iid not in processed_merged_ids:
+                    print(f"  - L2 Dropped NEW {iid}: {item['title']}")
+                    db.update_l2_result(iid, 0, "Dropped by AI", "", "")
+                    
+            # OLD items that are not primary and not merged are left alone!
+            # They will naturally decay over time unless the AI decides they are completely invalid.
 
         except Exception as e:
             print(f"L2 Error: {e}")
             
-        return len(items)
+        return len(new_items)
 
 l2_scorer = L2Scorer()
+

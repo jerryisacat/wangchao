@@ -7,12 +7,16 @@ from ai_service import ai_service
 
 class L1Filter:
     def __init__(self):
-        self.prompt_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'prompts', 'l1.md')
+        self.profile_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'prompts', 'user_profile.md')
+        self.rules_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'prompts', 'l1_rules.md')
         self.model = config.AI_MODEL_L1
 
     def _load_prompt(self) -> str:
-        with open(self.prompt_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        with open(self.profile_path, 'r', encoding='utf-8') as f1:
+            profile = f1.read()
+        with open(self.rules_path, 'r', encoding='utf-8') as f2:
+            rules = f2.read()
+        return f"{profile}\n\n{rules}"
 
     def process_pending(self, batch_size: int = config.L1_BATCH_SIZE) -> int:
         items = db.get_pending_news(limit=batch_size)
