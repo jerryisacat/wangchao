@@ -32,25 +32,24 @@ class L1Filter:
         
         for idx, item in enumerate(items):
             temp_id = idx + 1
-            id_map[temp_id] = item['id']
-            
+            id_map[temp_id] = item
+
             # Calculate readable time
             pub_time = item.get('published_at', time.time())
             diff_seconds = int(time.time() - pub_time)
             hours = diff_seconds // 3600
             minutes = (diff_seconds % 3600) // 60
             time_str = f"{hours} hours {minutes} minutes ago" if hours > 0 else f"{minutes} minutes ago"
-            
+
             # Trim summary to save tokens (e.g., max 500 chars)
             summary_snippet = (item.get('summary') or '')[:500]
             if len(item.get('summary') or '') > 500:
                 summary_snippet += "..."
-                
-            news_list_str += f"{temp_id}. {item['title']} ({item['source_name']}) - Published: {time_str}\n"
+
+            news_list_str += f"- [ID: {temp_id}] \"{item['title']}\" ({item['source_name']}) - Published: {time_str}\n"
             if summary_snippet:
-                # Remove newlines to keep it compact
                 summary_snippet = " ".join(summary_snippet.split())
-                news_list_str += f"   Snippet: {summary_snippet}\n"
+                news_list_str += f"  Snippet: {summary_snippet}\n"
 
         # Construct Prompt
         system_prompt = self._load_prompt()
@@ -78,7 +77,7 @@ class L1Filter:
                 print("L1: Retry with strict JSON reprompt...")
                 fallback_messages = base_messages + [
                     {"role": "assistant", "content": response_text},
-                    {"role": "user", "content": "Your previous reply was not valid JSON for the parser. Reply again with only a strict JSON object. No markdown fences, no commentary, no extra text, and keep the required top-level keys exactly as specified."}
+                    {"role": "user", "content": "Your previous reply was not valid JSON for the parser. Reply again with only a strict JSON object. No markdown fences, no commentary, no extra text, keep the required top-level keys exactly as specified, and preserve the input id for every selected item."}
                 ]
                 response_text = ai_service.chat_completion(
                     messages=fallback_messages,
@@ -94,32 +93,54 @@ class L1Filter:
                 print(f"L1: Failed to parse JSON: {response_text}")
                 return len(items)
 
-            processed_titles = set()
+            processed_ids = set()
 
             def update_item(item_data, category):
                 if not isinstance(item_data, dict):
                     return
 
                 title = sanitize_text(item_data.get('title'))
-                raw_score = item_data.get('score', 0)
                 context = sanitize_text(item_data.get('context'))
+                raw_score = item_data.get('score', 0)
+                raw_temp_id = item_data.get('id')
 
                 try:
                     score = int(raw_score)
                 except (TypeError, ValueError):
                     score = 0
 
-                matched_item, match_score = best_title_match(title, items)
+                matched_item = None
+                match_score = 0.0
+                temp_id = None
+                try:
+                    temp_id = int(raw_temp_id)
+                except (TypeError, ValueError):
+                    temp_id = None
+
+                if temp_id is not None:
+                    matched_item = id_map.get(temp_id)
+                    if matched_item and title:
+                        fuzzy_item, match_score = best_title_match(title, [matched_item], threshold=0.0)
+                        if not fuzzy_item:
+                            match_score = 0.0
+                    elif matched_item:
+                        match_score = 1.0
+
                 if not matched_item:
-                    print(f"  - Skip unmatched L1 item: {title!r}")
+                    matched_item, match_score = best_title_match(title, items)
+                    if matched_item:
+                        print(f"  - Fallback title match for temp id {raw_temp_id!r}: {title!r}")
+
+                if not matched_item:
+                    print(f"  - Skip unmatched L1 item: id={raw_temp_id!r}, title={title!r}")
                     return
 
                 matched_id = matched_item['id']
-                processed_titles.add(matched_id)
+                processed_ids.add(matched_id)
                 status = 'l1_done' if score >= 70 else 'filtered'
                 reason = f"Category: {category}. Context: {context or 'N/A'}"
                 db.update_l1_result(matched_id, score, reason, status)
-                print(f"  - Update {matched_id}: Score {score} ({status}) [match={match_score:.2f}]")
+                print(f"  - Update {matched_id}: temp_id={temp_id} score={score} ({status}) [match={match_score:.2f}]")
 
             for category in ["AI_Algorithms", "Aerospace_HardTech", "Major_Industry_Moves"]:
                 category_items = data.get(category, [])
@@ -128,7 +149,7 @@ class L1Filter:
                         update_item(item_data, category)
 
             for item in items:
-                if item['id'] not in processed_titles:
+                if item['id'] not in processed_ids:
                     db.update_l1_result(item['id'], 0, "Implicitly filtered by AI (Low Score)", "filtered")
 
         except Exception as e:
