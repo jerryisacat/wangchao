@@ -1,4 +1,5 @@
 import time
+from typing import Any
 
 from openai import OpenAI
 from config import config
@@ -12,6 +13,60 @@ class AIService:
             api_key=config.AI_API_KEY,
             timeout=config.AI_TIMEOUT_SECONDS,
         )
+
+    def _preview(self, value: Any, limit: int = 200) -> str:
+        if value is None:
+            return "None"
+        text = str(value)
+        text = text.replace("\n", "\\n")
+        return text[:limit] + ("..." if len(text) > limit else "")
+
+    def _describe_response_shape(self, response: Any) -> str:
+        parts = [f"type={type(response).__name__}"]
+        choices = getattr(response, "choices", None)
+        if not choices and isinstance(response, dict):
+            choices = response.get("choices")
+
+        if choices:
+            parts.append(f"choices={len(choices)}")
+            choice = choices[0]
+            message = getattr(choice, "message", None)
+            if message is None and isinstance(choice, dict):
+                message = choice.get("message")
+
+            content = None
+            reasoning = None
+            refusal = None
+            if message is not None:
+                content = getattr(message, "content", None)
+                reasoning = getattr(message, "reasoning_content", None)
+                refusal = getattr(message, "refusal", None)
+                if isinstance(message, dict):
+                    content = message.get("content")
+                    reasoning = message.get("reasoning_content")
+                    refusal = message.get("refusal")
+
+            choice_text = getattr(choice, "text", None)
+            if choice_text is None and isinstance(choice, dict):
+                choice_text = choice.get("text")
+
+            parts.append(f"message.content.type={type(content).__name__}")
+            parts.append(f"message.content.preview={self._preview(content)}")
+            if isinstance(content, list):
+                for idx, part in enumerate(content[:3]):
+                    parts.append(f"message.content[{idx}].type={type(part).__name__}")
+                    parts.append(f"message.content[{idx}].preview={self._preview(part)}")
+
+            parts.append(f"message.reasoning_content.type={type(reasoning).__name__}")
+            parts.append(f"message.reasoning_content.preview={self._preview(reasoning)}")
+            parts.append(f"message.refusal.preview={self._preview(refusal)}")
+            parts.append(f"choice.text.preview={self._preview(choice_text)}")
+
+        output_text = getattr(response, "output_text", None)
+        if output_text is None and isinstance(response, dict):
+            output_text = response.get("output_text")
+        parts.append(f"response.output_text.preview={self._preview(output_text)}")
+        return " | ".join(parts)
 
     def _request_once(self, messages, model, response_format=None):
         kwargs = {
@@ -27,7 +82,8 @@ class AIService:
         response = self.client.chat.completions.create(**kwargs)
         text = extract_text_response(response)
         if not text:
-            print(f"AI Service Warning: Empty/unsupported response shape: {type(response).__name__}")
+            print("AI Service Warning: Empty/unsupported response shape")
+            print(f"AI Service Debug: {self._describe_response_shape(response)}")
         return text
 
     def chat_completion(self, messages, model, response_format=None):
