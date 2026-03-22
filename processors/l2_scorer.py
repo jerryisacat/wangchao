@@ -70,21 +70,39 @@ class L2Scorer:
         system_prompt = self._load_prompt()
         user_prompt = f"News Items to Process:\n{news_list_str}\n\nPlease generate the output JSON feed."
 
+        base_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+
         response_text = ai_service.chat_completion(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
+            messages=base_messages,
             model=self.model,
             response_format={"type": "json_object"}
         )
 
         if not response_text:
             print("L2: No response.")
-            return
+            return len(new_items)
 
         try:
             data, clean_json = parse_json_response(response_text)
+            if not isinstance(data, dict):
+                print("L2: Retry with strict JSON reprompt...")
+                fallback_messages = base_messages + [
+                    {"role": "assistant", "content": response_text},
+                    {"role": "user", "content": "Your previous reply was not valid JSON for the parser. Reply again with only a strict JSON object matching the required feed schema. No markdown fences, no commentary, no extra text."}
+                ]
+                response_text = ai_service.chat_completion(
+                    messages=fallback_messages,
+                    model=self.model,
+                    response_format={"type": "json_object"}
+                )
+                if not response_text:
+                    print("L2: No response after fallback reprompt.")
+                    return len(new_items)
+                data, clean_json = parse_json_response(response_text)
+
             if not isinstance(data, dict):
                 print(f"L2: Failed to parse JSON: {response_text}")
                 return len(new_items)

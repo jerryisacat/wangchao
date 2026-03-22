@@ -57,21 +57,39 @@ class L1Filter:
         user_prompt = f"Here is the list of news items to filter:\n\n{news_list_str}\n\nPlease output the JSON object as specified."
 
         # Call AI
+        base_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+
         response_text = ai_service.chat_completion(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
+            messages=base_messages,
             model=self.model,
             response_format={"type": "json_object"}
         )
 
         if not response_text:
             print("L1: No response from AI.")
-            return
+            return len(items)
 
         try:
             data, clean_json = parse_json_response(response_text)
+            if not isinstance(data, dict):
+                print("L1: Retry with strict JSON reprompt...")
+                fallback_messages = base_messages + [
+                    {"role": "assistant", "content": response_text},
+                    {"role": "user", "content": "Your previous reply was not valid JSON for the parser. Reply again with only a strict JSON object. No markdown fences, no commentary, no extra text, and keep the required top-level keys exactly as specified."}
+                ]
+                response_text = ai_service.chat_completion(
+                    messages=fallback_messages,
+                    model=self.model,
+                    response_format={"type": "json_object"}
+                )
+                if not response_text:
+                    print("L1: No response from AI after fallback reprompt.")
+                    return len(items)
+                data, clean_json = parse_json_response(response_text)
+
             if not isinstance(data, dict):
                 print(f"L1: Failed to parse JSON: {response_text}")
                 return len(items)
