@@ -4,6 +4,7 @@ from difflib import SequenceMatcher
 from typing import Any, Iterable
 
 FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
+THINKING_TAG_RE = re.compile(r"<(thinking|reasoning)[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 ZERO_WIDTH_RE = re.compile(r"[\u200b-\u200f\u2060\ufeff]")
 SMART_PUNCT_TRANSLATION = str.maketrans({
@@ -91,6 +92,7 @@ def sanitize_text(text: str | None) -> str | None:
 
 def extract_json_blob(text: str) -> str:
     text = sanitize_text(text) or ""
+    text = THINKING_TAG_RE.sub("", text)
     fence_match = FENCE_RE.search(text)
     if fence_match:
         text = fence_match.group(1).strip()
