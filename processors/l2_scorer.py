@@ -1,9 +1,9 @@
-import json
 import os
 from config import config
 from database import db
 from ai_service import ai_service
 from ranking import calculate_gravity_score
+from response_utils import parse_json_response, sanitize_text
 
 class L2Scorer:
     def __init__(self):
@@ -70,64 +70,99 @@ class L2Scorer:
         system_prompt = self._load_prompt()
         user_prompt = f"News Items to Process:\n{news_list_str}\n\nPlease generate the output JSON feed."
 
+        base_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+
         response_text = ai_service.chat_completion(
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
+            messages=base_messages,
             model=self.model,
             response_format={"type": "json_object"}
         )
 
         if not response_text:
             print("L2: No response.")
-            return
+            return len(new_items)
 
         try:
-            clean_json = response_text.replace("```json", "").replace("```", "").strip()
-            data = json.loads(clean_json)
-            
+            data, clean_json = parse_json_response(response_text)
+            if not isinstance(data, dict):
+                print("L2: Retry with strict JSON reprompt...")
+                fallback_messages = base_messages + [
+                    {"role": "assistant", "content": response_text},
+                    {"role": "user", "content": "Your previous reply was not valid JSON for the parser. Reply again with only a strict JSON object matching the required feed schema. No markdown fences, no commentary, no extra text."}
+                ]
+                response_text = ai_service.chat_completion(
+                    messages=fallback_messages,
+                    model=self.model,
+                    response_format={"type": "json_object"}
+                )
+                if not response_text:
+                    print("L2: No response after fallback reprompt.")
+                    return len(new_items)
+                data, clean_json = parse_json_response(response_text)
+
+            if not isinstance(data, dict):
+                print(f"L2: Failed to parse JSON: {response_text}")
+                return len(new_items)
+
             feed_items = data.get('feed', [])
-            
-            # Map back strategy: match by explicit ID
+            if not isinstance(feed_items, list):
+                print(f"L2: Invalid feed payload: {clean_json}")
+                return len(new_items)
+
             processed_primary_ids = set()
             processed_merged_ids = set()
-            
+
             for feed_item in feed_items:
+                if not isinstance(feed_item, dict):
+                    continue
+
                 primary_id = feed_item.get('id')
                 if not primary_id:
                     continue
-                    
-                optimized_title = feed_item.get('title_optimized')
-                score = feed_item.get('score', 0)
-                summary = feed_item.get('technical_summary')
-                category = feed_item.get('category')
-                
+
+                try:
+                    primary_id = int(primary_id)
+                except (TypeError, ValueError):
+                    continue
+
+                optimized_title = sanitize_text(feed_item.get('title_optimized'))
+                summary = sanitize_text(feed_item.get('technical_summary'))
+                category = sanitize_text(feed_item.get('category'))
+
+                raw_score = feed_item.get('score', 0)
+                try:
+                    score = int(raw_score)
+                except (TypeError, ValueError):
+                    score = 0
+
                 merged_ids = feed_item.get('merged_ids', [])
                 if isinstance(merged_ids, int):
                     merged_ids = [merged_ids]
-                
-                # Update the primary ID
-                db.update_l2_result(primary_id, score, summary, optimized_title, category)
+                elif not isinstance(merged_ids, list):
+                    merged_ids = []
+
+                db.update_l2_result(primary_id, score, summary or '', optimized_title or '', category or '')
                 processed_primary_ids.add(primary_id)
                 print(f"  - L2 Primary {primary_id}: {optimized_title}")
-                
-                # Update any merged duplicates to score 0 (demoted/deleted)
+
                 for mid in merged_ids:
+                    try:
+                        mid = int(mid)
+                    except (TypeError, ValueError):
+                        continue
                     if mid != primary_id:
                         db.update_l2_result(mid, 0, "Deduplicated/Merged", "", "")
                         processed_merged_ids.add(mid)
                         print(f"  - L2 Merged {mid} -> {primary_id}")
 
-            # Mark any ignored NEW items as dropped so they don't loop
             for item in new_items:
                 iid = item['id']
                 if iid not in processed_primary_ids and iid not in processed_merged_ids:
                     print(f"  - L2 Dropped NEW {iid}: {item['title']}")
                     db.update_l2_result(iid, 0, "Dropped by AI", "", "")
-                    
-            # OLD items that are not primary and not merged are left alone!
-            # They will naturally decay over time unless the AI decides they are completely invalid.
 
         except Exception as e:
             print(f"L2 Error: {e}")
