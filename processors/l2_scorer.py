@@ -91,7 +91,7 @@ class L2Scorer:
                 print("L2: Retry with strict JSON reprompt...")
                 fallback_messages = base_messages + [
                     {"role": "assistant", "content": response_text},
-                    {"role": "user", "content": "Your previous reply was not valid JSON for the parser. Reply again with only a strict JSON object matching the required feed schema. No markdown fences, no commentary, no extra text."}
+                    {"role": "user", "content": "Your previous reply was not valid JSON for the parser. Reply again with only a strict JSON object matching this exact top-level shape: {\"feed\": [...]}. Keep each feed item flat. Use fields id, merged_ids, category, title, score, summary, url. No markdown fences, no commentary, no extra text."}
                 ]
                 response_text = ai_service.chat_completion(
                     messages=fallback_messages,
@@ -128,8 +128,8 @@ class L2Scorer:
                 except (TypeError, ValueError):
                     continue
 
-                optimized_title = sanitize_text(feed_item.get('title_optimized'))
-                summary = sanitize_text(feed_item.get('technical_summary'))
+                optimized_title = sanitize_text(feed_item.get('title')) or sanitize_text(feed_item.get('title_optimized'))
+                summary = sanitize_text(feed_item.get('summary')) or sanitize_text(feed_item.get('technical_summary'))
                 category = sanitize_text(feed_item.get('category'))
 
                 raw_score = feed_item.get('score', 0)

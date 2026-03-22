@@ -162,6 +162,8 @@ def _score_parsed_json_candidate(obj: Any) -> int:
     score = 1
     if any(k in obj for k in ("AI_Algorithms", "Aerospace_HardTech", "Major_Industry_Moves")):
         score += 10
+    if "items" in obj:
+        score += 10
     if "feed" in obj:
         score += 10
     if any(k in obj for k in ("id", "title", "score", "context", "title_optimized", "technical_summary", "category")):
