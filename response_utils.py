@@ -90,8 +90,16 @@ def sanitize_text(text: str | None) -> str | None:
     return text.strip()
 
 
+def sanitize_json_text(text: str | None) -> str | None:
+    if text is None:
+        return None
+    text = ZERO_WIDTH_RE.sub("", text)
+    text = CONTROL_RE.sub("", text)
+    return text.strip()
+
+
 def extract_json_blob(text: str) -> str:
-    text = sanitize_text(text) or ""
+    text = sanitize_json_text(text) or ""
     text = THINKING_TAG_RE.sub("", text)
     fence_match = FENCE_RE.search(text)
     if fence_match:
