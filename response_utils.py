@@ -4,6 +4,7 @@ from difflib import SequenceMatcher
 from typing import Any, Iterable
 
 FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.IGNORECASE | re.DOTALL)
+THINKING_TAG_RE = re.compile(r"<(thinking|reasoning)[^>]*>.*?</\1>", re.IGNORECASE | re.DOTALL)
 CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 ZERO_WIDTH_RE = re.compile(r"[\u200b-\u200f\u2060\ufeff]")
 SMART_PUNCT_TRANSLATION = str.maketrans({
@@ -77,12 +78,7 @@ def extract_text_response(response: Any) -> str | None:
     for candidate in _iter_text_candidates(response):
         if candidate and candidate.strip():
             return candidate.strip()
-
-    if response is None:
-        return None
-
-    response_str = str(response).strip()
-    return response_str or None
+    return None
 
 
 def sanitize_text(text: str | None) -> str | None:
@@ -96,15 +92,48 @@ def sanitize_text(text: str | None) -> str | None:
 
 def extract_json_blob(text: str) -> str:
     text = sanitize_text(text) or ""
+    text = THINKING_TAG_RE.sub("", text)
     fence_match = FENCE_RE.search(text)
     if fence_match:
         text = fence_match.group(1).strip()
-
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        text = text[start:end + 1]
     return text.strip()
+
+
+def _extract_json_object_candidates(text: str) -> list[str]:
+    text = extract_json_blob(text)
+    candidates = []
+    start_indices = [i for i, ch in enumerate(text) if ch == '{']
+
+    for start in start_indices:
+        depth = 0
+        in_string = False
+        escape = False
+        for idx in range(start, len(text)):
+            ch = text[idx]
+            if in_string:
+                if escape:
+                    escape = False
+                elif ch == '\\':
+                    escape = True
+                elif ch == '"':
+                    in_string = False
+                continue
+
+            if ch == '"':
+                in_string = True
+            elif ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start:idx + 1].strip()
+                    if candidate:
+                        candidates.append(candidate)
+                    break
+
+    if text and text not in candidates:
+        candidates.append(text)
+    return candidates
 
 
 def _repair_common_json_issues(text: str) -> str:
@@ -118,22 +147,47 @@ def _repair_common_json_issues(text: str) -> str:
     return repaired
 
 
+def _score_parsed_json_candidate(obj: Any) -> int:
+    if not isinstance(obj, dict):
+        return 0
+
+    score = 1
+    if any(k in obj for k in ("AI_Algorithms", "Aerospace_HardTech", "Major_Industry_Moves")):
+        score += 10
+    if "feed" in obj:
+        score += 10
+    if any(k in obj for k in ("id", "title", "score", "context", "title_optimized", "technical_summary", "category")):
+        score += 2
+    return score
+
+
 def parse_json_response(text: str) -> tuple[Any | None, str]:
-    cleaned = extract_json_blob(text)
-    if not cleaned:
+    candidates = _extract_json_object_candidates(text)
+    if not candidates:
         return None, ""
 
-    attempts = [cleaned, _repair_common_json_issues(cleaned)]
     seen = set()
-    for candidate in attempts:
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        try:
-            return json.loads(candidate), candidate
-        except json.JSONDecodeError:
-            continue
-    return None, cleaned
+    repaired_fallback = ""
+    parsed_candidates = []
+
+    for raw_candidate in candidates:
+        for candidate in (raw_candidate, _repair_common_json_issues(raw_candidate)):
+            if candidate in seen:
+                continue
+            seen.add(candidate)
+            repaired_fallback = candidate
+            try:
+                obj = json.loads(candidate)
+                parsed_candidates.append((candidate, obj))
+            except json.JSONDecodeError:
+                continue
+
+    if not parsed_candidates:
+        return None, repaired_fallback
+
+    parsed_candidates.sort(key=lambda item: (_score_parsed_json_candidate(item[1]), candidates.index(item[0]) if item[0] in candidates else -1))
+    best_candidate, best_obj = parsed_candidates[-1]
+    return best_obj, best_candidate
 
 
 def normalize_title(title: str | None) -> str:

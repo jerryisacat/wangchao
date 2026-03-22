@@ -22,6 +22,7 @@ class AppConfig:
     L2_BATCH_SIZE: int = int(os.getenv("L2_BATCH_SIZE", "20")) # Max items to send to L2 at once
     AI_MAX_RETRIES: int = int(os.getenv("AI_MAX_RETRIES", "2"))
     AI_RETRY_DELAY_SECONDS: float = float(os.getenv("AI_RETRY_DELAY_SECONDS", "1.0"))
+    AI_TIMEOUT_SECONDS: float = float(os.getenv("AI_TIMEOUT_SECONDS", "600"))
 
     # Application Logic
     FETCH_INTERVAL_SECONDS: int = int(os.getenv("FETCH_INTERVAL_SECONDS", "600")) # 10 minutes

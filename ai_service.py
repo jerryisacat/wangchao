@@ -9,7 +9,8 @@ class AIService:
     def __init__(self):
         self.client = OpenAI(
             base_url=config.AI_BASE_URL,
-            api_key=config.AI_API_KEY
+            api_key=config.AI_API_KEY,
+            timeout=config.AI_TIMEOUT_SECONDS,
         )
 
     def _request_once(self, messages, model, response_format=None):
