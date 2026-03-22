@@ -77,7 +77,7 @@ class L1Filter:
                 print("L1: Retry with strict JSON reprompt...")
                 fallback_messages = base_messages + [
                     {"role": "assistant", "content": response_text},
-                    {"role": "user", "content": "Your previous reply was not valid JSON for the parser. Reply again with only a strict JSON object. No markdown fences, no commentary, no extra text, keep the required top-level keys exactly as specified, and preserve the input id for every selected item."}
+                    {"role": "user", "content": "Your previous reply was not valid JSON for the parser. Reply again with only a strict JSON object using this exact top-level shape: {\"items\": [...]}. No markdown fences, no commentary, no extra text, and preserve the input id for every selected item."}
                 ]
                 response_text = ai_service.chat_completion(
                     messages=fallback_messages,
@@ -95,12 +95,13 @@ class L1Filter:
 
             processed_ids = set()
 
-            def update_item(item_data, category):
+            def update_item(item_data, category=None):
                 if not isinstance(item_data, dict):
                     return
 
                 title = sanitize_text(item_data.get('title'))
                 context = sanitize_text(item_data.get('context'))
+                category = sanitize_text(item_data.get('category')) or sanitize_text(category)
                 raw_score = item_data.get('score', 0)
                 raw_temp_id = item_data.get('id')
 
@@ -126,7 +127,7 @@ class L1Filter:
                     elif matched_item:
                         match_score = 1.0
 
-                if not matched_item:
+                if not matched_item and title:
                     matched_item, match_score = best_title_match(title, items)
                     if matched_item:
                         print(f"  - Fallback title match for temp id {raw_temp_id!r}: {title!r}")
@@ -138,15 +139,28 @@ class L1Filter:
                 matched_id = matched_item['id']
                 processed_ids.add(matched_id)
                 status = 'l1_done' if score >= 70 else 'filtered'
-                reason = f"Category: {category}. Context: {context or 'N/A'}"
+                reason = f"Category: {category or 'N/A'}. Context: {context or 'N/A'}"
                 db.update_l1_result(matched_id, score, reason, status)
-                print(f"  - Update {matched_id}: temp_id={temp_id} score={score} ({status}) [match={match_score:.2f}]")
+                print(f"  - Update {matched_id}: temp_id={temp_id} score={score} ({status}) [match={match_score:.2f}] category={category!r}")
 
-            for category in ["AI_Algorithms", "Aerospace_HardTech", "Major_Industry_Moves"]:
-                category_items = data.get(category, [])
-                if isinstance(category_items, list):
-                    for item_data in category_items:
-                        update_item(item_data, category)
+            parsed_any = False
+            item_list = data.get('items', [])
+            if isinstance(item_list, list):
+                parsed_any = True
+                for item_data in item_list:
+                    update_item(item_data)
+
+            if not parsed_any:
+                for category in ["AI_Algorithms", "Aerospace_HardTech", "Major_Industry_Moves"]:
+                    category_items = data.get(category, [])
+                    if isinstance(category_items, list):
+                        parsed_any = True
+                        for item_data in category_items:
+                            update_item(item_data, category)
+
+            if not parsed_any:
+                print(f"L1: Invalid payload shape: {clean_json}")
+                return len(items)
 
             for item in items:
                 if item['id'] not in processed_ids:
