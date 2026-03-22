@@ -1,6 +1,7 @@
 from openai import OpenAI
 from config import config
-import json
+from response_utils import extract_text_response
+
 
 class AIService:
     def __init__(self):
@@ -16,15 +17,19 @@ class AIService:
                 "messages": messages,
             }
             if response_format:
-                # Support for JSON mode if API supports it, or just prompt
-                # Some OpenAI compatible APIs might not support strict json_object
-                # We'll try to just ask for it in prompt, but passing it if confident
+                # Support for JSON mode if API supports it, or just prompt.
+                # Some OpenAI-compatible APIs/models silently ignore it or return
+                # non-standard envelopes, so extraction must stay defensive.
                 kwargs["response_format"] = response_format
 
             response = self.client.chat.completions.create(**kwargs)
-            return response.choices[0].message.content
+            text = extract_text_response(response)
+            if not text:
+                print(f"AI Service Warning: Empty/unsupported response shape: {type(response).__name__}")
+            return text
         except Exception as e:
             print(f"AI Service Error: {e}")
             return None
+
 
 ai_service = AIService()
