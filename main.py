@@ -1,7 +1,7 @@
 import time
 import signal
 import sys
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from config import config
 from sources.manager import source_manager
 from processors.l1_filter import l1_filter
@@ -50,6 +50,23 @@ def generate_simplified_top5(items: list):
     except Exception as e:
         print(f"Error saving top5.json: {e}")
 
+def is_quiet_hours() -> bool:
+    if not config.QUIET_HOURS_ENABLED:
+        return False
+    tz = timezone(timedelta(hours=config.QUIET_HOURS_TZ_OFFSET))
+    hour = datetime.now(tz).hour
+    start = config.QUIET_HOURS_START
+    end = config.QUIET_HOURS_END
+    if start <= end:
+        return start <= hour < end
+    return hour >= start or hour < end
+
+def get_effective_interval() -> int:
+    interval = config.FETCH_INTERVAL_SECONDS
+    if is_quiet_hours():
+        interval *= config.QUIET_HOURS_MULTIPLIER
+    return interval
+
 def calculate_sleep_seconds(interval: int) -> float:
     """Calculate seconds until next aligned interval."""
     now = time.time()
@@ -61,6 +78,8 @@ def main():
     
     print("AI AOD News Dashboard Started.")
     print(f"Update Interval: {config.FETCH_INTERVAL_SECONDS} seconds")
+    if config.QUIET_HOURS_ENABLED:
+        print(f"Quiet Hours: {config.QUIET_HOURS_START}:00-{config.QUIET_HOURS_END}:00 (UTC+{config.QUIET_HOURS_TZ_OFFSET}), {config.QUIET_HOURS_MULTIPLIER}x slower")
 
     while True:
         try:
@@ -137,8 +156,11 @@ def main():
                 generate_simplified_top5(ranked)
 
             # Schedule Sleep
-            sleep_sec = calculate_sleep_seconds(config.FETCH_INTERVAL_SECONDS)
-            print(f"Sleeping for {sleep_sec:.1f} seconds (Next run at {datetime.fromtimestamp(time.time() + sleep_sec).strftime('%H:%M:%S')})...")
+            effective = get_effective_interval()
+            quiet = is_quiet_hours()
+            sleep_sec = calculate_sleep_seconds(effective)
+            quiet_tag = " [Quiet Hours]" if quiet else ""
+            print(f"Sleeping for {sleep_sec:.1f} seconds (interval={effective}s{quiet_tag}, next at {datetime.fromtimestamp(time.time() + sleep_sec).strftime('%H:%M:%S')})...")
             time.sleep(sleep_sec)
             
         except Exception as e:
