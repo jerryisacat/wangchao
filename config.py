@@ -30,6 +30,13 @@ class AppConfig:
     RANKING_WINDOW_HOURS: int = int(os.getenv("RANKING_WINDOW_HOURS", "72")) # Hours to look back for ranking
     DASHBOARD_OUTPUT_PATH: str = os.getenv("DASHBOARD_OUTPUT_PATH", "data/dashboard.json")
     TOP_N_ITEMS: int = int(os.getenv("TOP_N_ITEMS", "5")) # Number of items to output in top5.json
+
+    # Quiet Hours (reduce update frequency during nighttime)
+    QUIET_HOURS_ENABLED: bool = os.getenv("QUIET_HOURS_ENABLED", "true").lower() in ("true", "1", "yes")
+    QUIET_HOURS_TZ_OFFSET: int = int(os.getenv("QUIET_HOURS_TZ_OFFSET", "8"))
+    QUIET_HOURS_START: int = int(os.getenv("QUIET_HOURS_START", "22"))
+    QUIET_HOURS_END: int = int(os.getenv("QUIET_HOURS_END", "10"))
+    QUIET_HOURS_MULTIPLIER: int = int(os.getenv("QUIET_HOURS_MULTIPLIER", "4"))
     
     # Sources
     RSS_FEEDS: List[str] = [
