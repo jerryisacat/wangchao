@@ -2,11 +2,11 @@ name: Docker
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
     # Publish semver tags as releases.
     tags: [ 'v*.*.*' ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "master" ]
 
 env:
   REGISTRY: ghcr.io
@@ -36,6 +36,11 @@ jobs:
         uses: sigstore/cosign-installer@v3.5.0
         with:
           cosign-release: 'v2.2.4'
+
+      # Set up QEMU for cross-platform (arm64) emulation
+      # https://github.com/docker/setup-qemu-action
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       # Set up BuildKit Docker container builder to be able to build
       # multi-platform images and export cache
@@ -71,6 +76,7 @@ jobs:
         uses: docker/build-push-action@v5.0.0
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
