@@ -13,6 +13,8 @@ class AIService:
             api_key=config.AI_API_KEY,
             timeout=config.AI_TIMEOUT_SECONDS,
         )
+        # Models that have rejected response_format=json_object; we skip it for them.
+        self._no_json_mode: set[str] = set()
 
     def _preview(self, value: Any, limit: int = 200) -> str:
         if value is None:
@@ -68,15 +70,21 @@ class AIService:
         parts.append(f"response.output_text.preview={self._preview(output_text)}")
         return " | ".join(parts)
 
-    def _request_once(self, messages, model, response_format=None):
+    @staticmethod
+    def _is_response_format_error(error: Exception) -> bool:
+        # Matches e.g. 400 BadRequest: "The parameter `response_format.type` ...
+        # `json_object` is not supported by this model." across OpenAI-compatible
+        # backends (Volc Ark / Doubao, etc.).
+        return "response_format" in str(error).lower()
+
+    def _create(self, messages, model, response_format):
         kwargs = {
             "model": model,
             "messages": messages,
         }
         if response_format:
-            # Support for JSON mode if API supports it, or just prompt.
-            # Some OpenAI-compatible APIs/models silently ignore it or return
-            # non-standard envelopes, so extraction must stay defensive.
+            # JSON mode if the model supports it. The response_utils parser stays
+            # defensive either way, so plain (non-JSON-mode) output is fine too.
             kwargs["response_format"] = response_format
 
         response = self.client.chat.completions.create(**kwargs)
@@ -85,6 +93,22 @@ class AIService:
             print("AI Service Warning: Empty/unsupported response shape")
             print(f"AI Service Debug: {self._describe_response_shape(response)}")
         return text
+
+    def _request_once(self, messages, model, response_format=None):
+        mode = config.AI_RESPONSE_FORMAT_MODE
+        use_json = bool(response_format) and mode != "off" and model not in self._no_json_mode
+        try:
+            return self._create(messages, model, response_format if use_json else None)
+        except Exception as e:
+            # In auto mode, if the model rejects response_format=json_object,
+            # drop it, remember the model so future calls skip it, and retry
+            # once without it. Keeps us compatible with both kinds of models.
+            if use_json and mode == "auto" and self._is_response_format_error(e):
+                self._no_json_mode.add(model)
+                print(f"AI Service: model '{model}' rejected response_format json_object; "
+                      f"retrying without it (future calls will skip it)")
+                return self._create(messages, model, None)
+            raise
 
     def chat_completion(self, messages, model, response_format=None):
         attempts = max(1, config.AI_MAX_RETRIES)

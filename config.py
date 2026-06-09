@@ -23,6 +23,11 @@ class AppConfig:
     AI_MAX_RETRIES: int = int(os.getenv("AI_MAX_RETRIES", "2"))
     AI_RETRY_DELAY_SECONDS: float = float(os.getenv("AI_RETRY_DELAY_SECONDS", "1.0"))
     AI_TIMEOUT_SECONDS: float = float(os.getenv("AI_TIMEOUT_SECONDS", "600"))
+    # How to handle response_format=json_object. Some OpenAI-compatible models
+    # (e.g. Volc Ark / Doubao) reject it with HTTP 400. "auto" sends it and, on
+    # such a 400, transparently retries without it and remembers the model;
+    # "on" always sends it; "off" never sends it.
+    AI_RESPONSE_FORMAT_MODE: str = os.getenv("AI_RESPONSE_FORMAT_MODE", "auto").lower()
 
     # Application Logic
     FETCH_INTERVAL_SECONDS: int = int(os.getenv("FETCH_INTERVAL_SECONDS", "600")) # 10 minutes
