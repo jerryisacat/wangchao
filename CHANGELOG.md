@@ -13,6 +13,8 @@
 
 ### 2026-07-06
 
+**Target product SPEC rewrite**：因为后续产品开发与重构应围绕“主题驱动、自动信源发现、用户反馈学习、阅读状态管理和知识沉淀”的目标形态，而不是被当前 RSS + 静态 Dashboard 原型限制，所以重写 `SPEC.md` 为目标产品规格。新版 SPEC 将产品定义为“主题情报雷达”，明确用户以自然语言创建关注主题，系统自动发现和评估信源、持续抓取公开信息、生成每日主题简报，并根据已读、收藏、忽略、反馈和导出行为更新偏好记忆。`CODEGUIDE.md` 同步调整维护规则：当前代码应视为可重构的引擎原型，后续开发以 SPEC 的目标产品形态为准。
+
 **SPEC documentation baseline**：因为私有分支需要一个面向产品与技术设计的 source of truth，所以新增 `SPEC.md`，按当前代码而非未来设想梳理项目目标与边界、用户/运行角色、核心工作流、SQLite 数据模型与状态机、RSS 信源处理、L1/L2 两阶段 AI 处理、Gravity Ranking、JSON/静态前端输出、配置、运行部署、测试验证、安全可信边界、当前限制和后续演进建议。`CODEGUIDE.md` 同步标记 `SPEC.md` 为产品规格入口，后续修改数据流、状态机、输出 schema 或安全边界时需要同步更新。
 
 **README repositioning**：因为私有分支的目标已经从单纯 AI 新闻 Dashboard 扩展为商业财经、数据资产机会和行业风险等垂直情报雷达，所以重写 `README.md`，明确项目定位为“RSS/公开信息源 → AI 筛选/摘要/打标/排序 → 结构化情报输出”的通用管线。README 同步记录私有分支增强、核心配置、Prompt 定制方式、输出格式、测试命令、后续 single-run/Hermes cron/Obsidian/Telegram 改造方向，以及 upstream 授权边界注意事项。

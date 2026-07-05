@@ -1,489 +1,848 @@
-# AI-News-Dashboard 当前实现规格（SPEC）
+# 主题情报雷达产品规格（SPEC）
 
-> 本文档描述 **当前代码已经实现的产品与技术设计**，不是未来路线图。
+> 本文档是后续产品开发与重构的主要依据。
 >
-> 规格依据：`README.md`、`CODEGUIDE.md`、`CHANGELOG.md`、`config.py`、`main.py`、`database.py`、`sources/`、`processors/`、`ai_service.py`、`response_utils.py`、`ranking.py`、`index.html`、`.env_example`、`pyproject.toml` 与根目录测试脚本。
+> 它描述的是**目标产品形态**，不再局限于当前 `AI-News-Dashboard` 的既有 RSS + Dashboard 实现。当前代码可以视为第一版信息处理引擎原型：已具备 RSS 抓取、SQLite 入库、L1/L2 AI 筛选、去重、摘要、评分、Gravity Ranking 和静态 JSON/HTML 输出；但后续开发应以本文档的目标产品为准。
 
-## 1. 项目目标与边界
+## 1. 产品一句话
 
-`AI-News-Dashboard` 是一条轻量级信息流情报处理管线，用于把 RSS/Atom 信息源转换为可排序、可摘要、可打标的结构化新闻数据。
+**主题情报雷达** 是一个会学习用户偏好的个人情报 Agent：用户只需要创建关注主题，系统自动发现和评估信息源，持续抓取公开信息，每天生成结构化情报简报；用户通过阅读、已读、收藏、反馈和导出等动作训练系统，让它越来越理解自己的关注重点和判断标准。
 
-当前实现目标：
+## 2. 产品目标
 
-1. 周期性抓取配置的 RSS/Atom feeds。
-2. 将新条目写入 SQLite，并按 URL 去重。
-3. 使用两阶段 OpenAI-compatible LLM 管线处理新闻：
-   - L1：快速筛选低价值/噪音条目。
-   - L2：生成中文标题、中文摘要、分数、分类，并做同事件合并。
-4. 使用 Gravity Ranking 结合 L2 分数与时间衰减排序。
-5. 输出 `dashboard.json` 与 `top5.json`，供静态前端或其他下游消费。
-6. 通过单文件 `index.html` 展示 Dashboard。
+### 2.1 用户真正想完成的事情
 
-当前明确边界：
+用户不是想维护 RSS，也不是想阅读更多新闻。用户想要：
 
-- 当前只内置 RSS/Atom 抓取，不包含网页正文抓取、PDF 解析、登录源、付费源或搜索 API。
-- 当前数据模型主要围绕新闻条目，不包含实体图谱、用户反馈、团队协作、审计流或多租户。
-- 当前前端是静态展示页，不提供后端 API、管理后台、登录鉴权或在线配置。
-- 当前 LLM 输出依赖 prompt 与兼容性解析，不提供强类型 schema migration 或数据库级 JSON 字段扩展。
+1. 用自然语言告诉系统自己关心的主题。
+2. 系统自动理解主题边界、关键实体、关键词、排除项和重要性标准。
+3. 系统自动寻找、观察、评估和更新相关信息源。
+4. 系统每天把主题相关的高价值变化整理成简报。
+5. 用户可以快速标记已读、收藏、忽略、导出和反馈。
+6. 系统根据每次反馈更新对用户兴趣的理解。
+7. 有价值的信息可以沉淀到 Obsidian / Markdown / PDF / 主题时间线。
 
-## 2. 用户与运行角色
-
-### 2.1 运行者
-
-运行者负责部署服务、配置 `.env`、提供 LLM API Key、维护 RSS 源列表，并选择本地、Docker 或其他调度方式运行。
-
-### 2.2 内容消费者
-
-内容消费者通过以下方式读取结果：
-
-- 浏览器打开静态 `index.html`，读取同目录 `dashboard.json`。
-- 其他系统读取 `data/dashboard.json` 获取完整排序结果。
-- 其他轻量终端读取 `data/top5.json` 获取 Top N 简表。
-
-### 2.3 AI Agent / 维护者
-
-维护者修改代码、prompt、配置模板、测试与文档时，应同步更新：
-
-- `SPEC.md`：产品/技术规格入口。
-- `CODEGUIDE.md`：代码结构和维护规则。
-- `CHANGELOG.md`：变更记录。
-- `.env_example`：新增环境变量时同步更新。
-
-## 3. 核心工作流
-
-主流程由 `main.py` 的无限循环驱动：
+示例：
 
 ```text
-启动 main.py
-  ↓
-加载 config.py 中的环境变量配置
-  ↓
-循环执行：
-  1. sources.manager.SourceManager.fetch_all()
-  2. processors.l1_filter.L1Filter.process_pending()
-  3. processors.l2_scorer.L2Scorer.process_l1_passed()
-  4. database.Database.get_recent_processed_news()
-  5. ranking.calculate_gravity_score()
-  6. 写出 dashboard.json / top5.json
-  7. 按普通间隔或 quiet hours 间隔休眠
+用户输入：我想关注中国商业航空进展。
+
+系统应理解并持续跟踪：
+- C919 / C929 / ARJ21
+- 中国商飞 COMAC
+- 中国民航局适航认证
+- 国产大飞机交付与商业运营
+- 航司订单、航线运营、维修保障
+- 航空发动机与供应链
+- 国际适航、出口和海外运营
+
+系统应主动过滤：
+- 普通航班延误
+- 航旅营销稿
+- 空乘招聘
+- 机场服务体验类软文
+- 与商业航空进展无关的事故八卦
 ```
 
-### 3.1 抓取阶段
+### 2.2 产品定位
 
-- `SourceManager` 从 `config.RSS_FEEDS` 读取 feed URL 列表。
-- 每个 feed 由 `RSSFetcher.fetch(url)` 使用 `feedparser.parse()` 解析。
-- 条目统一为：`title`、`url`、`published_at`、`source_name`、`summary`。
-- `db.add_news()` 插入 SQLite；`url` 是唯一键，已存在则忽略。
+当前目标是**个人自用的主题情报工作台**，先不考虑商业化、多租户、团队权限和付费系统。
 
-### 3.2 L1 快速筛选阶段
-
-- `L1Filter.process_pending()` 读取 `status='pending'` 的条目。
-- 每批最多 `L1_BATCH_SIZE` 条。
-- prompt 来自：
-  - `prompts/user_profile.md`
-  - `prompts/l1_rules.md`
-- LLM 返回 JSON 后由 `response_utils.parse_json_response()` 解析。
-- 当前优先支持 flat schema：
-
-```json
-{
-  "items": [
-    {
-      "id": 1,
-      "category": "模型发布",
-      "score": 91,
-      "context": "保留理由"
-    }
-  ]
-}
-```
-
-- 兼容旧 category bucket schema：`AI_Algorithms`、`Aerospace_HardTech`、`Major_Industry_Moves`。
-- 分数 `>= 70` 的条目标记为 `l1_done`；否则标记为 `filtered`。
-- 未被模型返回的 batch 内条目会被隐式标记为 `filtered`。
-- 如果模型丢失或错配 ID，代码会尝试用标题 fuzzy match 找回。
-
-### 3.3 L2 深度处理阶段
-
-- `L2Scorer.process_l1_passed()` 读取 `status='l1_done'` 且 `l1_score >= 70` 的新条目。
-- 每批最多 `L2_BATCH_SIZE` 条。
-- 同时取最近窗口内已处理新闻，根据 Gravity Score 排序后选择 Top 20 作为去重上下文。
-- prompt 来自：
-  - `prompts/user_profile.md`
-  - `prompts/l2_rules.md`
-- 当前期望 LLM 返回 flat feed schema：
-
-```json
-{
-  "feed": [
-    {
-      "id": 123,
-      "merged_ids": [124],
-      "category": "AI/模型发布",
-      "title": "中文标题",
-      "score": 87,
-      "summary": "中文摘要",
-      "url": "https://example.com/news"
-    }
-  ]
-}
-```
-
-- 主条目写入 `l2_score`、`l2_summary`、`l2_title_zh`、`category`，并标记为 `processed`。
-- `merged_ids` 中的条目会写成 `l2_score=0`、`l2_summary='Deduplicated/Merged'`、`status='processed'`。
-- L2 未返回的新条目会被写成 `l2_score=0`、`l2_summary='Dropped by AI'`、`status='processed'`。
-- 排行榜查询会过滤 `l2_score <= 0`，所以合并/丢弃项不会进入 `dashboard.json` 排名结果。
-
-### 3.4 排名与输出阶段
-
-- `main.py` 调用 `db.get_recent_processed_news(hours=RANKING_WINDOW_HOURS)` 获取窗口内已处理且 `l2_score > 0` 的新闻。
-- 对每条新闻计算 Gravity Score。
-- 按 Gravity Score 降序排序。
-- 写出：
-  - `DASHBOARD_OUTPUT_PATH`，默认 `data/dashboard.json`。
-  - 同目录 `top5.json`，默认 `data/top5.json`。
-
-### 3.5 休眠与 quiet hours
-
-- 普通循环间隔为 `FETCH_INTERVAL_SECONDS`。
-- 如果 `QUIET_HOURS_ENABLED=true` 且当前小时落在 quiet hours 范围内，则间隔乘以 `QUIET_HOURS_MULTIPLIER`。
-- `calculate_sleep_seconds()` 将下一次运行对齐到间隔边界。
-
-## 4. 数据模型与状态机
-
-### 4.1 SQLite 表：`news`
-
-`database.py` 当前自动创建单表 `news`：
-
-| 字段 | 类型/含义 |
-|------|-----------|
-| `id` | 自增主键 |
-| `url` | 唯一 URL，用于去重 |
-| `title` | RSS 原始标题 |
-| `source_name` | feed 标题或 `Unknown Source` |
-| `published_at` | 发布时间 Unix timestamp；缺失时用当前时间 |
-| `fetched_at` | 入库时间 Unix timestamp |
-| `summary` | RSS summary/description |
-| `l1_score` | L1 分数，默认 0 |
-| `l1_reason` | L1 分类与保留/过滤理由文本 |
-| `l2_score` | L2 分数，默认 0 |
-| `l2_summary` | L2 中文摘要或合并/丢弃说明 |
-| `l2_title_zh` | L2 中文标题 |
-| `category` | L1/L2 分类文本，最终展示主要使用 L2 分类 |
-| `status` | 处理状态 |
-
-### 4.2 状态机
+产品不应该以“添加 RSS 源”为核心入口，而应该以“创建关注主题”为核心入口。
 
 ```text
-pending
-  ├─ L1 score >= 70 → l1_done
-  └─ L1 score < 70 / 未返回 → filtered
-
-l1_done
-  ├─ L2 主条目返回 → processed, l2_score > 0
-  ├─ L2 merged_ids → processed, l2_score = 0
-  └─ L2 未返回 → processed, l2_score = 0
+错误入口：添加 RSS 链接
+正确入口：创建关注主题
 ```
 
-状态含义：
+## 3. 核心产品原则
 
-| status | 含义 |
-|--------|------|
-| `pending` | RSS 新入库，等待 L1 |
-| `filtered` | L1 判定低价值或未被 L1 返回 |
-| `l1_done` | L1 通过，等待 L2 |
-| `processed` | L2 已处理、合并或丢弃 |
+1. **主题优先，而非信源优先**
+   - 用户维护主题、兴趣和反馈。
+   - 系统维护具体信源、抓取策略和质量评分。
 
-### 4.3 数据库边界
+2. **自动发现，但不盲目信任**
+   - 系统可以自动发现候选源。
+   - 候选源进入观察状态，经过可信度和历史表现评估后再进入正式源池。
 
-- `Database._get_conn()` 会自动创建数据库 parent directory。
-- 当前没有正式 migration framework。
-- `migrate_db.py` 存在但不是自动迁移系统。
-- 扩展 schema 时需要同步修改数据库、processors、前端、测试与文档。
+3. **反馈即训练数据**
+   - 已读、忽略、收藏、标注“不感兴趣”、标注“多关注这个方向”等行为都应该沉淀为偏好信号。
+   - 系统需要把用户行为转化为主题权重、排除项、信源权重和 prompt profile 更新。
 
-## 5. 信源处理现状
+4. **情报不是新闻列表**
+   - 输出应围绕“发生了什么、为什么重要、影响谁、是否需要继续跟踪”。
+   - 多来源报道同一事件应合并，而不是重复出现。
 
-当前信源层只有 RSS/Atom：
+5. **知识要沉淀**
+   - 重要信息不应只停留在当天 dashboard。
+   - 系统应支持导出为 Obsidian/Markdown/PDF，并能长期形成主题时间线和案例库。
 
-- `sources/rss.py`：封装 `feedparser`，处理日期、标题、链接、来源名、摘要。
-- `sources/manager.py`：遍历配置的 feed 列表，写入数据库。
+6. **可解释和可纠偏**
+   - 系统需要说明为什么推荐某条信息、为什么信任某个来源、为什么降低某类内容权重。
+   - 用户反馈应可追溯。
 
-已实现容错：
+## 4. 目标用户体验
 
-- feedparser 标记 `bozo` 时打印 warning，但仍尽量读取 entries。
-- 单个 feed 抓取异常时返回空列表，不中断整个主循环。
-- URL 为空的条目不会入库。
-- URL 唯一约束避免重复入库。
+### 4.1 创建主题
 
-未实现：
+用户输入自然语言主题：
 
-- HTTP timeout/retry 的显式配置。
-- robots/版权策略判断。
-- 全文抓取、正文抽取和网页反爬处理。
-- 每个 feed 独立频率、启停状态、权重或标签。
-
-## 6. AI 两阶段处理设计
-
-### 6.1 AI 服务封装
-
-`ai_service.py` 使用 OpenAI Python SDK 访问兼容 Chat Completions 的 API：
-
-- `AI_BASE_URL`：API endpoint。
-- `AI_API_KEY`：密钥。
-- `AI_MODEL_L1` / `AI_MODEL_L2`：两阶段模型。
-- `AI_TIMEOUT_SECONDS`：请求超时。
-- `AI_MAX_RETRIES`：最大尝试次数。
-- `AI_RETRY_DELAY_SECONDS`：重试等待秒数。
-- `AI_RESPONSE_FORMAT_MODE`：`auto` / `on` / `off`。
-
-`AI_RESPONSE_FORMAT_MODE=auto` 时：
-
-1. 首次按调用方要求传 `response_format={"type":"json_object"}`。
-2. 如果 provider 报 `response_format` 相关错误，自动重试一次不带 JSON mode。
-3. 记住该模型不再发送 JSON mode。
-
-### 6.2 LLM 输出清洗与兼容
-
-`response_utils.py` 负责把不稳定的 LLM 输出转成可解析 JSON：
-
-- 支持从 OpenAI SDK object、dict、message content list、`output_text` 等形态提取文本。
-- 去除 Markdown code fence。
-- 去除 `<thinking>` / `<reasoning>` 标签内容。
-- 去除控制字符、零宽字符。
-- 修复部分常见 JSON 问题：尾随逗号、未加引号 key、空值。
-- 多个 JSON object 同时出现时，按 schema 特征打分选择候选。
-- L1 支持标题 fuzzy match，降低模型 ID 丢失造成的漏处理。
-
-### 6.3 失败处理边界
-
-- L1/L2 无响应或 JSON 解析失败时，batch 函数通常返回本批 item 数量，让主循环继续推进到 bounded loop 限制。
-- `main.py` 用 `MAX_L1_LOOPS`、`MAX_L2_LOOPS` 限制每个 cycle 的批处理次数，避免 AI/API 异常时在同一轮无限循环。
-- 主循环顶层捕获异常，打印错误后休眠 60 秒。
-
-## 7. Ranking 设计
-
-`ranking.calculate_gravity_score(base_score, published_at_ts, gravity)` 当前公式：
-
-```python
-base_score * (offset / (age_hours + offset)) ** effective_gravity
+```text
+我想关注中国商业航空进展。
 ```
 
-其中：
+系统生成主题草案：
 
-- `base_score` 来自 L2 分数。
-- `age_hours` 是当前时间与发布时间的小时差，最低为 0。
-- `offset = 6.0` 小时，用于降低刚发布新闻的尖峰优势。
-- `effective_gravity = GRAVITY * gravity_factor`。
-- `gravity_factor = 1.0 - (base_score / 100.0) * 0.8`，并 clamp 到 `[0.15, 1.2]`。
-
-效果：
-
-- 高 L2 分数新闻衰减更慢。
-- 低分新闻更快被新内容替代。
-- 排名窗口由 `RANKING_WINDOW_HOURS` 控制。
-
-## 8. 输出与前端
-
-### 8.1 `dashboard.json`
-
-默认路径：`data/dashboard.json`。
-
-结构：
-
-```json
-{
-  "generated_at": 1751738400.0,
-  "generated_at_str": "2026-07-06T02:00:00",
-  "config": {
-    "gravity": 1.1,
-    "window_hours": 72
-  },
-  "items": [
-    {
-      "id": 1,
-      "url": "https://example.com/article",
-      "title": "Original title",
-      "source_name": "Source",
-      "published_at": 1751734800.0,
-      "fetched_at": 1751734900.0,
-      "summary": "RSS summary",
-      "l1_score": 80,
-      "l1_reason": "Category: ... Context: ...",
-      "l2_score": 90,
-      "l2_summary": "中文摘要",
-      "l2_title_zh": "中文标题",
-      "category": "AI/模型发布",
-      "status": "processed",
-      "gravity_score": 86.5
-    }
-  ]
-}
+```yaml
+topic:
+  name: 中国商业航空进展
+  goal: 跟踪中国民用/商业航空产业从研发、认证、交付到商业运营和国际化的关键进展。
+  include:
+    - C919 / C929 / ARJ21
+    - COMAC / 中国商飞
+    - 适航认证与监管政策
+    - 国产发动机与供应链
+    - 航司订单、交付、商业运营
+    - 国际适航、出口、海外航线
+  exclude:
+    - 普通航班延误
+    - 航旅服务营销
+    - 招聘与乘务员新闻
+    - 与产业进展无关的事故八卦
+  output_style:
+    - 简体中文
+    - 保留英文缩写和专有名词
+    - 偏产业进展、政策、供应链和商业运营
 ```
 
-### 8.2 `top5.json`
+用户可以确认或修改。
 
-默认路径：与 `dashboard.json` 同目录的 `top5.json`。
+### 4.2 每日主题简报
 
-实际数量由 `TOP_N_ITEMS` 控制，默认 5。
+每天系统按主题生成简报：
 
-结构：
+```text
+中国商业航空进展｜每日情报
 
-```json
-[
-  {
-    "title": "中文标题",
-    "meta": "2H"
-  }
-]
+一、今日最重要进展
+1. C919 新增商业航线运营数据披露
+   - 为什么重要：说明国产大飞机从示范运营进入更稳定商业化阶段。
+   - 影响对象：中国商飞、东航、民航局、航材供应链。
+   - 来源可信度：官方/高。
+   - 建议动作：继续跟踪月度航班频次和机队可用率。
+
+二、政策与适航
+...
+
+三、供应链与发动机
+...
+
+四、低价值信息已过滤
+- 普通航班延误 12 条
+- 航旅营销 8 条
 ```
 
-`meta` 由 `format_time_ago()` 生成，格式为分钟、小时或天的短文本，例如 `30M`、`2H`、`1D`。
+### 4.3 用户反馈
 
-### 8.3 静态前端
+每条情报支持用户反馈：
 
-`index.html` 是单文件静态页面：
+- 标记已读。
+- 收藏/稍后看。
+- 不感兴趣。
+- 这条太泛泛。
+- 这个来源质量高/低。
+- 多关注这个实体。
+- 少关注这个子方向。
+- 摘要有用/没用。
+- 分类错误。
+- 分数太高/太低。
+- 导出到 Obsidian。
 
-- 读取同目录 `dashboard.json`。
-- 渲染新闻标题、摘要、来源、分类、发布时间、Gravity Score 与原始标题。
-- 每 5 分钟自动刷新一次。
-- 对 RSS 与 AI 动态字段调用 `escapeHtml()` 后再插入模板，降低 XSS 风险。
-- GitHub Corner 当前链接仍指向 upstream `t0saki/AI-News-Dashboard`。
+系统应把反馈转化为：
 
-## 9. 配置
-
-配置由 `config.py` 在 import 时读取环境变量，并通过全局 `config` 暴露。
-
-| 环境变量 | 默认值 | 含义 |
-|----------|--------|------|
-| `DB_PATH` | `data/news.db` | SQLite 数据库路径 |
-| `AI_BASE_URL` | `https://api.openai.com/v1` | OpenAI-compatible endpoint |
-| `AI_API_KEY` | 空 | LLM API Key，实际运行必填 |
-| `AI_MODEL_L1` | `gpt-4o-mini` | L1 模型 |
-| `AI_MODEL_L2` | `gpt-4o` | L2 模型 |
-| `MAX_L1_LOOPS` | `5` | 单 cycle 最多 L1 batch 次数 |
-| `MAX_L2_LOOPS` | `5` | 单 cycle 最多 L2 batch 次数 |
-| `L1_BATCH_SIZE` | `30` | L1 单批条数 |
-| `L2_BATCH_SIZE` | `20` | L2 单批新条数 |
-| `AI_MAX_RETRIES` | `2` | AI 请求最大尝试次数 |
-| `AI_RETRY_DELAY_SECONDS` | `1.0` | AI 重试间隔 |
-| `AI_TIMEOUT_SECONDS` | `600` | AI 请求超时 |
-| `AI_RESPONSE_FORMAT_MODE` | `auto` | JSON mode 策略 |
-| `FETCH_INTERVAL_SECONDS` | `600` | 普通抓取间隔 |
-| `GRAVITY` | `1.1` | 排名时间衰减强度 |
-| `RANKING_WINDOW_HOURS` | `72` | 排名窗口小时数 |
-| `DASHBOARD_OUTPUT_PATH` | `data/dashboard.json` | dashboard 输出路径 |
-| `TOP_N_ITEMS` | `5` | top5 输出条数 |
-| `QUIET_HOURS_ENABLED` | `true` | 是否启用 quiet hours |
-| `QUIET_HOURS_TZ_OFFSET` | `8` | quiet hours 时区偏移 |
-| `QUIET_HOURS_START` | `22` | quiet hours 起始小时 |
-| `QUIET_HOURS_END` | `10` | quiet hours 结束小时 |
-| `QUIET_HOURS_MULTIPLIER` | `4` | quiet hours 间隔倍数 |
-| `RSS_FEEDS` | 两个示例 feed | JSON array 格式 RSS 源列表 |
-| `HTTP_PROXY` / `HTTPS_PROXY` | 环境继承 | 代理设置，当前主要由依赖库/环境使用 |
-
-## 10. 运行与部署
-
-### 10.1 本地运行
-
-```bash
-uv sync
-cp .env_example .env
-uv run main.py
+```yaml
+preference_updates:
+  increase_weight:
+    - C929
+    - 适航认证
+    - 航空发动机供应链
+  decrease_weight:
+    - 普通航线开通
+    - 航旅营销
+  preferred_sources:
+    - 中国商飞官网
+    - 中国民航局
+  muted_patterns:
+    - 航旅促销
+    - 服务体验软文
 ```
 
-`.env` 至少需要配置可用的：
+## 5. 大块功能模块
 
-```env
-AI_BASE_URL=https://api.openai.com/v1
-AI_API_KEY=your_api_key_here
-AI_MODEL_L1=gpt-4o-mini
-AI_MODEL_L2=gpt-4o
+### 5.1 主题管理
+
+主题是产品的一等对象。
+
+每个主题至少包含：
+
+| 字段 | 含义 |
+|------|------|
+| `id` | 主题唯一 ID |
+| `name` | 主题名称 |
+| `goal` | 用户为什么关注这个主题 |
+| `include_scope` | 应覆盖的子方向 |
+| `exclude_scope` | 应排除的内容 |
+| `keywords` | 关键词与扩展词 |
+| `entities` | 公司、机构、人物、产品、政策、地区等 |
+| `language_preferences` | 输出语言与术语规则 |
+| `importance_rules` | 什么算重要 |
+| `digest_style` | 简报结构与详细程度 |
+| `created_at / updated_at` | 生命周期字段 |
+
+主题管理功能包括：
+
+- 创建主题。
+- 根据自然语言生成主题草案。
+- 编辑 include/exclude 范围。
+- 编辑关键实体和关键词。
+- 暂停/恢复主题。
+- 查看主题历史简报。
+- 查看主题学习到的偏好。
+
+### 5.2 自动信源发现与治理
+
+系统围绕主题自动发现候选信源，而不是要求用户长期手动维护源。
+
+信源状态：
+
+| 状态 | 含义 |
+|------|------|
+| `seed` | 初始种子源，人工或系统内置，高可信 |
+| `candidate` | 自动发现的候选源，先观察，不直接进入正式日报 |
+| `active` | 已批准或高质量信源，进入正式抓取与简报 |
+| `muted` | 低价值或噪音源，暂停或低频抓取 |
+| `rejected` | 明确拒绝，不再推荐 |
+
+信源质量指标：
+
+| 指标 | 含义 |
+|------|------|
+| `authority_score` | 官方性/权威性 |
+| `relevance_score` | 与主题相关程度 |
+| `originality_score` | 原创/一手信息程度 |
+| `citation_quality` | 是否引用原始文件/公告/数据 |
+| `noise_score` | 噪音比例 |
+| `duplicate_score` | 与其他源重复程度 |
+| `freshness_score` | 时效性 |
+| `historical_hit_rate` | 历史高价值命中率 |
+| `trust_score` | 综合可信度 |
+
+发现渠道初期可以保守实现：
+
+1. 从高分情报中的原始链接反向发现一手来源。
+2. 从已有 active sources 的外链网络发现候选源。
+3. 对主题关键词定期搜索 RSS/Atom 或官网公告入口。
+4. 维护少量内置 source packs 作为 seed。
+
+重要原则：
+
+- 自动发现不等于自动信任。
+- candidate 源产出的内容默认不进入正式日报，或必须明确标注。
+- 系统应定期生成“信源发现/质量报告”，让用户低成本批准、拒绝或继续观察。
+
+### 5.3 信息采集与入库
+
+采集层负责从 active/candidate sources 抓取内容并标准化。
+
+初期支持：
+
+- RSS/Atom。
+- 公开网页基础抓取。
+- 官方公告列表页。
+
+后续扩展：
+
+- PDF / 公告附件。
+- GitHub releases / issues / trending。
+- arXiv / 论文源。
+- 政府公告。
+- 公司 IR / filing。
+- 搜索结果。
+- 社媒链接观察。
+
+统一内容对象：
+
+| 字段 | 含义 |
+|------|------|
+| `id` | 信息条目 ID |
+| `topic_id` | 关联主题 |
+| `source_id` | 来源 |
+| `url` | 原文链接 |
+| `canonical_url` | 规范化链接 |
+| `title` | 原始标题 |
+| `summary` | 原始摘要或抓取摘要 |
+| `content` | 可选正文 |
+| `published_at` | 发布时间 |
+| `fetched_at` | 抓取时间 |
+| `language` | 语言 |
+| `raw_metadata` | feed/网页原始 metadata |
+
+### 5.4 AI 情报分析
+
+AI 分析不应只是摘要，而应围绕主题判断信息价值。
+
+推荐处理阶段：
+
+1. **Relevance Filter**：是否与主题相关。
+2. **Noise Filter**：是否是营销、重复、泛泛新闻。
+3. **Event Extraction**：抽取发生的事件。
+4. **Deduplication**：合并同一事件多来源报道。
+5. **Scoring**：按主题规则打分。
+6. **Briefing Rewrite**：生成面向用户的中文情报摘要。
+7. **Action/Follow-up**：判断是否值得继续跟踪。
+
+情报 item 输出字段应包含：
+
+| 字段 | 含义 |
+|------|------|
+| `event_title` | 事件标题 |
+| `brief_summary` | 简短摘要 |
+| `why_it_matters` | 为什么重要 |
+| `topic_relevance` | 与主题关系 |
+| `entities` | 相关实体 |
+| `category` | 子方向分类 |
+| `importance_score` | 重要性分数 |
+| `confidence_score` | 置信度 |
+| `source_quality` | 来源质量 |
+| `merged_sources` | 合并来源 |
+| `follow_up_suggestion` | 后续跟踪建议 |
+| `generated_at` | 生成时间 |
+
+### 5.5 阅读状态管理
+
+用户需要管理信息流，而不是每天看到重复内容。
+
+阅读状态：
+
+| 状态 | 含义 |
+|------|------|
+| `unread` | 尚未阅读，默认进入信息流 |
+| `read` | 已读，默认不再出现在主信息流 |
+| `saved` | 收藏或稍后看 |
+| `archived` | 已归档，不再主动显示 |
+| `dismissed` | 忽略，同时作为负反馈信号 |
+
+功能要求：
+
+- 标记单条已读。
+- 批量标记当日简报已读。
+- 已读内容默认隐藏。
+- 可以查看历史与归档。
+- dismissed 应参与偏好学习。
+
+### 5.6 用户反馈与偏好学习
+
+反馈系统是产品长期价值的核心。
+
+反馈类型：
+
+| 类型 | 含义 |
+|------|------|
+| `not_interested` | 对这条/这类不感兴趣 |
+| `more_like_this` | 多推类似内容 |
+| `less_like_this` | 少推类似内容 |
+| `source_good` | 来源质量好 |
+| `source_bad` | 来源质量差 |
+| `wrong_category` | 分类错误 |
+| `score_too_high` | 分数过高 |
+| `score_too_low` | 分数过低 |
+| `track_entity` | 继续跟踪某实体 |
+| `mute_entity` | 降低某实体权重 |
+| `note` | 自由文本反馈 |
+
+反馈处理流程：
+
+```text
+用户反馈
+  ↓
+记录原始 feedback event
+  ↓
+LLM/规则归纳为 preference delta
+  ↓
+更新 topic profile / source score / entity weight / prompt memory
+  ↓
+后续 L1/L2/排序读取新的偏好
 ```
 
-### 10.2 Docker
+偏好更新必须可解释：
 
-```bash
-docker build -t ai-news-dashboard .
-docker run --env-file .env -v $(pwd)/data:/app/data ai-news-dashboard
+```text
+因为你连续 3 次将“普通航线开通”标记为不感兴趣，系统已降低该子方向权重。
 ```
 
-可以通过挂载 `data/` 持久化 SQLite 与输出 JSON，也可以挂载 prompt 文件覆盖默认用户画像。
+### 5.7 知识库导出与沉淀
 
-### 10.3 静态展示
+导出功能应优先面向 Obsidian/Markdown，但保留 PDF 路径。
 
-将 `index.html` 与生成的 `dashboard.json` 放在同一目录，由任意静态服务器提供即可。
+导出对象：
 
-## 11. 测试验证
+- 单条情报。
+- 当日主题简报。
+- 一周主题周报。
+- 主题时间线。
+- 收藏集合。
 
-当前测试是无测试框架的脚本式测试：
+导出格式：
 
-```bash
-uv run python tests_response_utils.py
-uv run python tests_schema_compat.py
-uv run python tests_runtime_safety.py
+- Markdown。
+- Obsidian URI / Local REST API / 插件接口。
+- PDF。
+- JSON。
+
+Markdown 示例：
+
+```markdown
+# C919 商业运营进展
+
+- 主题：中国商业航空进展
+- 分类：商业运营 / 交付
+- 重要性：88
+- 来源：中国商飞、民航局
+- 发布时间：2026-xx-xx
+
+## 摘要
+...
+
+## 为什么重要
+...
+
+## 相关实体
+- 中国商飞
+- 东航
+
+## 后续跟踪
+...
+
+## 原文链接
+- ...
 ```
 
-覆盖范围：
+### 5.8 Dashboard 与简报输出
 
-- `tests_response_utils.py`：LLM JSON 解析、thinking tag 清理、多 JSON 候选选择。
-- `tests_schema_compat.py`：L1/L2 flat schema 兼容。
-- `tests_runtime_safety.py`：数据库 parent directory 创建、bounded batch loop、零分 processed 过滤、前端 escaping 约束。
+主要输出形态：
 
-文档-only 修改提交前至少运行：
+1. **主题 Dashboard**
+   - 每个主题一个页面。
+   - 展示未读 Top 情报、已读/收藏、趋势、信源状态。
 
-```bash
-git diff --check
+2. **每日简报**
+   - 每个主题每天生成结构化 summary。
+   - 支持浏览器、Telegram、Markdown、Obsidian。
+
+3. **信源质量报告**
+   - 新发现候选源。
+   - 建议加入/观察/拒绝。
+   - 当前 active sources 的表现。
+
+4. **主题时间线**
+   - 按时间展示重要事件。
+   - 支持周报/月报生成。
+
+## 6. 数据模型目标
+
+可以先按单用户本地模式设计，不需要多用户认证。
+
+### 6.1 `topics`
+
+```text
+topics
+- id
+- name
+- goal
+- include_scope_json
+- exclude_scope_json
+- keywords_json
+- entities_json
+- importance_rules_json
+- digest_style_json
+- status
+- created_at
+- updated_at
 ```
 
-## 12. 安全与可信边界
+### 6.2 `sources`
 
-### 12.1 不可信输入
+```text
+sources
+- id
+- topic_id
+- name
+- type
+- site_url
+- feed_url
+- status              # seed/candidate/active/muted/rejected
+- language
+- region
+- authority_score
+- relevance_score
+- originality_score
+- trust_score
+- noise_score
+- duplicate_score
+- historical_hit_rate
+- discovered_by
+- discovered_at
+- approved_at
+- last_fetched_at
+- last_success_at
+- failure_count
+- created_at
+- updated_at
+```
 
-以下输入均应视为不可信：
+### 6.3 `items`
 
-- RSS 标题、摘要、来源名和 URL。
-- LLM 生成的标题、摘要、分类和分数。
-- 外部 feed 的发布时间等元数据。
+```text
+items
+- id
+- topic_id
+- source_id
+- url
+- canonical_url
+- title
+- summary
+- content
+- published_at
+- fetched_at
+- language
+- raw_metadata_json
+- processing_status
+```
 
-当前实现中的防护：
+### 6.4 `intelligence_events`
 
-- 前端使用 `escapeHtml()` 转义动态字段。
-- 后端用 `response_utils` 清理控制字符、零宽字符和常见 LLM 包装文本。
-- SQLite 写入使用参数化 SQL。
-- URL 唯一约束降低重复数据膨胀。
-- `MAX_L1_LOOPS` / `MAX_L2_LOOPS` 降低 AI 故障导致的单轮死循环风险。
+```text
+intelligence_events
+- id
+- topic_id
+- primary_item_id
+- event_title
+- brief_summary
+- why_it_matters
+- category
+- entities_json
+- importance_score
+- confidence_score
+- source_quality_score
+- merged_item_ids_json
+- follow_up_suggestion
+- created_at
+- updated_at
+```
 
-### 12.2 密钥与配置
+### 6.5 `user_item_states`
 
-- `AI_API_KEY` 应放在 `.env` 或运行环境变量中，不应提交。
-- `.env_example` 只保存模板。
-- `data/`、数据库、生成 JSON 和 `.venv` 不应作为常规源码提交。
+```text
+user_item_states
+- id
+- event_id
+- state              # unread/read/saved/archived/dismissed
+- read_at
+- saved_at
+- archived_at
+- dismissed_at
+- created_at
+- updated_at
+```
 
-### 12.3 LLM 可信边界
+### 6.6 `feedback_events`
 
-- LLM 输出不是可信事实源，只是排序、摘要和分类辅助。
-- 当前没有自动事实核查、来源交叉验证或引用校验。
-- 下游决策应保留原始 URL 并人工核验。
+```text
+feedback_events
+- id
+- topic_id
+- event_id
+- source_id
+- feedback_type
+- target_type        # item/source/entity/category/summary/score/free_text
+- target_value
+- note
+- created_at
+```
 
-## 13. 当前限制
+### 6.7 `preference_memory`
 
-1. **单进程循环**：当前设计是一个长运行主循环，不是 worker queue 或 serverless job。
-2. **无正式迁移框架**：数据库 schema 改动需要手工迁移和测试。
-3. **RSS-only**：不支持网页全文、PDF、搜索 API、社交媒体 API 或登录源。
-4. **静态前端能力有限**：没有筛选、搜索、收藏、反馈、登录和管理功能。
-5. **prompt/schema 扩展需要同步代码**：新增 L2 字段不会自动入库或展示。
-6. **AI 失败重试粒度粗**：失败 batch 依赖下一轮重试，没有 per-item retry queue。
-7. **无观测系统**：当前主要用 `print()` 输出运行日志，没有 metrics、trace 或告警。
-8. **无事实核查**：摘要和分类依赖模型，未与原文或多来源进行强校验。
+```text
+preference_memory
+- id
+- topic_id
+- memory_type        # include/exclude/entity/source/style/scoring
+- key
+- value
+- weight
+- evidence_json
+- created_at
+- updated_at
+```
 
-## 14. 后续演进建议（未实现）
+## 7. 系统工作流目标
 
-以下是建议方向，不代表当前已实现：
+### 7.1 主题初始化
 
-1. 增加 single-run 模式，便于 cron、systemd timer、GitHub Actions 或 Hermes cron 调度。
-2. 引入正式 migration framework，管理 SQLite schema 演进。
-3. 扩展商业财经/数据资产 schema，例如 `entities`、`market_impact`、`risk_level`、`opportunity`、`recommended_action`。
-4. 增加全文抓取、公告/PDF 解析和来源可信度评分。
-5. 增加 Telegram、Obsidian、日报/周报等输出器。
-6. 将测试迁移到 `pytest`，补充 mock AI provider、SQLite fixture 和前端渲染测试。
-7. 增加运行 metrics、错误告警、feed 健康状态和处理延迟统计。
+```text
+用户输入主题
+  ↓
+LLM 生成 topic profile 草案
+  ↓
+用户确认/修改
+  ↓
+创建 topic
+  ↓
+生成初始 seed/candidate source discovery tasks
+```
+
+### 7.2 信源发现
+
+```text
+topic profile
+  ↓
+搜索 / source pack / 高分链接反查 / active source 外链
+  ↓
+候选 source
+  ↓
+可信度初评
+  ↓
+进入 candidate 观察池
+```
+
+### 7.3 每日采集与分析
+
+```text
+active sources
+  ↓
+抓取 items
+  ↓
+去重入库
+  ↓
+主题相关性筛选
+  ↓
+事件抽取与合并
+  ↓
+评分与摘要
+  ↓
+生成 unread intelligence events
+  ↓
+生成每日简报
+```
+
+### 7.4 用户反馈学习
+
+```text
+用户操作：已读/收藏/忽略/反馈/导出
+  ↓
+记录行为与反馈
+  ↓
+归纳 preference delta
+  ↓
+更新 topic profile / source score / entity weights
+  ↓
+影响下一轮抓取、筛选、排序和摘要
+```
+
+### 7.5 知识沉淀
+
+```text
+用户导出单条/简报/周报
+  ↓
+生成 Markdown / PDF / JSON
+  ↓
+写入 Obsidian 或下载
+  ↓
+记录 export event，作为该信息有价值的正反馈
+```
+
+## 8. 当前代码与目标架构的关系
+
+当前代码中可复用的部分：
+
+| 当前模块 | 可复用方向 |
+|----------|------------|
+| `sources/rss.py` | RSS fetcher adapter |
+| `database.py` | SQLite 本地存储起点，但需要 schema 重构 |
+| `processors/l1_filter.py` | 可演进为主题相关性/噪音过滤阶段 |
+| `processors/l2_scorer.py` | 可演进为情报事件抽取、摘要、评分阶段 |
+| `ai_service.py` | OpenAI-compatible LLM adapter |
+| `response_utils.py` | LLM JSON 解析与容错工具 |
+| `ranking.py` | 可作为 importance/time ranking 的初始实现 |
+| `index.html` | 可作为静态 dashboard 原型，但目标需要交互式前端 |
+| `tests_*` | 回归测试起点 |
+
+需要重构的部分：
+
+1. `news` 单表需要拆成 topic/source/item/event/state/feedback/preference 等更明确的模型。
+2. `RSS_FEEDS` 不应继续作为主要产品入口，应迁移为 source registry / source packs / discovered sources。
+3. Prompt 文件不应只有全局 `user_profile.md`，需要按 topic 生成 topic profile。
+4. 静态 HTML 需要演进为可交互 dashboard，至少支持已读、收藏、反馈、导出。
+5. 主循环需要从“全局抓取所有 RSS”演进为按 topic/source/task 的调度。
+6. 输出需要从单一 `dashboard.json` 演进为 topic-scoped API/JSON/briefing/export。
+
+## 9. MVP 分阶段建议
+
+### Phase 0：规格与当前实现对齐
+
+目标：明确本文档为开发方向，现有实现为引擎原型。
+
+产出：
+
+- 本 `SPEC.md`。
+- 更新 `README.md` / `CODEGUIDE.md` / `CHANGELOG.md`。
+
+### Phase 1：主题层与单用户状态
+
+目标：从“全局新闻流”改为“主题新闻流”。
+
+实现：
+
+- 新增 `topics` 表。
+- 支持创建/编辑一个或多个主题。
+- 每个 item/event 关联 topic。
+- 初始仍允许手动配置 RSS，但必须归属到 topic。
+- 新增已读/收藏/忽略状态。
+
+验收：
+
+- 用户可以创建“中国商业航空进展”主题。
+- 信息流按主题展示。
+- 标记已读后不再出现在未读主流中。
+
+### Phase 2：反馈系统与偏好记忆
+
+目标：让用户反馈影响后续排序和筛选。
+
+实现：
+
+- 新增 `feedback_events`。
+- 新增 `preference_memory`。
+- 反馈按钮：不感兴趣、多关注、少关注、来源好/差、分数高/低。
+- LLM/规则将反馈归纳成 topic preference delta。
+
+验收：
+
+- 用户多次反馈某类内容不感兴趣后，该类内容权重下降。
+- 用户标记某实体继续跟踪后，相关内容权重上升。
+- 系统能解释偏好变化原因。
+
+### Phase 3：Obsidian / Markdown 导出
+
+目标：支持知识沉淀。
+
+实现：
+
+- 单条情报导出 Markdown。
+- 当日主题简报导出 Markdown。
+- 浏览器下载 `.md`。
+- 可选支持 Obsidian URI 或本地插件 API。
+
+验收：
+
+- 用户可以从浏览器导出一条情报或当天简报。
+- 导出内容包含来源、摘要、为什么重要、实体、后续跟踪和原文链接。
+
+### Phase 4：信源 Registry 与质量指标
+
+目标：不再依赖裸 `RSS_FEEDS`。
+
+实现：
+
+- 新增 `sources` 表。
+- source 状态：seed/candidate/active/muted/rejected。
+- 每次抓取和 L1/L2 后更新 source 统计。
+- 计算 historical_hit_rate、noise_score、duplicate_score。
+
+验收：
+
+- 系统可以展示每个 source 的历史表现。
+- 噪音高的 source 可以自动降权或建议 muted。
+
+### Phase 5：自动信源发现
+
+目标：系统主动发现候选源。
+
+实现：
+
+- 从高分事件原文链接反查 source。
+- 从 active source 外链发现 candidate。
+- 从主题关键词搜索 RSS/公告入口。
+- 每周生成候选信源报告。
+
+验收：
+
+- 系统每周提出候选信源建议。
+- 用户可批准/拒绝/继续观察。
+- 批准后的源进入 active pool。
+
+### Phase 6：主题简报与时间线
+
+目标：从新闻卡片升级为主题情报工作台。
+
+实现：
+
+- 每日主题 briefing。
+- 主题事件时间线。
+- 周报/月报生成。
+- 信源质量报告。
+
+验收：
+
+- 用户可以查看某主题过去 7/30 天关键进展。
+- 系统可以生成结构化周报。
+
+## 10. 非目标与边界
+
+当前阶段不做：
+
+- 商业化、付费、团队多租户。
+- 复杂权限系统。
+- 企业私有数据接入。
+- 大规模爬虫集群。
+- 完全自动相信新信源。
+- 替代人工判断的投资/政策决策。
+
+必须避免：
+
+- 把未验证候选源内容混入正式日报而不标注。
+- 用户反馈只记录不生效。
+- 让用户继续手动维护大量 RSS。
+- 把 LLM 对信源可信度的一次性判断当作最终结论。
+- 把摘要工具误做成新闻列表。
+
+## 11. 成功标准
+
+个人自用版本成功的标准：
+
+1. 用户可以用自然语言创建主题，而不是手动配置 RSS。
+2. 每天输出的简报大多数内容确实值得看。
+3. 已读/忽略后，信息流不会反复展示旧内容。
+4. 用户反馈 1-2 周后，系统明显减少不感兴趣内容。
+5. 系统能推荐新的候选信源，并解释推荐原因。
+6. 用户可以把重要情报沉淀到 Obsidian/Markdown。
+7. 每个主题可以形成连续时间线，而不是孤立新闻卡片。
+
+## 12. 产品描述与功能清单
+
+### 12.1 产品描述
+
+**主题情报雷达** 是一个以用户关注主题为中心的个人 AI 情报系统。它自动发现并评估相关信息源，持续抓取公开信息，使用 LLM 进行相关性判断、去重、摘要、评分和结构化整理；用户通过阅读状态、反馈和导出行为训练系统，使其逐步形成个性化的关注边界和信源偏好，并将重要信息沉淀为长期知识资产。
+
+### 12.2 大块功能
+
+1. 主题管理。
+2. 自动信源发现与信源治理。
+3. 信息采集与标准化入库。
+4. AI 情报分析与事件去重。
+5. 重要性排序与每日主题简报。
+6. 阅读状态管理。
+7. 用户反馈与偏好学习。
+8. Obsidian / Markdown / PDF 导出。
+9. 主题时间线与知识沉淀。
+10. 本地运行、配置、测试和部署机制。
