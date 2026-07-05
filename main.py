@@ -73,6 +73,19 @@ def calculate_sleep_seconds(interval: int) -> float:
     next_run = (int(now) // interval + 1) * interval
     return next_run - now
 
+def run_bounded_batches(label: str, process_batch, max_loops: int) -> int:
+    """Run a batch processor with a hard per-cycle loop limit."""
+    total = 0
+    max_loops = max(1, max_loops)
+    for loop_index in range(max_loops):
+        count = process_batch()
+        if count == 0:
+            return total
+        total += count
+        if loop_index == max_loops - 1:
+            print(f"{label}: Reached per-cycle limit ({max_loops}); remaining items will retry next cycle.")
+    return total
+
 def main():
     signal.signal(signal.SIGINT, signal_handler)
     
@@ -92,18 +105,16 @@ def main():
             # 2. L1 Filter
             # Process ALL pending items
             print("L1: Starting batch processing...")
-            while True:
-                count = l1_filter.process_pending(batch_size=config.L1_BATCH_SIZE)
-                if count == 0:
-                    break
+            run_bounded_batches(
+                "L1",
+                lambda: l1_filter.process_pending(batch_size=config.L1_BATCH_SIZE),
+                config.MAX_L1_LOOPS,
+            )
             
             # 3. L2 Scorer
             # Process ALL items that passed L1
             print("L2: Starting batch processing...")
-            while True:
-                count = l2_scorer.process_l1_passed()
-                if count == 0:
-                    break
+            run_bounded_batches("L2", l2_scorer.process_l1_passed, config.MAX_L2_LOOPS)
             
             # 4. Display/Ranking (Preview)
             # Fetch all processed items from last window

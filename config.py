@@ -10,7 +10,7 @@ class ContactConfig(BaseModel):
 
 class AppConfig:
     # Database
-    DB_PATH: str = "data/news.db"
+    DB_PATH: str = os.getenv("DB_PATH", "data/news.db")
     
     # AI Provider
     AI_BASE_URL: str = os.getenv("AI_BASE_URL", "https://api.openai.com/v1")
@@ -18,6 +18,7 @@ class AppConfig:
     AI_MODEL_L1: str = os.getenv("AI_MODEL_L1", "gpt-4o-mini") # Fast model for L1
     AI_MODEL_L2: str = os.getenv("AI_MODEL_L2", "gpt-4o") # Strong model for L2
     MAX_L1_LOOPS: int = int(os.getenv("MAX_L1_LOOPS", "5")) # Number of L1 batches to process per cycle
+    MAX_L2_LOOPS: int = int(os.getenv("MAX_L2_LOOPS", "5")) # Number of L2 batches to process per cycle
     L1_BATCH_SIZE: int = int(os.getenv("L1_BATCH_SIZE", "30"))
     L2_BATCH_SIZE: int = int(os.getenv("L2_BATCH_SIZE", "20")) # Max items to send to L2 at once
     AI_MAX_RETRIES: int = int(os.getenv("AI_MAX_RETRIES", "2"))

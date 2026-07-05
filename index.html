@@ -465,15 +465,25 @@
             });
         }
 
+        // Escape untrusted RSS/AI output before inserting into template HTML.
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replaceAll('&', '&amp;')
+                .replaceAll('<', '&lt;')
+                .replaceAll('>', '&gt;')
+                .replaceAll('"', '&quot;')
+                .replaceAll("'", '&#39;');
+        }
+
         // Render news card
         function renderNewsCard(item) {
             const scoreClass = item.gravity_score >= 50 ? 'score-high' : 'score-medium';
             const categoryDisplay = categoryNames[item.category] || item.category;
             
             return `
-                <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="news-card">
+                <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer" class="news-card">
                     <div class="news-card-header">
-                        <h2 class="news-title">${item.l2_title_zh || item.title}</h2>
+                        <h2 class="news-title">${escapeHtml(item.l2_title_zh || item.title)}</h2>
                         <div class="score-badge ${scoreClass}">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <polygon points="12,2 15.09,8.26 22,9.27 17,14.14 18.18,21.02 12,17.77 5.82,21.02 7,14.14 2,9.27 8.91,8.26"/>
@@ -481,9 +491,9 @@
                             ${item.gravity_score.toFixed(1)}
                         </div>
                     </div>
-                    <p class="news-summary">${item.l2_summary || item.l1_reason}</p>
+                    <p class="news-summary">${escapeHtml(item.l2_summary || item.l1_reason)}</p>
                     <div class="news-meta">
-                        <span class="meta-item category">${categoryDisplay}</span>
+                        <span class="meta-item category">${escapeHtml(categoryDisplay)}</span>
                         <span class="meta-item source">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <circle cx="12" cy="12" r="10"/>
@@ -491,7 +501,7 @@
                                 <path d="M12,2 C14.5,4.5 16,8 16,12 C16,16 14.5,19.5 12,22"/>
                                 <path d="M12,2 C9.5,4.5 8,8 8,12 C8,16 9.5,19.5 12,22"/>
                             </svg>
-                            ${item.source_name}
+                            ${escapeHtml(item.source_name)}
                         </span>
                         <span class="meta-item">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -501,7 +511,7 @@
                             ${formatTimeAgo(item.published_at)}
                         </span>
                     </div>
-                    <p class="original-title">📎 ${item.title}</p>
+                    <p class="original-title">📎 ${escapeHtml(item.title)}</p>
                 </a>
             `;
         }

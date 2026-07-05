@@ -1,6 +1,7 @@
 import sqlite3
 import json
 import time
+import os
 from typing import List, Dict, Optional, Any
 from config import config
 
@@ -10,6 +11,9 @@ class Database:
         self._init_db()
 
     def _get_conn(self):
+        parent = os.path.dirname(self.db_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         return sqlite3.connect(self.db_path)
 
     def _init_db(self):
@@ -128,7 +132,7 @@ class Database:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         cutoff = time.time() - (hours * 3600)
-        cursor.execute("SELECT * FROM news WHERE status = 'processed' AND published_at > ? ORDER BY published_at DESC", (cutoff,))
+        cursor.execute("SELECT * FROM news WHERE status = 'processed' AND l2_score > 0 AND published_at > ? ORDER BY published_at DESC", (cutoff,))
         rows = cursor.fetchall()
         conn.close()
         return [dict(row) for row in rows]
