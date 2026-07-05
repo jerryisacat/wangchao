@@ -1,4 +1,4 @@
-# AI AOD News Dashboard 📰
+# Wangchao 🌊
 
 [中文](README.md)
 
@@ -8,11 +8,11 @@
 
 > 🚀 **Intelligent, AI-Driven News Aggregator & Curator for Tech Professionals.**
 
-Demo Web: [AI News Dashboard](https://kindledash.t0saki.com/)
+Demo Web: [Wangchao](https://kindledash.t0saki.com/)
 
 ## 📖 Introduction
 
-**News Dashboard** is an intelligent information processing pipeline designed to combat information overload. It utilizes a **Two-Stage AI Pipeline (L1 Filter + L2 Scorer)** to distill only the most valuable, "hardcore" technical insights from high-volume RSS feeds.
+**Wangchao** is an intelligent theme intelligence pipeline designed to combat information overload. It utilizes a **Two-Stage AI Pipeline (L1 Filter + L2 Scorer)** to distill only the most valuable signals from high-volume RSS feeds and future topic-driven source pools.
 
 Instead of simple keyword matching, it leverages Large Language Models (LLMs) to genuinely understand content, performing **deduplication, scoring, rewriting (summarization)**, and ranking based on a unique **Gravity Ranking Algorithm**.
 
@@ -32,8 +32,8 @@ Instead of simple keyword matching, it leverages Large Language Models (LLMs) to
 
 1.  **Clone the repository**
     ```bash
-    git clone https://github.com/your-username/news-dashboard.git
-    cd news-dashboard
+    git clone https://github.com/jerryisacat/wangchao.git
+    cd wangchao
     ```
 
 2.  **Configure Environment**
@@ -50,23 +50,23 @@ Instead of simple keyword matching, it leverages Large Language Models (LLMs) to
     mkdir -p data
 
     # Pull image
-    docker pull ghcr.io/t0saki/ai-news-dashboard:latest
+    docker pull ghcr.io/t0saki/ai-wangchao:latest
     
     # Run
     docker run -d \
-      --name news-dashboard \
+      --name wangchao \
       --env-file .env \
       -v $(pwd)/data:/app/data \
       -v $(pwd)/user_profile.md:/app/prompts/user_profile.md \
-      ghcr.io/t0saki/ai-news-dashboard:latest
+      ghcr.io/t0saki/ai-wangchao:latest
     ```
 
     > **💡 Tip:** You can create your own `user_profile.md` on the host to customize AI filtering preferences (Role/Domain/Tier scoring standards).
 
     Or you can build it yourself:
     ```bash
-    docker build -t news-dashboard .
-    docker run -d --env-file .env -v $(pwd)/data:/app/data news-dashboard
+    docker build -t wangchao .
+    docker run -d --env-file .env -v $(pwd)/data:/app/data wangchao
     ```
 
 ### Method 2: Local Python

@@ -89,7 +89,7 @@ def run_bounded_batches(label: str, process_batch, max_loops: int) -> int:
 def main():
     signal.signal(signal.SIGINT, signal_handler)
     
-    print("AI AOD News Dashboard Started.")
+    print("望潮 Wangchao Started.")
     print(f"Update Interval: {config.FETCH_INTERVAL_SECONDS} seconds")
     if config.QUIET_HOURS_ENABLED:
         print(f"Quiet Hours: {config.QUIET_HOURS_START}:00-{config.QUIET_HOURS_END}:00 (UTC+{config.QUIET_HOURS_TZ_OFFSET}), {config.QUIET_HOURS_MULTIPLIER}x slower")

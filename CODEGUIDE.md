@@ -1,10 +1,10 @@
-# AI-News-Dashboard — Codebase Structure Map
+# 望潮（Wangchao）— Codebase Structure Map
 
 > **文档创建于 2026-07-06** | 以当前 `main.py`、`processors/`、`database.py`、`config.py` 与根目录 README 为准
 
 ## 1. 全局架构总览
 
-**AI-News-Dashboard** 是一个轻量级信息流情报处理管线。核心链路是：**RSS 抓取 → SQLite 入库 → L1 快速筛选 → L2 深度摘要/评分/去重 → Gravity Ranking → JSON/静态前端输出**。
+**望潮（Wangchao）** 是一个轻量级信息流情报处理管线。核心链路是：**RSS 抓取 → SQLite 入库 → L1 快速筛选 → L2 深度摘要/评分/去重 → Gravity Ranking → JSON/静态前端输出**。
 
 | 维度 | 描述 |
 |------|------|
@@ -21,7 +21,7 @@
 ## 2. 目录结构树
 
 ```text
-AI-News-Dashboard/
+wangchao/
 ├── README.md                         # 中文 README
 ├── README-en.md                      # 英文 README
 ├── CLAUDE.md                         # Claude Code 项目操作指南
@@ -224,8 +224,8 @@ uv run python tests_runtime_safety.py
 ### Docker
 
 ```bash
-docker build -t news-dashboard .
-docker run --env-file .env -v $(pwd)/data:/app/data news-dashboard
+docker build -t wangchao .
+docker run --env-file .env -v $(pwd)/data:/app/data wangchao
 ```
 
 ## 6. 维护规则

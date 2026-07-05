@@ -1,4 +1,4 @@
-# AI-News-Dashboard 📰
+# 望潮 Wangchao 🌊
 
 [English](README-en.md)
 
@@ -7,13 +7,13 @@
 
 > **AI 驱动的信息流情报雷达**：把 RSS/公开信息源自动转化为可阅读、可排序、可打标、可继续沉淀的结构化情报。
 
-本仓库是基于 [`t0saki/AI-News-Dashboard`](https://github.com/t0saki/AI-News-Dashboard) 的私有定制分支，用于探索 **AI 技术新闻、商业财经、数据资产机会、政策/行业风险** 等垂直情报监控场景。
+本仓库是基于 [`t0saki/AI-News-Dashboard`](https://github.com/t0saki/AI-News-Dashboard) 演进而来的私有定制分支，用于探索 **AI 技术新闻、商业财经、数据资产机会、政策/行业风险** 等垂直情报监控场景。
 
 原项目 Demo Web: [AI News Dashboard](https://kindledash.t0saki.com/)
 
 ## 1. 项目定位
 
-`AI-News-Dashboard` 的核心不是“新闻阅读器”，而是一条轻量级 **信息流智能处理管线**：
+`望潮` 的核心不是“新闻阅读器”，而是一条轻量级 **信息流智能处理管线**：
 
 ```text
 RSS / Atom feeds
@@ -86,8 +86,8 @@ dashboard.json / top5.json / 静态 Dashboard
 需要 Python 3.12+ 和 `uv`。
 
 ```bash
-git clone git@github.com:jerryisacat/AI-News-Dashboard.git
-cd AI-News-Dashboard
+git clone git@github.com:jerryisacat/wangchao.git
+cd wangchao
 uv sync
 cp .env_example .env
 ```
@@ -113,23 +113,23 @@ uv run main.py
 cp .env_example .env
 mkdir -p data
 
-docker build -t ai-news-dashboard .
+docker build -t wangchao .
 docker run -d \
-  --name ai-news-dashboard \
+  --name wangchao \
   --env-file .env \
   -v $(pwd)/data:/app/data \
-  ai-news-dashboard
+  wangchao
 ```
 
 如需覆盖筛选偏好，可挂载自定义画像：
 
 ```bash
 docker run -d \
-  --name ai-news-dashboard \
+  --name wangchao \
   --env-file .env \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/user_profile.md:/app/prompts/user_profile.md \
-  ai-news-dashboard
+  wangchao
 ```
 
 ### 4.3 查看 Dashboard
@@ -304,6 +304,6 @@ git diff --check
 
 ## 11. License 与归属
 
-- Upstream: [`t0saki/AI-News-Dashboard`](https://github.com/t0saki/AI-News-Dashboard)
-- 当前私有分支: `jerryisacat/AI-News-Dashboard`
+- Upstream: [`t0saki/望潮`](https://github.com/t0saki/望潮)
+- 当前私有分支: `jerryisacat/wangchao`
 - README 中保留 MIT badge 以匹配 upstream 描述；但 upstream 仓库目前未提供独立 `LICENSE` 文件。若未来要公开分发或商业复用，需要先补充/确认授权边界。

@@ -1,6 +1,6 @@
 # CHANGELOG.md
 
-本文件记录 `AI-News-Dashboard` 私有分支的重要变更，帮助维护者和 AI Agents 快速理解项目状态。
+本文件记录 `望潮（Wangchao）` 私有分支的重要变更，帮助维护者和 AI Agents 快速理解项目状态。
 
 格式约定：
 
@@ -12,6 +12,8 @@
 ## [Unreleased]
 
 ### 2026-07-06
+
+**Product rename to 望潮**：因为产品定位已经从新闻 Dashboard 演进为“在信息潮汐中追踪主题信号”的个人情报 Agent，所以将产品名确定为 `望潮（Wangchao）`，并同步更新 README、SPEC、CODEGUIDE、CLAUDE、前端标题、Python project name、Docker image name 和启动日志。GitHub 私有仓库也将从 `jerryisacat/AI-News-Dashboard` 重命名为 `jerryisacat/wangchao`，保留 upstream 指向原始公开仓库。
 
 **Target product SPEC rewrite**：因为后续产品开发与重构应围绕“主题驱动、自动信源发现、用户反馈学习、阅读状态管理和知识沉淀”的目标形态，而不是被当前 RSS + 静态 Dashboard 原型限制，所以重写 `SPEC.md` 为目标产品规格。新版 SPEC 将产品定义为“主题情报雷达”，明确用户以自然语言创建关注主题，系统自动发现和评估信源、持续抓取公开信息、生成每日主题简报，并根据已读、收藏、忽略、反馈和导出行为更新偏好记忆。`CODEGUIDE.md` 同步调整维护规则：当前代码应视为可重构的引擎原型，后续开发以 SPEC 的目标产品形态为准。
 

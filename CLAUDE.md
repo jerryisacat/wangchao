@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI-powered news aggregation pipeline that filters RSS feeds through a two-stage LLM pipeline (L1 fast filter + L2 deep scorer), deduplicates stories, generates Chinese technical summaries, and ranks results using a gravity-based decay algorithm. Outputs `dashboard.json` and `top5.json`.
+望潮（Wangchao）is an AI-powered theme intelligence pipeline that filters RSS feeds through a two-stage LLM pipeline (L1 fast filter + L2 deep scorer), deduplicates stories, generates Chinese technical summaries, and ranks results using a gravity-based decay algorithm. Outputs `dashboard.json` and `top5.json`.
 
 ## Commands
 
@@ -20,8 +20,8 @@ uv run python tests_schema_compat.py
 uv sync
 
 # Docker
-docker build -t news-dashboard .
-docker run --env-file .env -v $(pwd)/data:/app/data news-dashboard
+docker build -t wangchao .
+docker run --env-file .env -v $(pwd)/data:/app/data wangchao
 ```
 
 ## Architecture
