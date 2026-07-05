@@ -13,6 +13,10 @@
 
 ### 2026-07-06
 
+**CI/Docker cleanup**：因为望潮下一阶段会基于新版 SPEC 重新设计运行、部署和自动化流程，现有 upstream 遗留的 Docker 镜像构建、GHCR 发布 workflow、容器入口脚本和旧 AI 编程指南都不应继续约束项目，所以删除 `.github/workflows/docker-publish.yml`、`Dockerfile`、`.dockerignore`、`start.sh` 与 `CLAUDE.md`，并同步清理 README / README-en / CODEGUIDE 中的 CI、Docker 和旧 AI 编程指南引用。
+
+**AI coding files cleanup**：因为下一阶段需要重新生成仓库级 AI 编程指南，避免旧 Claude Code 指南继续约束后续开发，所以删除根目录 `CLAUDE.md`，并同步从 README 导航与 CODEGUIDE 目录树中移除相关条目。后续如需 AI 编程规则，应基于新版 SPEC 和重构目标重新生成。
+
 **Product rename to 望潮**：因为产品定位已经从新闻 Dashboard 演进为“在信息潮汐中追踪主题信号”的个人情报 Agent，所以将产品名确定为 `望潮（Wangchao）`，并同步更新 README、SPEC、CODEGUIDE、CLAUDE、前端标题、Python project name、Docker image name 和启动日志。GitHub 私有仓库也将从 `jerryisacat/AI-News-Dashboard` 重命名为 `jerryisacat/wangchao`，保留 upstream 指向原始公开仓库。
 
 **Target product SPEC rewrite**：因为后续产品开发与重构应围绕“主题驱动、自动信源发现、用户反馈学习、阅读状态管理和知识沉淀”的目标形态，而不是被当前 RSS + 静态 Dashboard 原型限制，所以重写 `SPEC.md` 为目标产品规格。新版 SPEC 将产品定义为“主题情报雷达”，明确用户以自然语言创建关注主题，系统自动发现和评估信源、持续抓取公开信息、生成每日主题简报，并根据已读、收藏、忽略、反馈和导出行为更新偏好记忆。`CODEGUIDE.md` 同步调整维护规则：当前代码应视为可重构的引擎原型，后续开发以 SPEC 的目标产品形态为准。

@@ -16,7 +16,7 @@
 | AI 流程 | L1 快速过滤 + L2 深度评分与摘要 |
 | 输出 | `data/dashboard.json` 与 `data/top5.json` |
 | 前端 | 单文件静态 HTML，读取 `dashboard.json` 渲染卡片 |
-| 部署 | Docker / 本地 `uv run main.py` |
+| 运行方式 | 本地 `uv run main.py` |
 
 ## 2. 目录结构树
 
@@ -24,7 +24,6 @@
 wangchao/
 ├── README.md                         # 中文 README
 ├── README-en.md                      # 英文 README
-├── CLAUDE.md                         # Claude Code 项目操作指南
 ├── SPEC.md                           # 当前产品/技术规格入口，描述已实现设计
 ├── CODEGUIDE.md                      # [本文件] 代码库结构手册
 ├── CHANGELOG.md                      # 变更日志，中文，按日期分组
@@ -32,8 +31,6 @@ wangchao/
 ├── uv.lock                           # uv 锁定文件
 ├── .python-version                   # Python 版本声明
 ├── .env_example                      # 环境变量模板
-├── Dockerfile                        # Docker 镜像构建
-├── start.sh                          # 容器入口脚本
 ├── index.html                        # 静态前端 Dashboard
 ├── main.py                           # 主循环：fetch/L1/L2/ranking/output/sleep
 ├── config.py                         # 环境变量配置读取
@@ -56,8 +53,6 @@ wangchao/
 │   ├── user_profile.md               # 用户画像、兴趣层级和评分偏好
 │   ├── l1_rules.md                   # L1 输出 JSON schema 与过滤规则
 │   └── l2_rules.md                   # L2 输出 JSON schema、去重和摘要规则
-└── .github/workflows/
-    └── docker-publish.yml            # GHCR 多架构 Docker 镜像发布 workflow
 ```
 
 ## 3. 核心数据流
@@ -219,13 +214,6 @@ uv run main.py
 uv run python tests_response_utils.py
 uv run python tests_schema_compat.py
 uv run python tests_runtime_safety.py
-```
-
-### Docker
-
-```bash
-docker build -t wangchao .
-docker run --env-file .env -v $(pwd)/data:/app/data wangchao
 ```
 
 ## 6. 维护规则

@@ -4,7 +4,6 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
-[![Docker](https://img.shields.io/badge/docker-automated-blue)](Dockerfile)
 
 > 🚀 **Intelligent, AI-Driven News Aggregator & Curator for Tech Professionals.**
 
@@ -24,52 +23,10 @@ Instead of simple keyword matching, it leverages Large Language Models (LLMs) to
 *   **📉 Gravity Ranking**: A smart ranking algorithm combining "Content Score" with a "Time Decay Factor". This ensures the feed stays fresh while allowing truly significant events (like a major model release) to stay on top longer.
 *   **🔗 Smart Deduplication**: Automatically identifies and merges multi-source coverage of the same event, selecting the most informative source.
 *   **🌐 Flexible Configuration**: Fully customizable RSS sources, AI models, and scheduling via `.env`.
-*   **🐳 Docker Ready**: Ready-to-deploy Docker image included.
 
 ## 🛠️ Installation & Usage
 
-### Method 1: Docker (Recommended)
-
-1.  **Clone the repository**
-    ```bash
-    git clone https://github.com/jerryisacat/wangchao.git
-    cd wangchao
-    ```
-
-2.  **Configure Environment**
-    Copy the example config:
-    ```bash
-    cp .env_example .env
-    ```
-    Edit `.env` and fill in your OpenAI API Key and other settings.
-
-3.  **Run**
-    You can use the pre-built Docker image directly:
-    ```bash
-    # ⚠️ Important: Create data directory
-    mkdir -p data
-
-    # Pull image
-    docker pull ghcr.io/t0saki/ai-wangchao:latest
-    
-    # Run
-    docker run -d \
-      --name wangchao \
-      --env-file .env \
-      -v $(pwd)/data:/app/data \
-      -v $(pwd)/user_profile.md:/app/prompts/user_profile.md \
-      ghcr.io/t0saki/ai-wangchao:latest
-    ```
-
-    > **💡 Tip:** You can create your own `user_profile.md` on the host to customize AI filtering preferences (Role/Domain/Tier scoring standards).
-
-    Or you can build it yourself:
-    ```bash
-    docker build -t wangchao .
-    docker run -d --env-file .env -v $(pwd)/data:/app/data wangchao
-    ```
-
-### Method 2: Local Python
+### Local Python
 
 Requires Python 3.12+. We recommend `uv` for dependency management.
 

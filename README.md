@@ -3,7 +3,6 @@
 [English](README-en.md)
 
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
-[![Docker](https://img.shields.io/badge/docker-ready-blue)](Dockerfile)
 
 > **AI 驱动的信息流情报雷达**：把 RSS/公开信息源自动转化为可阅读、可排序、可打标、可继续沉淀的结构化情报。
 
@@ -61,9 +60,8 @@ dashboard.json / top5.json / 静态 Dashboard
   - 通过 `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL_L1` / `AI_MODEL_L2` 接入任意兼容 Chat Completions 的服务。
   - `AI_RESPONSE_FORMAT_MODE=auto` 可在 provider 不支持 `response_format=json_object` 时自动降级重试。
 
-- **轻量部署**
+- **轻量运行**
   - 本地 `uv run main.py`。
-  - Docker 部署。
   - 输出静态 JSON，可被 `index.html`、Caddy/Nginx、Hermes cron、Telegram/Obsidian pipeline 继续消费。
 
 ## 3. 当前私有分支增强
@@ -107,32 +105,7 @@ AI_MODEL_L2=gpt-4o
 uv run main.py
 ```
 
-### 4.2 Docker 运行
-
-```bash
-cp .env_example .env
-mkdir -p data
-
-docker build -t wangchao .
-docker run -d \
-  --name wangchao \
-  --env-file .env \
-  -v $(pwd)/data:/app/data \
-  wangchao
-```
-
-如需覆盖筛选偏好，可挂载自定义画像：
-
-```bash
-docker run -d \
-  --name wangchao \
-  --env-file .env \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/user_profile.md:/app/prompts/user_profile.md \
-  wangchao
-```
-
-### 4.3 查看 Dashboard
+### 4.2 查看 Dashboard
 
 程序会生成：
 
@@ -288,14 +261,13 @@ git diff --check
 
 - `CODEGUIDE.md`：代码结构、模块职责、数据流、维护规则。
 - `CHANGELOG.md`：私有分支变更记录。
-- `CLAUDE.md`：Claude Code/AI Agent 简版操作指南。
 - `README-en.md`：upstream 英文 README，当前未同步私有分支全部定制内容。
 
 ## 10. 后续改造方向
 
 建议优先级：
 
-1. **Single-run 模式**：新增 `run_once.py`，便于 Hermes cron、systemd timer 或 GitHub Actions 调度。
+1. **Single-run 模式**：新增 `run_once.py`，便于 Hermes cron、systemd timer 或 systemd service 调度。
 2. **商业财经 schema**：增加实体、影响方向、风险等级、机会线索、建议动作。
 3. **数据资产机会雷达 Prompt**：面向数据局政策、数据交易所、入表案例、招投标和授权运营。
 4. **Obsidian/Telegram 输出器**：把 `dashboard.json` 转为每日简报、周报素材和案例库条目。
