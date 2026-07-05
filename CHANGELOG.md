@@ -13,6 +13,8 @@
 
 ### 2026-07-06
 
+**README repositioning**：因为私有分支的目标已经从单纯 AI 新闻 Dashboard 扩展为商业财经、数据资产机会和行业风险等垂直情报雷达，所以重写 `README.md`，明确项目定位为“RSS/公开信息源 → AI 筛选/摘要/打标/排序 → 结构化情报输出”的通用管线。README 同步记录私有分支增强、核心配置、Prompt 定制方式、输出格式、测试命令、后续 single-run/Hermes cron/Obsidian/Telegram 改造方向，以及 upstream 授权边界注意事项。
+
 **Private fork baseline**：因为原始公开仓库不能在 GitHub fork network 内直接变成 private fork，所以创建 `jerryisacat/AI-News-Dashboard` private mirror，保留 upstream remote 指向 `t0saki/AI-News-Dashboard`，origin 指向私有仓库。该边界让后续商业情报、财经雷达、数据资产机会监控等定制实验可以在私有仓库中推进，同时仍可按需从 upstream 拉取更新。
 
 **Runtime safety hardening**：因为 L1/L2 AI 调用失败或 JSON 解析失败时，原主循环可能在同一个 cycle 反复处理同一批 `pending/l1_done` 项并形成死循环，所以 `main.py` 新增 `run_bounded_batches()`，并用 `MAX_L1_LOOPS`、`MAX_L2_LOOPS` 限制单轮 L1/L2 最大批次数。该变更让失败项目留到下一轮重试，避免 daemon 卡在 AI 故障路径，`.env_example` 同步新增相关配置。
