@@ -25,6 +25,7 @@ AI-News-Dashboard/
 ├── README.md                         # 中文 README
 ├── README-en.md                      # 英文 README
 ├── CLAUDE.md                         # Claude Code 项目操作指南
+├── SPEC.md                           # 当前产品/技术规格入口，描述已实现设计
 ├── CODEGUIDE.md                      # [本文件] 代码库结构手册
 ├── CHANGELOG.md                      # 变更日志，中文，按日期分组
 ├── pyproject.toml                    # Python 项目元数据与依赖
@@ -229,6 +230,7 @@ docker run --env-file .env -v $(pwd)/data:/app/data news-dashboard
 
 ## 6. 维护规则
 
+- `SPEC.md` 是当前实现的产品/技术规格入口；修改项目目标、核心工作流、状态机、输出 schema、配置语义、安全边界或明确限制时必须同步更新。
 - 修改代码后必须运行相关测试；涉及运行时/数据库/前端安全时至少运行三份根目录测试脚本。
 - 新增环境变量时同步更新 `.env_example` 和本文件。
 - 修改数据流、状态机、输出 JSON schema、目录结构或新增测试脚本时同步更新 `CODEGUIDE.md`。

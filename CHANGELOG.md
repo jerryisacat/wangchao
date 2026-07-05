@@ -13,6 +13,8 @@
 
 ### 2026-07-06
 
+**SPEC documentation baseline**：因为私有分支需要一个面向产品与技术设计的 source of truth，所以新增 `SPEC.md`，按当前代码而非未来设想梳理项目目标与边界、用户/运行角色、核心工作流、SQLite 数据模型与状态机、RSS 信源处理、L1/L2 两阶段 AI 处理、Gravity Ranking、JSON/静态前端输出、配置、运行部署、测试验证、安全可信边界、当前限制和后续演进建议。`CODEGUIDE.md` 同步标记 `SPEC.md` 为产品规格入口，后续修改数据流、状态机、输出 schema 或安全边界时需要同步更新。
+
 **README repositioning**：因为私有分支的目标已经从单纯 AI 新闻 Dashboard 扩展为商业财经、数据资产机会和行业风险等垂直情报雷达，所以重写 `README.md`，明确项目定位为“RSS/公开信息源 → AI 筛选/摘要/打标/排序 → 结构化情报输出”的通用管线。README 同步记录私有分支增强、核心配置、Prompt 定制方式、输出格式、测试命令、后续 single-run/Hermes cron/Obsidian/Telegram 改造方向，以及 upstream 授权边界注意事项。
 
 **Private fork baseline**：因为原始公开仓库不能在 GitHub fork network 内直接变成 private fork，所以创建 `jerryisacat/AI-News-Dashboard` private mirror，保留 upstream remote 指向 `t0saki/AI-News-Dashboard`，origin 指向私有仓库。该边界让后续商业情报、财经雷达、数据资产机会监控等定制实验可以在私有仓库中推进，同时仍可按需从 upstream 拉取更新。
