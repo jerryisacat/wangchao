@@ -4,6 +4,30 @@
 
 ## 2026-07-07
 
+### seed 改为多主题信源列表 + 仓库 raw link 默认拉取
+
+- Cause: 原 seed 只创建单个 RSS 源（默认 Hacker News），在国内网络经常抓取失败；用户希望用仓库内维护的信源清单，部署后能自动拉最新版。需要支持多主题、每主题多源，且 re-seed 不能重置用户在 UI 上的 mute/reject 决策和 topic profile 编辑。
+- Changed: 新增 `packages/db/seed-sources.json`（默认 3 个验证可访问的 AI 主题 RSS：OpenAI Blog / Hugging Face Blog / Google Research Blog，Anthropic 因无公开 RSS 不放）。重写 `packages/db/prisma/seed.ts`：解析优先级为 `WANGCHAO_SEED_SOURCE_NAME`+`WANGCHAO_SEED_SOURCE_URL` 旧单源模式 > `WANGCHAO_SEED_SOURCES_URL`（默认值为本仓库 raw link）> 本地 `packages/db/seed-sources.json` fallback；URL 模式带 5s timeout 和 schema 校验，失败 stderr warn 后 fallback；topic 和 source 改为 create-only（已存在的不重置 status、不覆盖 profile，保留 UI 编辑）。新增 `WANGCHAO_SEED_SOURCES_URL` 到 `.env_example`，`WANGCHAO_SEED_SOURCE_*` 注释改为 legacy。同步 `README.md` 信源发现路径说明和 env 表格、`CODEGUIDE.md` seed 命令段说明。
+- Files: `packages/db/seed-sources.json` (新建), `packages/db/prisma/seed.ts`, `.env_example`, `README.md`, `CODEGUIDE.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 待运行 `CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build` 和 `pnpm db:seed` dry run 验证。
+- Notes / Risk: 默认 raw link 指向 `jerryisacat/wangchao` 仓库 main 分支，仓库改名或分支调整时需同步 `seed.ts` 中的 `DEFAULT_SEED_SOURCES_URL` 常量。create-only 意味着修改 `seed-sources.json` 后对已部署的旧 topic/source 不会生效，只有新 topic/source 才会被创建——这是刻意设计，避免重置用户决策。
+
+### 制定订阅制商业模型并写入文档
+
+- Cause: 用户要求明确定义 Free/Plus/Pro 三层订阅商业模型，作为 Phase 15 的开发依据，但不立即开发。
+- Changed: 新建 `docs/business-model.md`（13 个章节，覆盖价值主张、三层计划、AI 调用策略、数据模型、配额检查、Stripe/ccpayment 支付集成、前端页面、安全要求、客户分层和待讨论事项）；更新 `AGENTS.md` 新增 Phase 15（订阅制商业化）开发阶段；更新 `SPEC.md` §6.0 和 §9 引用商业模型文档。
+- Files: `docs/business-model.md` (新建), `AGENTS.md`, `SPEC.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 内容与用户讨论的 Free/Plus/Pro 模型一致（Plus $9.99/年 BYOK，Pro $19.99/月 官方 AI + BYOK 80% 备援，硬截断策略）；文档优先级已写入 AGENTS.md。
+- Notes / Risk: 4 个待讨论问题已标注（配额数字、Pro 无 BYOK 行为、BYOK Provider 范围、ccpayment API）；未修改代码；ccpayment 集成细节需后续补充。
+
+### 放宽前端整体间距
+
+- Cause: 用户反馈"字跟框太紧凑了"，整体视觉呼吸感不足。
+- Changed: 全局放宽间距，不改变配色和布局结构。情报卡片 padding 16px→20px、标题行高 1.35→1.4、字号 16px→17px、摘要行高 1.6→1.65、各元素间距统一 +2-4px；情报流卡片间 gap 10px→14px；通用 UI 卡片 header/content padding 16px→18px、标题行高 1.2→1.3；`.app-main` 增加 `gap: 16px` 统一顶层区段间距并移除子页面内联 `marginTop: 20`；状态横幅 padding 11px 12px→12px 14px；列表行（event-row/briefing-row 等）padding 12px→14px；表单 label gap 7px→8px、input padding 10px 11px→11px 12px；新建主题页内联 padding 20px 16px→24px 20px。
+- Files: `apps/web/src/app/globals.css`, `apps/web/src/app/sources/page.tsx`, `apps/web/src/app/briefings/page.tsx`, `apps/web/src/app/saved/page.tsx`, `apps/web/src/app/preferences/page.tsx`, `apps/web/src/app/topics/new/page.tsx`, `AGENTS_CHANGELOGS.md`, `DEVELOPE_LOGS.md`
+- Verification: `pnpm typecheck`、`pnpm lint`、`pnpm build` 全部通过，9 个路由正确编译。
+- Notes / Risk: 配色、圆角、字体、组件结构均未改动，仅调整间距/行高/字号。`.app-main` 新增 gap 后子页面内联 marginTop 已移除以避免双重间距。
+
 ### 重写 README 让用户能看懂仓库是干嘛的
 
 - Cause: 用户反馈"看完 README 还是不知道这个仓库是干嘛的"。原 README 偏实现清单，没有讲清产品定位、信源发现机制和未读情报筛选录入流程。

@@ -14,8 +14,8 @@ export default function NewTopicPage() {
         </Link>
       </PageHeader>
 
-      <Card className="topic-lab" style={{ marginTop: 20 }} variant="kinetic">
-        <div style={{ position: "relative", zIndex: 1, padding: "20px 16px 16px" }}>
+      <Card className="topic-lab" variant="kinetic">
+        <div style={{ position: "relative", zIndex: 1, padding: "24px 20px 20px" }}>
           <form action={createTopicWithSourceAction} className="topic-form">
             <label>
               <span>主题名称</span>

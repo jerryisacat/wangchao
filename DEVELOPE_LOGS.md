@@ -4,6 +4,17 @@
 
 ## 2026-07-07
 
+### 放宽前端整体间距
+
+- Phase: Phase 8 (Dashboard MVP) 微调
+- Scope: 全局放宽前端间距，不改配色和布局结构。
+- Alignment: 符合 `FRONTEND.md` Kinetic Intelligence 视觉方向，不改变 token 和组件 API。
+- Missing: 无。
+- Bugs: 无。
+- Fixes: 无。
+- Verification: `pnpm typecheck`、`pnpm lint`、`pnpm build` 全部通过。
+- Follow-up: 如需进一步放大或恢复紧凑感，可调整 globals.css 中的间距变量。
+
 ### 生产环境清理 + 前端 Kinetic Intelligence 重构
 
 - Phase: Cross-phase / production readiness + Phase 3 (产品壳) + Phase 8 (Dashboard MVP)

@@ -19,7 +19,7 @@ export default async function PreferencesPage() {
         </Link>
       </PageHeader>
 
-      <div style={{ marginTop: 20 }}>
+      <div>
         <Card variant="work">
           <CardHeader>
             <CardTitle>已学习偏好</CardTitle>

@@ -19,7 +19,7 @@ export default async function BriefingsPage() {
         </Link>
       </PageHeader>
 
-      <div style={{ marginTop: 20 }}>
+      <div>
         <Card variant="work">
           <CardHeader>
             <CardTitle>最新简报</CardTitle>

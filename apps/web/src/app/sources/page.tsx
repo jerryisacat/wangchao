@@ -57,7 +57,7 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
         />
       ) : null}
 
-      <div style={{ marginTop: 20, display: "grid", gap: 16 }}>
+      <div style={{ display: "grid", gap: 16 }}>
         {activeTopic ? (
           <Card variant="work">
             <CardHeader>
