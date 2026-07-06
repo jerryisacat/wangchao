@@ -64,7 +64,8 @@
 | 11 | 信源治理 | candidate/active/muted/rejected、质量报告 | 可审核候选源 | Phase 7 |
 | 12 | 商业化基础 | auth、organization、membership、usage events | tenant scope 有测试 | Phase 8+ |
 | 13 | 部署运维 | env docs、health check、worker deploy、日志 | web/worker 可部署 | Phase 8+ |
-| 14 | 订阅制商业化 | Free/Plus/Pro 三层订阅、BYOK、Stripe/ccayment 支付、配额引擎、用量仪表板 | 用户可订阅、升级、管理 BYOK | Phase 12 |
+| 14 | Legacy cleanup | 归档/删除旧 Python 原型 | 主路径 TypeScript-only | 新栈稳定后 |
+| 15 | 订阅制商业化 | Free/Plus/Pro 三层订阅、BYOK、Stripe/ccayment 支付、配额引擎、用量仪表板 | 用户可订阅、升级、管理 BYOK | Phase 12 |
 
 ## 5. 代码治理规则
 

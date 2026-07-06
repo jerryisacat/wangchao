@@ -9,6 +9,10 @@
 > **这是一个开源项目（MIT License）。** 代码、文档、数据模型、worker 管线、前端界面全部公开。商业化仅用于维护服务器运营——给自己买杯咖啡，不是产品主线。
 >
 > **特别欢迎用 AI Agent 定制这个仓库。** Fork 之后，你可以让 Claude Code、Cursor、Copilot 或任何 coding agent 按照你的领域、信源、偏好和部署环境改造它。`AGENTS.md` 和 `CODEGUIDE.md` 是给 AI Agent 看的协作规范和代码结构地图，帮助 agent 快速理解这个仓库。
+>
+> ---
+>
+> ⚠️ **本仓库处于高频迭代阶段，尚未达到稳定可用状态，请勿直接用于生产环境。** API、Schema、UI 和 Worker 管线仍可能发生破坏性变更。如果你对主题驱动的 AI 情报系统感兴趣，欢迎 Star、Fork、提 Issues 和 PR 一起建设。
 
 ## 这个仓库是干嘛的
 
@@ -100,10 +104,13 @@ Worker 的 `runPreferenceLearningCycle()` 把这些信号归纳成 `PreferenceMe
 
 Dashboard 在渲染时读取 `PreferenceMemory`，对 `gravityScore` 应用权重乘子（0.4× ~ 1.6×）。你多次忽略某类内容后，该类内容会明显降权。
 
-## 当前状态
+## 当前阶段
+
+> ⚠️ **本仓库处于高频迭代阶段，尚未达到稳定可用状态，请勿直接用于生产环境。** API、Schema、UI 和 Worker 管线仍可能发生破坏性变更。
 
 | 范围 | 状态 |
-|---|---|
+|------|------|
+| 稳定性 | 高频迭代，API/Schema 可能变更，无向后兼容承诺 |
 | 主技术栈 | TypeScript、pnpm、Turborepo、Next.js App Router、Prisma、Postgres、Node.js worker |
 | Web | 主题/RSS 表单、情报流、事件详情、已读/收藏/忽略、偏好记忆、简报导出、信源治理、工作区成员/用量审计、`/api/health` |
 | Worker | RSS 抓取、Item 写入、确定性情报管线、偏好归纳、daily briefing、source quality observation、`--health` |
@@ -224,15 +231,18 @@ curl -fsS http://127.0.0.1:3000/api/health
 
 ## 贡献与定制
 
-这是一个 MIT 开源项目，欢迎社区贡献和 fork 定制。
+望潮处于高频迭代阶段，欢迎社区贡献和 fork 定制。
 
-- **提 PR**：参见 `CONTRIBUTING.md`。项目欢迎 bug 修复、新信源适配器、文档改进和测试补全。
+- **提 Issue**：通过 [GitHub Issues](https://github.com/sunrunchen/wangchao/issues) 报告 bug 或提出功能建议。提供了 Bug 报告和功能请求模板。
+- **提 PR**：欢迎 bug 修复、新信源适配器、文档改进和测试补全。建议先开 Issue 或 Discussion 讨论较大的改动。
 - **用 AI Agent 定制**：Fork 这个仓库后，把 `AGENTS.md` 和 `CODEGUIDE.md` 喂给你的 coding agent（Claude Code、Cursor、Copilot 等），让它按照你的领域（半导体、政策、开源生态……）、信源、偏好评分规则和部署环境改造。这个项目就是为这种定制设计的。
-- **报告问题**：通过 GitHub Issues。
+- **讨论**：产品想法、使用问题、经验分享请发到 [GitHub Discussions](https://github.com/sunrunchen/wangchao/discussions)。
 
 ## 鸣谢
 
 望潮继承自 [t0saki/AI-News-Dashboard](https://github.com/t0saki/AI-News-Dashboard) 的产品 idea——把 RSS 新闻流经 AI 筛选变成结构化情报。虽然这个仓库已经几乎完全重构为 TypeScript / Next.js / Postgres 技术栈，产品形态也从"新闻 Dashboard"演进为"主题驱动的情报工作台"，但最初的 idea 来自 t0saki 的原型。在此鸣谢。
+
+本网站的 UI 设计使用了 [DesignPrompts](https://www.designprompts.dev) 的 prompt，在此鸣谢。
 
 ## License
 

@@ -12,6 +12,14 @@
 - Verification: 待运行 `CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build` 和 `pnpm db:seed` dry run 验证。
 - Notes / Risk: 默认 raw link 指向 `jerryisacat/wangchao` 仓库 main 分支，仓库改名或分支调整时需同步 `seed.ts` 中的 `DEFAULT_SEED_SOURCES_URL` 常量。create-only 意味着修改 `seed-sources.json` 后对已部署的旧 topic/source 不会生效，只有新 topic/source 才会被创建——这是刻意设计，避免重置用户决策。
 
+### 更新 README 明确迭代状态 + 新增 Issue 模板
+
+- Cause: 用户要求 README 明确"高频迭代、未达稳定可用状态"的定位，欢迎社区 Issues/PR，并参考现有 Issues 创建模板。
+- Changed: 更新 `README.md`：顶部和"当前阶段"章节加入 ⚠️ 警告标注（高频迭代、API/Schema 可能破坏性变更、请勿直接用于生产环境）；"贡献与定制"章节改为指引 Issues/Discussions/PR/AI Agent 定制四条路径。新建 `.github/ISSUE_TEMPLATE/`：`config.yml`（关闭空白 issue，引导到 Discussions）、`01-bug-report.yml`（Bug 报告模板：版本、区域、当前/期望行为、复现步骤、运行环境）、`02-feature-request.yml`（功能请求模板：解决问题、建议方案、替代方案、补充信息）。
+- Files: `README.md`, `.github/ISSUE_TEMPLATE/config.yml` (新建), `.github/ISSUE_TEMPLATE/01-bug-report.yml` (新建), `.github/ISSUE_TEMPLATE/02-feature-request.yml` (新建), `AGENTS_CHANGELOGS.md`
+- Verification: 模板格式符合 GitHub Issue Forms 规范（YAML schema），内容覆盖 bug 和功能请求两大场景。
+- Notes / Risk: 未创建 `CONTRIBUTING.md`（README 中移除了对此文件的引用）；未读取到 GitHub 上已有的 Issues（API 额度不足），模板基于项目当前阶段特点设计。
+
 ### 新增自用模式到商业模型文档
 
 - Cause: 用户要求管理员可以在后台配置自用模式，跳过所有订阅限制。
