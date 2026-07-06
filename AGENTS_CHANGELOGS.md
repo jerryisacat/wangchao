@@ -4,6 +4,14 @@
 
 ## 2026-07-07
 
+### 重写 README 让用户能看懂仓库是干嘛的
+
+- Cause: 用户反馈"看完 README 还是不知道这个仓库是干嘛的"。原 README 偏实现清单，没有讲清产品定位、信源发现机制和未读情报筛选录入流程。
+- Changed: 重写 `README.md`。新增"这个仓库是干嘛的"（目标用户画像）、"信源是如何进入系统的"（seed/candidate/active/muted/rejected 状态机和当前实现路径）、"未读情报是如何被筛选和录入的"（Worker `runFetchCycle()` 八步管线的确定性流程图和关键设计点）、"用户的反馈如何影响系统"（FeedbackEvent → PreferenceMemory → 排序乘子的闭环说明）。补充 `WANGCHAO_SEED_SOURCE_*` 环境变量到表格。明确标注自动信源发现是 SPEC Phase 5 未实现项，避免读者把目标形态误当成当前能力。
+- Files: `README.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 内容对照 `SPEC.md` §5.2/§5.4/§7、`CODEGUIDE.md` §3 数据流、`apps/worker/src/index.ts` `runFetchCycle()` 和 `packages/core/src/index.ts` `evaluateRelevance()`/`createIntelligenceEventDraft()` 实际实现核对，确保描述的是当前代码行为而非目标形态。
+- Notes / Risk: 只改了中文 `README.md`，英文 `README-en.md` 未同步，后续如需保持双语一致需单独更新。`CODEGUIDE.md` 不需要改，因为代码结构未变。
+
 ### 撰写 Railway 部署指南并更新 README 索引
 
 - Cause: 仓库缺少完整的 Railway 部署操作文档，只有简短的 Config as Code 说明和通用部署运维文档。需要一份覆盖项目创建、服务配置、环境变量、部署命令、健康检查和定时任务的完整指南。
