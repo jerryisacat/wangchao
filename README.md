@@ -47,7 +47,8 @@ packages/
   sources/             RSS/source adapter
   ui/                  共享 UI 包
 docs/
-  deployment.md        部署运维说明
+  deployment.md            通用部署运维说明
+  railway-deployment.md    Railway 部署完整指南
 legacy/
   python-prototype/    已归档旧 Python 原型
 ```
@@ -119,5 +120,10 @@ curl -fsS http://127.0.0.1:3000/api/health
 
 - `SPEC.md`: 产品目标和边界。
 - `REFACTOR_PLAN.md`: Node.js/TypeScript 重构路线。
+- `FRONTEND.md`: 前端视觉语言、交互规则和页面组合规范。
 - `CODEGUIDE.md`: 当前代码结构和维护规则。
-- `docs/deployment.md`: 部署、健康检查、日志和回滚说明。
+- `docs/deployment.md`: 通用部署运维说明（健康检查、日志、备份、回滚）。
+- `docs/railway-deployment.md`: Railway 部署完整指南（项目创建、服务配置、环境变量、部署命令、定时任务）。
+- `AGENTS.md`: AI Agent 协作规范。
+- `AGENTS_CHANGELOGS.md`: AI Agent 工作审计日志。
+- `DEVELOPE_LOGS.md`: 分阶段开发审计和延期功能追踪。

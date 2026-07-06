@@ -63,7 +63,8 @@ wangchao/
 ├── CODEGUIDE.md                      # [本文件] 代码库结构手册
 ├── CHANGELOG.md                      # 已废弃的历史变更日志，勿继续维护
 ├── docs/
-│   └── deployment.md                 # 部署运维、健康检查、环境变量和回滚说明
+│   ├── deployment.md                 # 通用部署运维、健康检查、环境变量和回滚说明
+│   └── railway-deployment.md          # Railway 部署完整指南
 ├── deploy/
 │   └── railway/                      # Railway Web 与 Worker Cron Config as Code 示例
 │       ├── README.md                 # Railway service 拆分、config path 和变量说明

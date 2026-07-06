@@ -4,6 +4,13 @@
 
 ## 2026-07-07
 
+### 撰写 Railway 部署指南并更新 README 索引
+
+- Cause: 仓库缺少完整的 Railway 部署操作文档，只有简短的 Config as Code 说明和通用部署运维文档。需要一份覆盖项目创建、服务配置、环境变量、部署命令、健康检查和定时任务的完整指南。
+- Changed: 新建 `docs/railway-deployment.md`（11 个章节，覆盖前置条件、项目结构、创建项目和服务、环境变量、部署、验证、定时任务、更新部署、常见问题、当前部署信息和参考文件）；更新 `README.md` 参考文档索引和目录结构；同步 `CODEGUIDE.md` 目录结构树。
+- Files: `docs/railway-deployment.md` (新建), `README.md`, `CODEGUIDE.md`, `AGENTS_CHANGELOGS.md`, `DEVELOPE_LOGS.md`
+- Verification: 文档内容基于实际 Railway 部署操作验证；部署信息（project ID、service ID、public URL）来自 `railway status` 和 `railway variables` 命令输出。
+
 ### 生产环境清理：移除开发/测试内容
 
 - Cause: 代码中存在大量开发阶段残留内容（预览模式降级、硬编码凭据、fixture 协议、console.* 日志、测试 harness 文件），需要清理后才能安全部署到生产环境。
