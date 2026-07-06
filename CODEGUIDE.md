@@ -1,8 +1,8 @@
 # 望潮（Wangchao）— Codebase Structure Map
 
-> **文档创建于 2026-07-06** | 当前主路径以 TypeScript monorepo 为准；旧 Python 原型已归档到 `legacy/python-prototype/`
+> **文档创建于 2026-07-06** | 当前主路径以 TypeScript monorepo 为准
 
-> 技术路线以 `REFACTOR_PLAN.md` 为准：仓库已绿地重构为 Node.js / TypeScript / Next.js / Postgres / Prisma 架构。`README.md` / `README-en.md` 是当前用户入口说明，`legacy/python-prototype/` 仅作历史参考。
+> 技术路线以 `REFACTOR_PLAN.md` 为准：仓库已绿地重构为 Node.js / TypeScript / Next.js / Postgres / Prisma 架构。`README.md` / `README-en.md` 是当前用户入口说明。
 
 ## 1. 全局架构总览
 
@@ -86,8 +86,7 @@ wangchao/
 │   ├── sources/                      # RSS/Web source adapter
 │   └── ui/                           # 共享 UI 包
 ├── .env_example                      # 环境变量模板
-└── legacy/
-    └── python-prototype/             # 已归档的 Python 原型、旧静态前端、旧 prompt 和旧测试
+└── (no legacy directory — old Python prototype removed in open-source cleanup)
 ```
 
 ## 3. 核心数据流
@@ -104,7 +103,7 @@ Dashboard / Markdown export / source governance / usage audit
 
 ### Legacy Python Prototype
 
-旧 Python 原型已移动到 `legacy/python-prototype/`。其中保留 SQLite `news` 状态、旧 L1/L2 prompt、旧静态 HTML Dashboard 和 Python 测试，仅作为行为参考。新增功能不得继续写入该目录。
+旧 Python 原型已在开源清洗中删除（上游 `t0saki/AI-News-Dashboard` 无 LICENSE，直接开源有法律风险；TypeScript 主路径是全新实现，不受影响）。git history 仍保留历史，但当前代码树不再包含。新增功能继续在 TypeScript 模块中实现。
 
 ### Postgres / Prisma 数据流
 
@@ -329,17 +328,7 @@ apps/web/src/app/globals.css
 
 ## 4. 模块职责
 
-### `legacy/python-prototype/`
-
-归档的旧实现：
-
-- `main.py`, `config.py`, `database.py`, `ai_service.py`, `ranking.py`, `response_utils.py`
-- `processors/`, `sources/`, `prompts/`
-- `index.html`
-- `tests_*.py`
-- `.python-version`, `pyproject.toml`, `uv.lock`
-
-维护规则：只读参考；如从原型复制行为，必须在新的 TypeScript 模块中实现，并同步本文件的新 owner。
+（旧 Python 原型已在开源清洗中删除，不再列模块职责。当前模块职责见第 3 节"目标 Next.js 产品壳"和关键文件表。）
 
 ## 5. 环境变量与运行命令
 

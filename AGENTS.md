@@ -1,12 +1,18 @@
 # AGENTS.md
 
+> **⚠️ 这是一个开源仓库（MIT License）。** 任何 AI Agent 在本仓库工作时应遵守以下原则：
+> - 所有提交内容都会进入公开历史，**不得写入任何密钥、私有数据、商业策略或内部专有信息**。
+> - 文档和代码应该对开源社区友好——面向外部贡献者写说明，不要假设读者有内部上下文。
+> - 如果用户要求写入不适宜公开的内容（商业路线图、定价、私有部署信息等），应主动提醒并建议移到私有 fork 或本地文档。
+> - 保留 `AGENTS_CHANGELOGS.md` 和 `DEVELOPE_LOGS.md` 作为开发审计用途，但它们是开发过程记录，不是产品文档。
+
 本文件定义 AI Agent 在 `望潮（Wangchao）` 仓库中的协作规范。除非用户明确要求偏离，本文件约束后续代码、文档、配置和仓库结构修改。
 
 ## 1. 项目定位
 
 `望潮（Wangchao）` 是一个主题驱动的 AI 情报系统。用户创建关注主题，系统围绕主题发现和治理信源，抓取公开信息，通过 AI 完成相关性判断、事件抽取、去重、摘要、评分、简报生成，并通过阅读状态、反馈和导出行为学习偏好。
 
-当前仓库来自 GitHub fork，没有真实用户、生产数据或兼容承诺。允许绿地重构。旧 Python 实现只作为行为参考，不作为新架构约束。
+当前仓库已开源（MIT License），没有真实用户、生产数据或兼容承诺，允许绿地重构。商业化仅用于维护服务器运营，不是产品主线；开源版本聚焦个人情报工作台体验。
 
 ## 2. 文档优先级
 
@@ -24,15 +30,6 @@
 如果文档冲突，以 `SPEC.md` 和 `REFACTOR_PLAN.md` 为准。
 
 ## 3. 技术栈
-
-旧 Python 原型仅作参考，已归档到 `legacy/python-prototype/`：
-
-| 层 | 当前 |
-|---|---|
-| Runtime | Python 3.12+，legacy only |
-| DB | SQLite，legacy only |
-| Pipeline | RSS -> L1 -> L2 -> Gravity Ranking -> JSON，legacy only |
-| Frontend | 单文件 `index.html`，legacy only |
 
 当前主技术栈以 `REFACTOR_PLAN.md` 为准：
 
@@ -67,13 +64,12 @@
 | 11 | 信源治理 | candidate/active/muted/rejected、质量报告 | 可审核候选源 | Phase 7 |
 | 12 | 商业化基础 | auth、organization、membership、usage events | tenant scope 有测试 | Phase 8+ |
 | 13 | 部署运维 | env docs、health check、worker deploy、日志 | web/worker 可部署 | Phase 8+ |
-| 14 | Legacy cleanup | 归档/删除旧 Python 原型 | 主路径 TypeScript-only | 新栈稳定后 |
+| 14 | 订阅制商业化 | Free/Plus/Pro 三层订阅、BYOK、Stripe/ccayment 支付、配额引擎、用量仪表板 | 用户可订阅、升级、管理 BYOK | Phase 12 |
 
 ## 5. 代码治理规则
 
 - 默认开发分支使用 `main`，除非仓库后续明确新增分支策略。
 - 以 `SPEC.md` 和 `REFACTOR_PLAN.md` 为准做设计；`README.md` / `README-en.md` 用于对外说明当前主路径和运行入口。
-- 旧 Python 代码只作为参考；如果阻碍新架构，可以直接重建。
 - 不提交 `.env`、密钥、token、`data/*`、生成 JSON、`.venv`、本地缓存。
 - 新增环境变量必须同步 `.env_example` 和 `CODEGUIDE.md`。
 - 修改目录、命令、数据流、数据库、worker、API、输出契约，必须同步 `CODEGUIDE.md`。
@@ -209,15 +205,6 @@ feat:实现主题创建页面
 - 日志不得输出密钥、认证 URL、敏感 headers。
 
 ## 13. 测试、验证和发布规则
-
-旧 Python 原型验证仅作 legacy 参考，不作为当前主路径必跑项：
-
-```bash
-cd legacy/python-prototype
-uv run python tests_response_utils.py
-uv run python tests_schema_compat.py
-uv run python tests_runtime_safety.py
-```
 
 当前新栈最低验证：
 

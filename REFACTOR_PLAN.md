@@ -2,7 +2,7 @@
 
 > Created: 2026-07-06
 >
-> Scope: This document plans a greenfield refactor from the current Python RSS + AI dashboard prototype into a Node.js/TypeScript product architecture aligned with `SPEC.md`.
+> Scope: This document plans a greenfield refactor from the original Python RSS + AI dashboard prototype (since removed during open-source cleanup) into a Node.js/TypeScript product architecture aligned with `SPEC.md`.
 >
 > Important: `SPEC.md` now defines Wangchao as a personal/single-user MVP that should preserve a path toward future commercialization, multi-tenancy, team permissions, and paid plans. The refactor should keep that runway without letting commercial infrastructure block the first usable topic-intelligence loop.
 
@@ -57,10 +57,10 @@ Recommended stack:
    - Fetching, page extraction, AI filtering, event extraction, deduplication, briefing generation, and source reports must run outside the request lifecycle.
    - The web app reads durable status from the database.
 
-4. Treat the Python prototype as reference material, not a migration constraint.
+4. Treat the original Python prototype as reference material, not a migration constraint.
    - The repository has no active users or production data, so the refactor does not need compatibility bridges or incremental cutover.
-   - L1/L2 staged analysis, JSON parsing hardening, gravity ranking, prompt discipline, and safety tests are useful ideas to reimplement where they still fit the new product model.
-   - If the old implementation slows the rebuild down, prefer a clean TypeScript implementation over preserving Python behavior exactly.
+   - L1/L2 staged analysis, JSON parsing hardening, gravity ranking, prompt discipline, and safety tests were useful ideas, now reimplemented in TypeScript where they still fit the new product model.
+   - The original Python files have been removed during open-source cleanup (upstream had no LICENSE); reference behavior is documented in section 9.
 
 5. Keep candidate sources clearly separated from trusted sources.
    - Candidate-source content must not silently enter official briefings.
@@ -83,14 +83,12 @@ wangchao/
 │   ├── ai/                          # LLM adapter, prompts, response parsing
 │   ├── sources/                     # RSS/web source adapters
 │   └── ui/                          # Shared UI components if needed
-├── legacy-python/                   # Optional archive for old prototype after TypeScript scaffold lands
 ├── SPEC.md
 ├── CODEGUIDE.md
-├── REFACTOR_PLAN.md
-└── CHANGELOG.md
+└── REFACTOR_PLAN.md
 ```
 
-Because there are no active users or production data, the implementation may either keep the Python files temporarily for reference or move them into `legacy-python/` early. The new TypeScript app does not need to consume Python output.
+The old Python prototype has been removed during open-source cleanup (upstream had no LICENSE). The new TypeScript app reads from Postgres/Prisma directly with no Python bridge.
 
 ## 4. Target Runtime Architecture
 
@@ -155,15 +153,15 @@ Important schema rules:
 
 ## 6. Greenfield Rebuild Strategy
 
-Because this is a forked application with no current users, no production data, and no compatibility obligations, the refactor can be a clean rebuild instead of a careful migration.
+Because this is a greenfield rebuild with no current users, no production data, and no compatibility obligations, the refactor is a clean rebuild rather than a careful migration.
 
-Use the current Python implementation as a reference for useful behavior:
+Reference behavior for the new implementation:
 
 1. Product shape: theme-first intelligence workflow from `SPEC.md`.
 2. AI shape: staged filtering, scoring, deduplication, and briefing.
 3. Safety shape: parse LLM output defensively, keep long jobs out of request handlers, and make worker tasks bounded.
 
-Do not build a Python bridge unless a specific future need appears. The new Next.js app should read from the new Postgres/Prisma data model directly.
+The new Next.js app reads from the Postgres/Prisma data model directly.
 
 The first real milestone should be a single-topic closed loop:
 
@@ -205,7 +203,6 @@ Reference behaviors worth reimplementing:
 | 11 | Source governance | Add candidate/active/muted/rejected flows, source observations, hit-rate/noise/duplicate metrics, source quality report. | User can review candidate sources and approve/reject/mute them. |
 | 12 | Commercial readiness layer | Add auth provider, organization switching, roles, usage logs, billing placeholders, rate/usage boundaries. | Data access is tenant-scoped and test-covered even if billing is not live. |
 | 13 | Deployment and operations | Add deployment docs, environment templates, worker process docs, health checks, logs, error reporting, backup guidance. | Web and worker can be deployed with documented env vars and health checks. |
-| 14 | Legacy cleanup | Archive or remove old Python prototype files once they stop being useful as reference material. | The repository's primary product path is TypeScript-only. |
 
 ## 8. Phase Dependencies
 
@@ -241,25 +238,25 @@ Phase 14
 
 Commercial readiness should influence the schema from Phase 2, but full auth, billing, and tenant administration do not need to block the single-topic MVP.
 
-## 9. Current Python Reference Value
+## 9. Reference Behavior Map
 
-The existing Python files are reference material for product behavior and edge cases. They should not constrain the new architecture.
+The original Python prototype (since removed during open-source cleanup) provided reference behavior for the new implementation. The mapping below records which new-stack module absorbed each behavior.
 
-| Current module | Reference value | New-stack direction |
+| Original module | Reference value | New-stack location |
 |---------------|-----------------|---------------------|
-| `sources/rss.py` | RSS item normalization shape. | Reimplement in `packages/sources`. |
-| `sources/manager.py` | Basic source iteration concept. | Replace with worker task execution over `Source` rows. |
-| `database.py` | Current single-table constraints and status fields. | Replace with Prisma models, migrations, and query helpers. |
-| `config.py` | Required env variable categories. | Replace with typed TypeScript env validation split by web/worker. |
-| `ai_service.py` | OpenAI-compatible provider flexibility, retry, timeout, JSON mode fallback. | Reimplement in `packages/ai`. |
-| `response_utils.py` | Defensive LLM output cleanup and recovery ideas. | Reimplement with typed schema validation and fixtures. |
-| `processors/l1_filter.py` | Staged relevance/noise filter idea. | Rebuild as topic-aware intelligence stage. |
-| `processors/l2_scorer.py` | Event summary/scoring/deduplication idea. | Rebuild as event extraction and briefing stage. |
-| `ranking.py` | Gravity ranking formula. | Reimplement in `packages/core`. |
-| `main.py` | Bounded long-running loop risk. | Replace with worker scheduler, retry limits, and task status. |
-| `index.html` | Minimal dashboard content expectations. | Replace with Next.js product UI. |
-| `prompts/*.md` | Prompt baseline and output schema examples. | Convert into versioned topic-aware prompt templates. |
-| `tests_*` | Important edge cases and safety checks. | Recreate as TypeScript tests where still relevant. |
+| `sources/rss.py` | RSS item normalization shape. | Reimplemented in `packages/sources`. |
+| `sources/manager.py` | Basic source iteration concept. | Replaced with worker task execution over `Source` rows. |
+| `database.py` | Current single-table constraints and status fields. | Replaced with Prisma models, migrations, and query helpers. |
+| `config.py` | Required env variable categories. | Replaced with typed TypeScript env validation split by web/worker. |
+| `ai_service.py` | OpenAI-compatible provider flexibility, retry, timeout, JSON mode fallback. | Reimplemented in `packages/ai`. |
+| `response_utils.py` | Defensive LLM output cleanup and recovery ideas. | Reimplemented with typed schema validation and fixtures. |
+| `processors/l1_filter.py` | Staged relevance/noise filter idea. | Rebuilt as topic-aware intelligence stage. |
+| `processors/l2_scorer.py` | Event summary/scoring/deduplication idea. | Rebuilt as event extraction and briefing stage. |
+| `ranking.py` | Gravity ranking formula. | Reimplemented in `packages/core`. |
+| `main.py` | Bounded long-running loop risk. | Replaced with worker scheduler, retry limits, and task status. |
+| `index.html` | Minimal dashboard content expectations. | Replaced with Next.js product UI. |
+| `prompts/*.md` | Prompt baseline and output schema examples. | Converted into versioned topic-aware prompt templates. |
+| `tests_*` | Important edge cases and safety checks. | Recreated as TypeScript tests where still relevant. |
 
 ## 10. Testing And Validation Plan
 
@@ -320,7 +317,6 @@ When implementation starts, update docs in the same change:
 | Deployment | Vercel for web, separate worker host | Fly.io/Railway/VPS full-stack, self-hosted Docker Compose. |
 | UI package | Keep components in `apps/web` first | Promote to `packages/ui` when reuse appears. |
 | ORM | Prisma | Drizzle if SQL control becomes more important than migration speed. |
-| Legacy placement | Move old Python into `legacy-python/` after scaffold | Delete it outright if it stops being useful. |
 
 ## 14. Sub-Agent Feasibility Review
 
@@ -328,15 +324,15 @@ An independent read-only sub-agent reviewed this plan direction against the curr
 
 The review was performed under a more conservative migration assumption. After the product decision that there are no active users or production data, the accepted conclusion is adjusted as follows:
 
-- The Node.js/Next.js technical direction is compatible with `SPEC.md` because the current Python implementation is explicitly described as a prototype engine.
+- The Node.js/Next.js technical direction is compatible with `SPEC.md` because the original Python implementation was explicitly described as a prototype engine (since removed during open-source cleanup).
 - The original review found a SPEC conflict because commercialization and multi-tenancy were listed as non-goals. That conflict has been resolved by updating `SPEC.md` to treat them as future-stage capabilities rather than MVP blockers.
-- Python does not need a bridge or gradual cutover. It remains useful only as reference material for RSS, L1/L2 AI, deduplication, gravity ranking, JSON output, response parsing, and runtime-safety behavior.
+- No Python bridge or gradual cutover was ever needed. Reference behavior has been absorbed into the TypeScript modules listed in section 9.
 - The highest-risk rebuild areas are the `news` single-table replacement, topic-aware prompt/profile model, feedback-to-preference model, and worker retry/idempotency semantics.
 
 Accepted optimizations after the greenfield decision:
 
 1. Keep Phase 0 for ongoing specification and architecture alignment.
-2. Do not add a Python bridge unless a concrete need appears.
+2. No Python bridge was ever added — the new stack reads Postgres/Prisma directly.
 3. Split AI work into adapter/parser implementation and pipeline implementation.
-4. Treat current parser, ranking, L1/L2, and runtime-safety behavior as useful references, not exact parity requirements.
+4. Treat original parser, ranking, L1/L2, and runtime-safety behavior as useful references, not exact parity requirements.
 5. Delay full commercial/auth/billing work until after the single-topic product loop is stable.
