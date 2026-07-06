@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "topics": [
+    {
+      "name": "AI 基础设施",
+      "description": "关注 AI 基础设施、模型供应商、Agent 平台和部署生态。",
+      "keywords": ["AI", "infrastructure", "agents", "模型", "算力", "LLM", "GPU"],
+      "sources": [
+        { "name": "OpenAI Blog", "url": "https://openai.com/blog/rss.xml" },
+        { "name": "Hugging Face Blog", "url": "https://huggingface.co/blog/feed.xml" },
+        { "name": "Google Research Blog", "url": "https://blog.research.google/feeds/posts/default" }
+      ]
+    }
+  ]
+}

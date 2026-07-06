@@ -12,6 +12,14 @@
 - Verification: 待运行 `CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build` 和 `pnpm db:seed` dry run 验证。
 - Notes / Risk: 默认 raw link 指向 `jerryisacat/wangchao` 仓库 main 分支，仓库改名或分支调整时需同步 `seed.ts` 中的 `DEFAULT_SEED_SOURCES_URL` 常量。create-only 意味着修改 `seed-sources.json` 后对已部署的旧 topic/source 不会生效，只有新 topic/source 才会被创建——这是刻意设计，避免重置用户决策。
 
+### 新增自用模式到商业模型文档
+
+- Cause: 用户要求管理员可以在后台配置自用模式，跳过所有订阅限制。
+- Changed: 更新 `docs/business-model.md` 新增 §3.5 自用模式章节；更新 §4 AI 调用策略流程图增加自用模式优先判断；更新 §5.2 Subscription 表新增 `isSelfHosted` 字段；更新 §8 前端页面新增自用模式设置页和隐藏规则。
+- Files: `docs/business-model.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 内容一致性检查通过，自用模式影响范围覆盖配额检查、AI 调用、前端展示和支付入口。
+- Notes / Risk: 自用模式仅 OWNER/ADMIN 可操作，开关记录审计日志，仅影响当前 Organization。
+
 ### 制定订阅制商业模型并写入文档
 
 - Cause: 用户要求明确定义 Free/Plus/Pro 三层订阅商业模型，作为 Phase 15 的开发依据，但不立即开发。

@@ -409,11 +409,13 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 - `DATABASE_URL` 由 `.env_example` 提供占位模板，真实值不得提交。
 - `WANGCHAO_DEFAULT_ORGANIZATION_SLUG`、`WANGCHAO_DEFAULT_ORGANIZATION_NAME`、`WANGCHAO_DEFAULT_USER_EMAIL`、`WANGCHAO_DEFAULT_USER_NAME` 是当前个人版默认工作区/用户配置；真实商业化前必须替换为正式 auth/session provider。
-- `WANGCHAO_SEED_SOURCE_NAME`、`WANGCHAO_SEED_SOURCE_URL` 控制 seed 创建的默认 RSS source。留空时 seed 不创建默认 RSS 源。
+- `WANGCHAO_SEED_SOURCES_URL` 指定多主题信源列表 JSON 的 URL（Gist raw 或任意公开 JSON），留空时默认拉本仓库 raw link `https://raw.githubusercontent.com/jerryisacat/wangchao/main/packages/db/seed-sources.json`。拉取失败时 fallback 到随部署 bundle 的本地 `packages/db/seed-sources.json`。
+- `WANGCHAO_SEED_SOURCE_NAME`、`WANGCHAO_SEED_SOURCE_URL` 是旧单源模式：两者同时设置时优先生效，会内联成单 topic 单 source 的列表，跳过列表解析。
+- `packages/db/seed-sources.json` 是仓库内维护的默认信源列表，schema：`{ version:1, topics:[{ name, description?, keywords?, sources:[{name,url}] }] }`。改这个文件后 push 即可在下次 seed 生效（前提是默认拉 raw link）。
 - `packages/db/prisma/schema.prisma` 是目标数据模型入口。
 - `packages/db/prisma.config.ts` 是 Prisma 7 CLI 配置入口，提供 schema、migration path、seed command 和 datasource URL。datasource URL 从 `DATABASE_URL` 环境变量读取，无硬编码默认值。
 - `packages/db/prisma/migrations/0001_init/migration.sql` 是首版 Postgres migration。
-- `packages/db/prisma/seed.ts` 创建默认工作区、默认用户、初始主题和 RSS source；默认 workspace/user 读取 `WANGCHAO_DEFAULT_*` 环境变量，默认 seed source 读取 `WANGCHAO_SEED_SOURCE_*` 环境变量。
+- `packages/db/prisma/seed.ts` 创建默认工作区、默认用户，然后按 seed 列表创建 topic 和 source。topic 和 source 都是 **create-only**：已存在的不被重置 status 或覆盖 profile，保证用户在 UI 上的 mute/reject 和 profile 编辑不被 seed 重置。
 - `packages/sources/src/index.ts` 支持 RSS/Atom 抓取，仅接受 HTTP/HTTPS URL。
 - `packages/db/src/client.ts` 懒加载 Prisma Client，并用 `@prisma/adapter-pg` 注入 Postgres adapter，避免 build-time 读取运行时数据库。
 - `packages/db/src/repositories.ts` 提供 tenant/topic scoped 查询 helper，后续新增查询应优先放在这里或同包内的清晰模块中。
