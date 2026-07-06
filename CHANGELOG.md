@@ -1,5 +1,7 @@
 # CHANGELOG.md
 
+> Deprecated: 本文件已废弃，不再继续维护。AI Agent 每轮修改审计请记录到 `AGENTS_CHANGELOGS.md`；项目当前技术路线以 `REFACTOR_PLAN.md` 为准。
+
 本文件记录 `望潮（Wangchao）` 私有分支的重要变更，帮助维护者和 AI Agents 快速理解项目状态。
 
 格式约定：
@@ -12,6 +14,8 @@
 ## [Unreleased]
 
 ### 2026-07-06
+
+**Node.js refactor plan and commercialization boundary**：因为下一阶段重构方向已经从 Python 本地原型转向 Node.js / TypeScript / Next.js / Postgres / Prisma 的产品化架构，并需要为未来多租户商业化预留空间，所以新增 `REFACTOR_PLAN.md`，记录目标技术栈、monorepo 结构、worker 边界、数据模型、绿地重构阶段、测试验证和主要风险。由于当前 fork 没有真实用户和生产数据，计划明确不需要 Python 过渡层或兼容迁移，旧 Python 实现只作为行为参考。`SPEC.md` 同步将“商业化、多租户、团队权限和付费系统”从长期非目标调整为 MVP 后续阶段能力：当前仍优先跑通个人/单用户主题情报工作台，但数据模型和工程边界需要预留 user / organization / membership / usage event 等商业化基础。
 
 **CI/Docker cleanup**：因为望潮下一阶段会基于新版 SPEC 重新设计运行、部署和自动化流程，现有 upstream 遗留的 Docker 镜像构建、GHCR 发布 workflow、容器入口脚本和旧 AI 编程指南都不应继续约束项目，所以删除 `.github/workflows/docker-publish.yml`、`Dockerfile`、`.dockerignore`、`start.sh` 与 `CLAUDE.md`，并同步清理 README / README-en / CODEGUIDE 中的 CI、Docker 和旧 AI 编程指南引用。
 

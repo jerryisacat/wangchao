@@ -1,0 +1,31 @@
+{
+  "name": "wangchao",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "build": "turbo run build",
+    "db:deploy": "pnpm --filter @wangchao/db exec prisma migrate deploy --schema prisma/schema.prisma",
+    "db:format": "pnpm --filter @wangchao/db db:format",
+    "db:generate": "pnpm --filter @wangchao/db db:generate",
+    "db:migrate": "pnpm --filter @wangchao/db db:migrate",
+    "db:seed": "pnpm --filter @wangchao/db db:seed",
+    "db:validate": "pnpm --filter @wangchao/db db:validate",
+    "dev": "turbo run dev --parallel",
+    "railway:web:build": "pnpm db:generate && pnpm --filter @wangchao/web build",
+    "railway:web:start": "pnpm --filter @wangchao/web start",
+    "railway:build": "pnpm db:generate && pnpm build",
+    "railway:predeploy": "if [ \"$WANGCHAO_RAILWAY_ROLE\" = \"web\" ]; then pnpm db:deploy && pnpm db:seed; else echo \"Skipping predeploy for $WANGCHAO_RAILWAY_ROLE\"; fi",
+    "railway:start": "if [ \"$WANGCHAO_RAILWAY_ROLE\" = \"worker\" ]; then pnpm railway:worker:start; else pnpm railway:web:start; fi",
+    "railway:worker:build": "pnpm db:generate && pnpm --filter @wangchao/worker build",
+    "railway:worker:start": "pnpm --filter @wangchao/worker start",
+    "worker:health": "pnpm --filter @wangchao/worker health",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "^2.6.3",
+    "typescript": "^5.9.3"
+  }
+}

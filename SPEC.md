@@ -6,7 +6,7 @@
 
 ## 1. 产品一句话
 
-**望潮（Wangchao）** 是一个会学习用户偏好的个人主题情报 Agent：用户只需要创建关注主题，系统自动发现和评估信息源，持续抓取公开信息，每天生成结构化情报简报；用户通过阅读、已读、收藏、反馈和导出等动作训练系统，让它越来越理解自己的关注重点和判断标准。
+**望潮（Wangchao）** 是一个会学习用户偏好的主题情报 Agent：用户只需要创建关注主题，系统自动发现和评估信息源，持续抓取公开信息，每天生成结构化情报简报；用户通过阅读、已读、收藏、反馈和导出等动作训练系统，让它越来越理解自己的关注重点和判断标准。
 
 ## 2. 产品目标
 
@@ -46,7 +46,9 @@
 
 ### 2.2 产品定位
 
-当前目标是**个人自用的主题情报工作台**，先不考虑商业化、多租户、团队权限和付费系统。
+当前落地优先级是**个人/单用户主题情报工作台**，先跑通主题、信源、采集、AI 分析、阅读状态、反馈学习和知识沉淀闭环。
+
+同时，产品架构需要为未来商业化、多租户、团队权限和付费系统预留边界。这些能力不应阻塞 MVP，也不应让早期产品变成复杂的企业系统；但数据模型、工程结构和后台任务设计不应把“只能个人自用”固化成长期限制。
 
 产品不应该以“添加 RSS 源”为核心入口，而应该以“创建关注主题”为核心入口。
 
@@ -80,6 +82,11 @@
 6. **可解释和可纠偏**
    - 系统需要说明为什么推荐某条信息、为什么信任某个来源、为什么降低某类内容权重。
    - 用户反馈应可追溯。
+
+7. **单用户优先，多租户可演进**
+   - MVP 可以先按单用户体验设计，减少登录、组织、权限和付费系统对核心闭环的干扰。
+   - 底层数据和服务边界应预留用户、组织、成员关系、资源归属、用量记录和权限检查位置。
+   - 后续商业化能力应作为独立阶段逐步打开，而不是反向重写核心数据模型。
 
 ## 4. 目标用户体验
 
@@ -450,7 +457,50 @@ Markdown 示例：
 
 ## 6. 数据模型目标
 
-可以先按单用户本地模式设计，不需要多用户认证。
+MVP 体验可以先按单用户本地模式设计，不需要完整多用户认证、团队协作和付费系统。但目标数据模型应预留未来商业化所需的资源归属边界，避免后续从个人工具迁移到多租户产品时重写核心表结构。
+
+### 6.0 商业化与租户边界预留
+
+以下模型可以在 MVP 中以最小形态存在，也可以作为后续阶段引入；但主题、信源、条目、情报事件、反馈和导出记录的设计应能自然挂接这些边界。
+
+```text
+users
+- id
+- email
+- name
+- created_at
+- updated_at
+
+organizations
+- id
+- name
+- slug
+- created_at
+- updated_at
+
+memberships
+- id
+- user_id
+- organization_id
+- role              # owner/admin/member/viewer
+- created_at
+- updated_at
+
+usage_events
+- id
+- organization_id
+- user_id
+- event_type        # ai_call/fetch/export/briefing/source_discovery
+- quantity
+- metadata_json
+- created_at
+```
+
+预留原则：
+
+- 单用户 MVP 可以创建默认用户和默认组织，不要求真实注册登录。
+- 主题、信源、条目、情报事件、反馈、偏好记忆和导出记录应能关联到 `user_id` 或 `organization_id`。
+- 完整权限系统、计费系统和团队管理 UI 放到后续阶段，不阻塞主题情报闭环。
 
 ### 6.1 `topics`
 
@@ -663,34 +713,35 @@ active sources
 
 ## 8. 当前代码与目标架构的关系
 
-当前代码中可复用的部分：
+当前仓库来自 GitHub fork，目前没有真实用户、生产数据或外部兼容承诺。因此后续实现可以采用绿地重构：当前 Python 代码应作为原型参考，而不是必须渐进迁移或兼容保留的运行系统。
 
-| 当前模块 | 可复用方向 |
-|----------|------------|
-| `sources/rss.py` | RSS fetcher adapter |
-| `database.py` | SQLite 本地存储起点，但需要 schema 重构 |
-| `processors/l1_filter.py` | 可演进为主题相关性/噪音过滤阶段 |
-| `processors/l2_scorer.py` | 可演进为情报事件抽取、摘要、评分阶段 |
-| `ai_service.py` | OpenAI-compatible LLM adapter |
-| `response_utils.py` | LLM JSON 解析与容错工具 |
-| `ranking.py` | 可作为 importance/time ranking 的初始实现 |
-| `index.html` | 可作为静态 dashboard 原型，但目标需要交互式前端 |
-| `tests_*` | 回归测试起点 |
+当前代码中值得参考的部分：
 
-需要重构的部分：
+| 当前模块 | 参考价值 |
+|----------|----------|
+| `sources/rss.py` | RSS fetcher adapter 和条目标准化思路 |
+| `processors/l1_filter.py` | 主题相关性/噪音过滤的阶段化思路 |
+| `processors/l2_scorer.py` | 情报事件抽取、摘要、评分和去重思路 |
+| `ai_service.py` | OpenAI-compatible LLM adapter、重试、JSON mode fallback |
+| `response_utils.py` | LLM JSON 解析、清洗和容错思路 |
+| `ranking.py` | importance/time ranking 的初始算法参考 |
+| `index.html` | 早期 dashboard 信息密度和字段参考 |
+| `tests_*` | 运行时安全、schema 兼容、解析容错等边界样例 |
 
-1. `news` 单表需要拆成 topic/source/item/event/state/feedback/preference 等更明确的模型。
-2. `RSS_FEEDS` 不应继续作为主要产品入口，应迁移为 source registry / source packs / discovered sources。
-3. Prompt 文件不应只有全局 `user_profile.md`，需要按 topic 生成 topic profile。
-4. 静态 HTML 需要演进为可交互 dashboard，至少支持已读、收藏、反馈、导出。
-5. 主循环需要从“全局抓取所有 RSS”演进为按 topic/source/task 的调度。
-6. 输出需要从单一 `dashboard.json` 演进为 topic-scoped API/JSON/briefing/export。
+可以直接重建的部分：
+
+1. `news` 单表不需要保留，目标模型应直接设计为 topic/source/item/event/state/feedback/preference 等明确实体。
+2. `RSS_FEEDS` 不应继续作为主要产品入口，应直接重建为 source registry / source packs / discovered sources。
+3. Prompt 系统不应保留全局 `user_profile.md` 结构，应直接重建为 topic profile + rules + preference memory。
+4. 静态 HTML 不需要渐进演进，应直接替换为可交互 dashboard。
+5. Python 主循环不需要兼容保留，应直接替换为 worker / task runner。
+6. 单一 `dashboard.json` 输出不需要作为新系统契约，应直接转为 topic-scoped API / briefing / export。
 
 ## 9. MVP 分阶段建议
 
-### Phase 0：规格与当前实现对齐
+### Phase 0：规格与目标架构对齐
 
-目标：明确本文档为开发方向，现有实现为引擎原型。
+目标：明确本文档为开发方向，现有实现为可参考的引擎原型，目标架构可以按 Node.js / TypeScript 产品化方向重新设计。
 
 产出：
 
@@ -797,16 +848,44 @@ active sources
 - 用户可以查看某主题过去 7/30 天关键进展。
 - 系统可以生成结构化周报。
 
+### Phase 7：商业化与多租户基础
+
+目标：在核心个人使用闭环稳定后，将预留边界打开为可商业化的产品基础。
+
+实现：
+
+- 引入真实用户认证。
+- 引入 organization / membership / role。
+- 为 topic/source/item/event/feedback/export 增加租户级访问边界。
+- 记录 AI 调用、抓取、导出、简报生成等 usage events。
+- 增加基础配额、审计日志和 billing placeholder。
+
+验收：
+
+- 不同 organization 的数据默认隔离。
+- 用户只能访问自己有权限的主题和情报。
+- 系统可以统计每个 organization 的用量。
+- 商业化能力不破坏单用户本地使用体验。
+
 ## 10. 非目标与边界
 
-当前阶段不做：
+当前 MVP 不做完整实现：
 
-- 商业化、付费、团队多租户。
-- 复杂权限系统。
+- 真实收费、支付结算和订阅管理。
+- 完整团队协作、组织管理后台和复杂权限系统。
 - 企业私有数据接入。
 - 大规模爬虫集群。
 - 完全自动相信新信源。
 - 替代人工判断的投资/政策决策。
+
+不再作为长期非目标：
+
+- 商业化。
+- 多租户。
+- 团队权限。
+- 付费系统。
+
+这些能力应作为后续阶段演进，但不应干扰早期个人主题情报工作台的核心体验。
 
 必须避免：
 
@@ -818,7 +897,7 @@ active sources
 
 ## 11. 成功标准
 
-个人自用版本成功的标准：
+MVP 成功标准：
 
 1. 用户可以用自然语言创建主题，而不是手动配置 RSS。
 2. 每天输出的简报大多数内容确实值得看。
@@ -827,12 +906,13 @@ active sources
 5. 系统能推荐新的候选信源，并解释推荐原因。
 6. 用户可以把重要情报沉淀到 Obsidian/Markdown。
 7. 每个主题可以形成连续时间线，而不是孤立新闻卡片。
+8. 数据模型和工程边界不阻碍后续引入用户、组织、权限、用量和付费能力。
 
 ## 12. 产品描述与功能清单
 
 ### 12.1 产品描述
 
-**望潮** 是一个以用户关注主题为中心的个人 AI 情报系统。它自动发现并评估相关信息源，持续抓取公开信息，使用 LLM 进行相关性判断、去重、摘要、评分和结构化整理；用户通过阅读状态、反馈和导出行为训练系统，使其逐步形成个性化的关注边界和信源偏好，并将重要信息沉淀为长期知识资产。
+**望潮** 是一个以用户关注主题为中心、先面向个人使用并可演进为多租户商业化产品的 AI 情报系统。它自动发现并评估相关信息源，持续抓取公开信息，使用 LLM 进行相关性判断、去重、摘要、评分和结构化整理；用户通过阅读状态、反馈和导出行为训练系统，使其逐步形成个性化的关注边界和信源偏好，并将重要信息沉淀为长期知识资产。
 
 ### 12.2 大块功能
 

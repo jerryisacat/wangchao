@@ -16,3 +16,12 @@ test_*.py
 dashboard.json
 top5.json
 data/*
+
+# Node / TypeScript workspace
+node_modules/
+.pnpm-store/
+.next/
+.turbo/
+dist/
+coverage/
+*.tsbuildinfo

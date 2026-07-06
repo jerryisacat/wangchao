@@ -1,0 +1,441 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum TopicStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum SourceKind {
+  RSS
+  WEB
+}
+
+enum SourceStatus {
+  CANDIDATE
+  ACTIVE
+  MUTED
+  REJECTED
+}
+
+enum ItemStatus {
+  FETCHED
+  FILTERED
+  ANALYZED
+  DUPLICATE
+  ERROR
+}
+
+enum EventStatus {
+  UNREAD
+  READ
+  SAVED
+  DISMISSED
+  ARCHIVED
+}
+
+enum FeedbackKind {
+  READ
+  SAVE
+  DISMISS
+  EXPORT
+  SOURCE_APPROVE
+  SOURCE_REJECT
+  CATEGORY_UP
+  CATEGORY_DOWN
+}
+
+enum BriefingPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum ExportFormat {
+  MARKDOWN
+  PDF
+  JSON
+}
+
+enum TaskRunType {
+  SOURCE_FETCH
+  AI_RELEVANCE
+  AI_EVENT_EXTRACTION
+  BRIEFING_GENERATION
+  EXPORT_GENERATION
+}
+
+enum TaskRunStatus {
+  PENDING
+  RUNNING
+  SUCCEEDED
+  FAILED
+  CANCELED
+}
+
+enum UsageEventType {
+  AI_CALL
+  FETCH
+  EXPORT
+  BRIEFING
+  SOURCE_GOVERNANCE
+  WEB_ACTION
+}
+
+model User {
+  id                String             @id @default(cuid())
+  email             String             @unique
+  name              String?
+  memberships       Membership[]
+  topics            Topic[]
+  itemStates        UserItemState[]
+  feedbackEvents    FeedbackEvent[]
+  preferenceMemory  PreferenceMemory[]
+  exportEvents      ExportEvent[]
+  usageEvents       UsageEvent[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+}
+
+model Organization {
+  id                 String              @id @default(cuid())
+  name               String
+  slug               String              @unique
+  memberships        Membership[]
+  topics             Topic[]
+  sources            Source[]
+  items              Item[]
+  intelligenceEvents IntelligenceEvent[]
+  feedbackEvents     FeedbackEvent[]
+  preferenceMemory   PreferenceMemory[]
+  briefings          Briefing[]
+  exportEvents       ExportEvent[]
+  sourceObservations SourceObservation[]
+  taskRuns           TaskRun[]
+  usageEvents        UsageEvent[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+model Membership {
+  id             String         @id @default(cuid())
+  organizationId String
+  userId         String
+  role           MembershipRole @default(MEMBER)
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+model Topic {
+  id                 String              @id @default(cuid())
+  organizationId     String
+  ownerUserId        String?
+  name               String
+  description        String?
+  profile            Json?
+  status             TopicStatus         @default(ACTIVE)
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  ownerUser          User?               @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  sources            Source[]
+  items              Item[]
+  intelligenceEvents IntelligenceEvent[]
+  feedbackEvents     FeedbackEvent[]
+  preferenceMemory   PreferenceMemory[]
+  briefings          Briefing[]
+  exportEvents       ExportEvent[]
+  sourceObservations SourceObservation[]
+  taskRuns           TaskRun[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([organizationId, name])
+  @@index([organizationId, status])
+  @@index([ownerUserId])
+}
+
+model Source {
+  id                 String              @id @default(cuid())
+  organizationId     String
+  topicId            String
+  kind               SourceKind          @default(RSS)
+  status             SourceStatus        @default(CANDIDATE)
+  name               String
+  url                String
+  canonicalUrl       String
+  description        String?
+  trustScore         Float               @default(0)
+  qualityScore       Float               @default(0)
+  lastFetchedAt      DateTime?
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic              Topic               @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  items              Item[]
+  feedbackEvents     FeedbackEvent[]
+  sourceObservations SourceObservation[]
+  taskRuns           TaskRun[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([topicId, canonicalUrl])
+  @@index([organizationId, status])
+  @@index([topicId, status])
+}
+
+model Item {
+  id                 String              @id @default(cuid())
+  organizationId     String
+  topicId            String
+  sourceId           String
+  status             ItemStatus          @default(FETCHED)
+  title              String
+  url                String
+  canonicalUrl       String
+  summary            String?
+  author             String?
+  publishedAt        DateTime?
+  fetchedAt          DateTime            @default(now())
+  contentHash        String?
+  rawContent         String?
+  rawMetadata        Json?
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic              Topic               @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  source             Source              @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  intelligenceEvents IntelligenceEvent[]  @relation("PrimaryItem")
+  feedbackEvents     FeedbackEvent[]
+  taskRuns           TaskRun[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([topicId, canonicalUrl])
+  @@index([organizationId, status])
+  @@index([topicId, status, publishedAt])
+  @@index([sourceId, fetchedAt])
+  @@index([contentHash])
+}
+
+model IntelligenceEvent {
+  id             String          @id @default(cuid())
+  organizationId String
+  topicId        String
+  primaryItemId  String?
+  status         EventStatus     @default(UNREAD)
+  title          String
+  summary        String
+  category       String?
+  score          Float           @default(0)
+  gravityScore   Float           @default(0)
+  eventHash      String?
+  explanation    String?
+  occurredAt     DateTime?
+  rawAiResponse  Json?
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic          Topic           @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  primaryItem    Item?           @relation("PrimaryItem", fields: [primaryItemId], references: [id], onDelete: SetNull)
+  userStates     UserItemState[]
+  feedbackEvents FeedbackEvent[]
+  briefings      Briefing[]      @relation("BriefingEvents")
+  exportEvents   ExportEvent[]
+  taskRuns       TaskRun[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([topicId, eventHash])
+  @@index([organizationId, status])
+  @@index([topicId, status, gravityScore])
+  @@index([primaryItemId])
+}
+
+model UserItemState {
+  id             String            @id @default(cuid())
+  userId         String
+  eventId        String
+  status         EventStatus        @default(UNREAD)
+  saved          Boolean            @default(false)
+  readAt         DateTime?
+  dismissedAt    DateTime?
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event          IntelligenceEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([userId, eventId])
+  @@index([eventId])
+  @@index([userId, status])
+}
+
+model FeedbackEvent {
+  id             String             @id @default(cuid())
+  organizationId String
+  topicId        String
+  userId         String?
+  eventId        String?
+  itemId         String?
+  sourceId       String?
+  kind           FeedbackKind
+  value          Int?
+  reason         String?
+  metadata       Json?
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic          Topic              @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  user           User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  event          IntelligenceEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  item           Item?              @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  source         Source?            @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  createdAt      DateTime           @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([topicId, kind])
+  @@index([userId])
+  @@index([eventId])
+  @@index([sourceId])
+}
+
+model PreferenceMemory {
+  id             String       @id @default(cuid())
+  organizationId String
+  topicId        String
+  userId         String?
+  key            String
+  value          Json
+  explanation    String
+  confidence     Float        @default(0)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic          Topic        @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  user           User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([topicId, userId, key])
+  @@index([organizationId, topicId])
+}
+
+model Briefing {
+  id             String              @id @default(cuid())
+  organizationId String
+  topicId        String
+  period         BriefingPeriod      @default(DAILY)
+  title          String
+  content        String
+  markdown       String?
+  generatedAt    DateTime            @default(now())
+  rangeStart     DateTime
+  rangeEnd       DateTime
+  metadata       Json?
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic          Topic               @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  events         IntelligenceEvent[] @relation("BriefingEvents")
+  exportEvents   ExportEvent[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([organizationId, generatedAt])
+  @@index([topicId, period, generatedAt])
+}
+
+model ExportEvent {
+  id             String             @id @default(cuid())
+  organizationId String
+  topicId        String
+  userId         String?
+  eventId        String?
+  briefingId     String?
+  format         ExportFormat       @default(MARKDOWN)
+  fileName       String?
+  contentHash    String?
+  metadata       Json?
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic          Topic              @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  user           User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  event          IntelligenceEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  briefing       Briefing?          @relation(fields: [briefingId], references: [id], onDelete: SetNull)
+  createdAt      DateTime           @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([topicId, format])
+  @@index([userId])
+}
+
+model SourceObservation {
+  id             String       @id @default(cuid())
+  organizationId String
+  topicId        String
+  sourceId       String?
+  candidateUrl   String?
+  hitRate        Float        @default(0)
+  noiseRate      Float        @default(0)
+  duplicateRate  Float        @default(0)
+  evidence       Json?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic          Topic        @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  source         Source?      @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  observedAt     DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+
+  @@index([organizationId, observedAt])
+  @@index([topicId, observedAt])
+  @@index([sourceId])
+}
+
+model TaskRun {
+  id             String        @id @default(cuid())
+  organizationId String
+  topicId        String?
+  sourceId       String?
+  itemId         String?
+  eventId        String?
+  type           TaskRunType
+  status         TaskRunStatus @default(PENDING)
+  attempt        Int           @default(0)
+  maxAttempts    Int           @default(3)
+  scheduledAt    DateTime      @default(now())
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  errorMessage   String?
+  input          Json?
+  output         Json?
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic          Topic?        @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  source         Source?       @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  item           Item?         @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  event          IntelligenceEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([organizationId, status, scheduledAt])
+  @@index([topicId, type])
+  @@index([sourceId, status])
+}
+
+model UsageEvent {
+  id             String         @id @default(cuid())
+  organizationId String
+  userId         String?
+  type           UsageEventType
+  quantity       Int            @default(1)
+  unit           String
+  subjectType    String?
+  subjectId      String?
+  metadata       Json?
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt      DateTime       @default(now())
+
+  @@index([organizationId, type, createdAt])
+  @@index([userId, createdAt])
+}

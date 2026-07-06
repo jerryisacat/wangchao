@@ -1,0 +1,261 @@
+# AGENTS_CHANGELOGS.md
+
+本文件是 AI Agent 工作审计日志，替代已废弃的 `CHANGELOG.md`。每条记录说明修改的原因、实际变更、涉及文件、验证方式和风险。
+
+## 2026-07-07
+
+### 生产环境清理：移除开发/测试内容
+
+- Cause: 代码中存在大量开发阶段残留内容（预览模式降级、硬编码凭据、fixture 协议、console.* 日志、测试 harness 文件），需要清理后才能安全部署到生产环境。
+- Changed: 
+  - **CRITICAL**: 移除 `topic-source-data.ts` 的预览模式降级，`DATABASE_URL` 未配置时直接抛出错误。
+  - **CRITICAL**: 移除 `prisma.config.ts` 的硬编码 `127.0.0.1:5432` Postgres URL 和 `wangchao:wangchao` 凭据。
+  - **CRITICAL**: 移除 `packages/sources` 的 `fixture:` 协议支持、`buildFixtureRssFeed()`、`fixtureItemsFor()` 和所有硬编码 fixture 数据。
+  - **HIGH**: 删除 `packages/core/src/intelligence.fixtures.ts` 和 `packages/ai/src/parser.fixtures.ts`（未被任何 source 导入的测试 harness）。
+  - **HIGH**: 移除 `packages/core` 的 `getRuntimeLabel()` 函数，worker `describeWorker()` 和 `WorkerHealthCheckResult` 不再使用 `runtime` 字段。
+  - **HIGH**: 替换 `console.log/warn/error` 为 `process.stdout.write` / `process.stderr.write`。
+  - **MEDIUM**: `.env_example` 凭据改为占位符，seed source 改为可选。
+  - **MEDIUM**: 表单 placeholder 中的真实服务名（Hacker News、hnrss.org）改为通用示例文案。
+- Files: `apps/web/src/lib/topic-source-data.ts`, `packages/db/prisma.config.ts`, `packages/sources/src/index.ts`, `packages/core/src/intelligence.fixtures.ts` (deleted), `packages/ai/src/parser.fixtures.ts` (deleted), `packages/core/src/index.ts`, `apps/worker/src/index.ts`, `apps/web/src/app/actions.ts`, `apps/web/src/app/topics/new/page.tsx`, `apps/web/src/app/sources/page.tsx`, `.env_example`, `CODEGUIDE.md`, `AGENTS_CHANGELOGS.md`, `DEVELOPE_LOGS.md`
+- Verification: 已通过 `CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、`git diff --check`。
+
+### 前端 Kinetic Intelligence 重构
+
+- Cause: 用户要求按 `FRONTEND.md` 完整三步计划重构前端：Token 对齐 → 组件增强 → 首页重构 + 页面拆分。
+- Changed: 新建 13 个文件（AppShell、TopNav、IntelligenceCard/Feed、TopicFilter、EmptyState、StatusBanner、PageHeader、5 个子页面），修改 8 个文件（Badge accent tone、Card variant prop、250+ 行新 CSS、layout 使用 AppShell、page.tsx 从 1045 行重写为 ~120 行情报流、actions redirect 路径适配）。
+- Files: 参见本文件上方列表。
+- Verification: 已通过 `CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、`git diff --check`。9 个路由正确编译：`/`、`/topics/new`、`/sources`、`/briefings`、`/saved`、`/preferences`、`/api/health`、`/exports/briefings/[briefingId]`、`/exports/events/[eventId]`。
+
+### 补齐对客前表单反馈和内部协议过滤
+
+- Cause: 用户要求一次性修复产品中残留的开发阶段代码和不当描述，并在全部修完后再部署；继续审计时发现 Server Actions 失败只写服务端日志、worker health 使用 `phase` 字段、运行时元数据保留 `deterministic-phase-*`、离线源可能把 `fixture://` 暴露到页面和 Markdown 导出。
+- Changed: Server Actions 成功/失败后通过 `notice` / `error` URL 参数回跳并在首页显示用户可见反馈；worker health 字段从 `phase` 改为 `runtime`；运行时元数据改为 `explainable-rules`；首页示例文案改为中文产品语境；README/README-en 改为个人版边界说明；首页来源链接和详情原文链接只允许 HTTP/HTTPS；事件 Markdown 导出过滤非 HTTP/HTTPS source feed；离线 RSS fixture 文案去除本地/确定性测试口吻；同步 `CODEGUIDE.md`。
+- Files: `apps/web/src/app/actions.ts`, `apps/web/src/app/page.tsx`, `apps/web/src/app/globals.css`, `apps/web/src/app/api/health/route.ts`, `apps/worker/src/index.ts`, `packages/core/src/index.ts`, `packages/sources/src/index.ts`, `README.md`, `README-en.md`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已通过 `CI=true pnpm --filter @wangchao/web typecheck`、`CI=true pnpm --filter @wangchao/worker typecheck`、`CI=true pnpm --filter @wangchao/core typecheck`、`CI=true pnpm --filter @wangchao/sources typecheck`、`CI=true pnpm --filter @wangchao/web build`、`CI=true pnpm --filter @wangchao/worker build`、`CI=true pnpm --filter @wangchao/core build`、`CI=true pnpm --filter @wangchao/core test`、`CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、`git diff --check`；本地浏览器 smoke 确认首页无高风险残留、无效 RSS 提交显示“请输入有效的 HTTP 或 HTTPS RSS 地址。”、有效主题/RSS 提交显示“主题已创建，已绑定 RSS 信源。”、事件收藏动作显示“情报状态已更新。”；本地 worker health 返回 database `ok` 和 `runtime`；本地 worker 用离线源生成 2 条事件和 1 份简报；首页不再显示 `fixture://` 链接；事件 Markdown 导出不再输出 `Source feed: fixture://...`。
+- Notes / Risk: 后续需要在额度恢复后完成最终 Railway 部署和生产 smoke；本轮最后的本地网络复扫和 Railway 操作被当前审批系统额度限制拦截，未触发新的 Railway 部署，符合用户“全部修完后再部署”的要求。
+
+### 记录首页未读情报流重构计划
+
+- Cause: 用户确认当前首页应从工程控制台改为聚焦未读情报的信息流，并要求把重构计划写入文档。
+- Changed: 更新 `FRONTEND.md`，明确首页定位为未读情报阅读流；新增顶部导航、中间限宽单列、首页保留/移出模块、情报卡片信息结构、新增主题与信源管理二级入口、首页重构实施顺序等规则。
+- Files: `FRONTEND.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `git diff --check`；已用 `rg` 确认 `首页重构计划`、`未读情报阅读流`、`顶部导航 + 中间限宽` 和本审计标题写入目标文档。
+- Notes / Risk: 本轮只写入文档计划，未修改 `apps/web` 实现；后续落地时需要同步 `CODEGUIDE.md`、运行前端验证并做移动端视觉检查。
+
+### 移除首页伪交互并接入 URL 筛选
+
+- Cause: 继续推进对客前清理时发现首页仍有搜索、刷新、新主题、筛选 tabs 和侧栏导航等看起来可交互但实际无行为的控件；这类伪交互会降低正式对客可信度。
+- Changed: 首页搜索改为 `q` URL 参数过滤情报；未读情报 tabs 改为 `view=all|high|saved` 链接；刷新改为真实首页链接；新主题改为跳转到创建主题表单；侧栏导航从 button 改为静态状态；信源治理状态 badge 改为中文状态文案；补充用量单位映射；同步 `CODEGUIDE.md`。
+- Files: `apps/web/src/app/page.tsx`, `apps/web/src/app/globals.css`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已通过 `CI=true pnpm --filter @wangchao/web typecheck`、`CI=true pnpm --filter @wangchao/web build`、`CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、`git diff --check`；build 输出确认 `/` 仍为 dynamic route；伪交互扫描确认首页不再保留通知、静态筛选按钮或静态 tabs 使用；已部署 Web deployment `a06032b1-7689-462b-be18-c6ecf1b3cbbe` 且状态 `SUCCESS`；`/api/health` 返回 HTTP 200、database `ok`、Railway edge `hkg1`；生产首页、`?view=high`、`?view=saved`、`?q=Hacker` 页面可访问，HTML 扫描无 `Fixture|fixture://|DATABASE_URL|Prisma/Postgres|Phase|MVP|Server Action|Default Organization|owner@example` 高风险命中，并确认存在 `Hacker News 100+`、`工作区已连接`、`name="q"` 和 `id="new-topic"`。
+- Notes / Risk: 已用 Railway CLI 将 `wangchao-web`、`wangchao-worker`、`Postgres` 统一 scale 到 `southeast-asia=1`，实际 region ID 为 `asia-southeast1-eqsg3a`；后续仍需补浏览器级真实点击、导出下载和表单提交流程验证。
+
+## 2026-07-06
+
+### 清理对客前开发残留和不当描述
+
+- Cause: 当前产品准备正式对客，需要移除用户可见的开发阶段文案、fixture 假数据导出和旧配置误导，降低生产使用时的误解风险。
+- Changed: 首页指标、状态条、卡片说明、信源治理和用量审计文案改为产品语言；无数据库/数据库异常时改为空工作区预览，不再展示样例情报；事件/简报导出 route 在无数据库时返回 503，不再生成 fixture Markdown；默认 seed 和 workspace 值改为个人版正式语义与真实 RSS，并在 seed 中清理旧 `AI Infrastructure` / `Wangchao Fixture RSS` 数据；重写 `.env_example` 移除旧 Python 原型变量；同步 README、部署文档和 `CODEGUIDE.md`。
+- Files: `.env_example`, `README.md`, `README-en.md`, `docs/deployment.md`, `CODEGUIDE.md`, `apps/web/src/app/page.tsx`, `apps/web/src/lib/topic-source-data.ts`, `apps/web/src/app/exports/events/[eventId]/route.ts`, `apps/web/src/app/exports/briefings/[briefingId]/route.ts`, `packages/core/src/index.ts`, `packages/db/src/repositories.ts`, `packages/db/prisma/seed.ts`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行多轮 `rg` 扫描用户可见和运行时代码中的 `Fixture`、`Phase`、`MVP`、`DATABASE_URL 未配置`、`Prisma/Postgres`、`Default Organization`、`owner@example` 等残留，最终高风险扫描只剩历史审计和离线 fixture 协议说明；已通过 `git diff --check`、`CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、`CI=true pnpm --filter @wangchao/sources typecheck`、`CI=true pnpm --filter @wangchao/sources test`、`CI=true pnpm --filter @wangchao/db typecheck`、`CI=true pnpm --filter @wangchao/db build`；已设置 Railway Web/Worker 的 `WANGCHAO_SEED_SOURCE_*` 为真实 RSS；最终 Web deployment `1f7a1343-490e-419e-a1bc-1ce3260fb346` 为 `SUCCESS`，生产 `/api/health` 返回 HTTP 200、database `ok`、edge `hkg1`；生产首页 HTML 扫描 `Fixture|fixture://|DATABASE_URL|Phase|MVP|Server Action|Default Organization|owner@example` 无命中，并确认出现 `Hacker News 100+` / `https://hnrss.org/newest?points=100`；Worker deployment `7e08c762-230a-4227-b70a-b67e0c1bc0d9` 为 `SUCCESS`，日志显示 `fetchedSources=1`、`insertedOrUpdatedItems=20`、`createdOrUpdatedEvents=9`、`generatedBriefings=1`、`failedSources=0`。
+- Notes / Risk: 过程中有一次 Web deployment `31f81575-198f-470c-a2ce-78cb739449cd` 因 seed topic upsert 唯一键冲突失败，已修复 upsert where 条件并用后续 deployment 恢复；`packages/sources` 与测试 fixture 文件仍保留离线 fixture 能力，属于测试/离线验证入口；历史审计日志仍保留旧词汇以保持审计真实性；Worker Cron、真实登录/session provider 和浏览器级生产交互验证仍是上市前缺口。
+
+### 迁移 Railway 到 southeast-asia 并修复生产首页预渲染
+
+- Cause: 用户要求优先香港/日本，并明确将 Railway 部署全部迁移到 `southeast-asia`；迁移后生产检查发现首页仍显示 fixture fallback，需要排查生产环境问题。
+- Changed: 使用 Railway CLI 将 `wangchao-web`、`wangchao-worker`、`Postgres` scale 到 `southeast-asia`，实际 region ID 为 `asia-southeast1-eqsg3a`；发现 `apps/web/src/app/page.tsx` 被 Next.js 静态预渲染，导致 build-time 无 `DATABASE_URL` 时固化 fixture banner；新增 `export const dynamic = "force-dynamic"`；重新部署 Web；同步 `CODEGUIDE.md`、`docs/deployment.md`、`DEVELOPE_LOGS.md`。
+- Files: `apps/web/src/app/page.tsx`, `CODEGUIDE.md`, `docs/deployment.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: `railway service status` 确认 `wangchao-web` deployment `b41e26f3-53eb-43b3-b9c2-0630703f4b31` 为 `SUCCESS`、`Postgres` deployment `22e8c2d1-02c6-43c4-b44a-361be85e95aa` 为 `SUCCESS`、`wangchao-worker` deployment `77041cd0-1d8f-4e06-9faf-82a834143709` 为 `SUCCESS`；`curl https://wangchao-web-production.up.railway.app/api/health` 返回 HTTP 200、database `ok`、Railway edge `hkg1`；首页 HTTP 200 且内容包含“已连接 Prisma/Postgres 数据边界”；本地 `CI=true pnpm --filter @wangchao/web build` 显示 `/` 为 dynamic route，重跑 `CI=true pnpm --filter @wangchao/web typecheck` 通过，`git diff --check` 通过。
+- Notes / Risk: Worker 在 Postgres 切区期间出现过一次 `P1001 DatabaseNotReachable`，随后成功执行一轮；Worker 当前仍是部署后运行一次并停止，尚未配置 Railway Cron；首页动态渲染修复降低了 build-time env 固化风险，但后续还需要浏览器级交互验证。
+
+### 执行 Railway 生产部署
+
+- Cause: 用户要求完成 Railway 部署并提供生产测试链接，用于后续生产环境排查。
+- Changed: 安装并登录 Railway CLI；创建 Railway project `wangchao`；添加 `Postgres`、`wangchao-web`、`wangchao-worker` 服务；新增 root `railway.json` 和 root Railway dispatcher scripts，使本地未提交代码可通过 `railway up --service ...` 部署到不同服务；设置 Web/Worker 环境变量；部署 Web 和 Worker；同步部署文档、代码结构和开发审计。
+- Files: `package.json`, `railway.json`, `docs/deployment.md`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: Railway Web deployment `e8e52339-cb02-4f80-827f-ca91f7cbb558` 状态 `SUCCESS`；Web logs 显示 `pnpm db:deploy` 成功应用 `0001_init` migration、`pnpm db:seed` 成功、Next.js 在 Railway 注入端口启动；Worker deployment `d2ee612a-50a4-421c-895b-90c1cdf67ba9` 状态 `SUCCESS` 且 stopped=true，logs 显示 worker 执行一轮，`fetchedSources=1`、`insertedOrUpdatedItems=2`、`createdOrUpdatedEvents=2`、`generatedBriefings=1`、`failedSources=0`。
+- Notes / Risk: 生成 Web 公网域名的 `railway domain --service wangchao-web --port 3000 --json` 命令被当前审批系统拦截，尚未生成测试链接；Worker 当前是部署后执行一轮并停止，还不是 Railway Cron；Railway TypeScript SDK 包名按 CLI 提示安装失败，未使用 `railway config apply`。
+
+### 准备 Railway 部署配置
+
+- Cause: 用户决定个人版先使用 Railway 部署，需要为当前 TypeScript monorepo 准备可部署的 Web、Worker Cron、Postgres migration/seed 和操作文档。
+- Changed: 新增 Railway Web 与 Worker Cron Config as Code 示例；新增 Railway 专用 build/start 脚本和 `db:deploy` 脚本；为 Web/Worker package 补生产 start 命令；更新部署文档、Railway 操作说明和 `CODEGUIDE.md` 的目录/命令说明；补充分阶段审计记录。
+- Files: `package.json`, `apps/web/package.json`, `apps/worker/package.json`, `deploy/railway/README.md`, `deploy/railway/web.railway.json`, `deploy/railway/worker-cron.railway.json`, `docs/deployment.md`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已通过 Railway JSON 解析检查、`CI=true pnpm db:validate`、`CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、`CI=true pnpm railway:web:build`、`CI=true pnpm railway:worker:build`、`git diff --check`。
+- Notes / Risk: 本轮只准备仓库侧部署资产，没有登录 Railway 或执行真实部署；Railway Postgres 变量绑定、服务 config file path、生效后的 pre-deploy migration、Cron 执行、生产域名 `/api/health` 和备份策略仍需上线时验证。
+
+### 推进个人版数据库和 worker 可测性
+
+- Cause: 用户明确先不处理商业化，要求开始编码完成个人自用版本；当前首要阻塞是数据库迁移不稳定、worker 依赖公网 RSS、Web 表单错误会导致页面崩溃。
+- Changed: 修复 `0001_init` 中 `_BriefingEvents` 与 Prisma schema 的漂移；新增 `fixture://wangchao/ai-infrastructure` 离线 RSS feed；seed 默认源改为 fixture 且支持 `WANGCHAO_SEED_SOURCE_NAME` / `WANGCHAO_SEED_SOURCE_URL` 覆盖；Web Server Actions 捕获错误并记录警告，避免表单校验失败触发 error boundary；同步 `.env_example`、`CODEGUIDE.md` 和 `DEVELOPE_LOGS.md`。
+- Files: `.env_example`, `packages/db/prisma/migrations/0001_init/migration.sql`, `packages/db/prisma/seed.ts`, `packages/sources/src/index.ts`, `apps/web/src/app/actions.ts`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已通过干净库 `pnpm db:migrate` 和 `pnpm db:seed`，确认 `_prisma_migrations=1` 且默认 organization/user/topic/source 存在；已通过 Web `/api/health` 返回 database `ok`；已通过浏览器提交 HTTP RSS 表单并确认 Topic/Source 写入 Postgres；已验证 `fixture://wangchao/ai-infrastructure` 可解析 2 条 RSS items；已通过 `CI=true pnpm build`、`CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、相关包 typecheck 和 Web build。
+- Notes / Risk: 当前环境公网 HN RSS 抓取失败，worker 只验证到失败重试和 TaskRun 记录；本地 HTTP fixture 服务和后续浏览器复测被权限/浏览器策略拦截，未继续绕过。下一步需要用默认 fixture seed 跑 worker 完整 fetch/analyze/briefing cycle，并把 Server Action 错误返回接到可见 UI。
+
+### 验证本地 Docker Postgres 数据库链路
+
+- Cause: 用户要求在本地拉起 Postgres Docker 并进行下一步测试，需要补齐此前未完成的真实数据库验证。
+- Changed: 启动并验证 `wangchao-postgres-local` Postgres 16 容器；在 `5432` 已被占用时改用 `127.0.0.1:55433`；记录本地 Docker Postgres 命令、数据库 smoke test 结果、worker health 结果和 Prisma migrate 引擎风险；补充跨阶段开发审计。
+- Files: `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已通过 `docker inspect` health 检查、容器内 `psql select current_user/current_database/version()`、`CI=true pnpm db:validate`、`CI=true pnpm db:generate`、容器内执行 `packages/db/prisma/migrations/0001_init/migration.sql`、`CI=true pnpm db:seed`、数据库级 smoke test、`CI=true pnpm worker:health`；smoke test 确认 16 张表、已保存 Dashboard event、已 approve candidate source、Markdown event/source 和 briefing/event 内容均可生成。
+- Notes / Risk: `pnpm db:migrate`、`prisma migrate deploy` 和 `prisma migrate status` 在当前环境均报 `Schema engine error`，本次用 `psql` 临时套用 SQL，不代表 Prisma migrate 引擎已修复；Web 浏览器级 Server Action、下载 route、真实 RSS 抓取仍未验证。
+
+### 按 FRONTEND.md 重构 Web 工作台视觉
+
+- Cause: 当前 `apps/web` 仍偏通用 SaaS 工作台，需要按照 `FRONTEND.md` 的 Kinetic Intelligence 规范落地前端表现层，同时保留 Dashboard 的高密度阅读和操作效率。
+- Changed: 对齐 `globals.css` 语义 token、酸黄强调、硬边网格、work/kinetic card、按钮状态、焦点状态、44px 点击目标、响应式单列和 reduced-motion；重构首页顶部搜索、指标卡、新建主题 kinetic 模块、情报流摘要/解释/来源外链、事件详情“为什么重要/影响对象”、信源治理质量大数字与指标、偏好记忆置信度条；扩展 Button `danger` 变体；修复 Tabs trigger 高度不足 44px 的点击目标问题，并把导出/简报/信源操作链接提升到 44px 触达面积；同步 `CODEGUIDE.md` 和 `DEVELOPE_LOGS.md`。
+- Files: `apps/web/src/app/page.tsx`, `apps/web/src/app/globals.css`, `apps/web/src/components/ui/button.tsx`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已通过 `CI=true pnpm lint`、`CI=true pnpm typecheck`、`CI=true pnpm test`、`CI=true pnpm build`、`git diff --check`；已用浏览器在 320/375/414/768/1024/1440 视口验证无横向滚动、关键模块存在、reduced-motion/focus 规则存在、所有按钮点击目标不小于 44px，并截取 1440/375/320 视口截图；375px 稳定复测确认导出/简报/信源操作链接也不小于 44px；已启动本地 Next dev server 并确认 `http://127.0.0.1:3010` 可访问。
+- Notes / Risk: 真实创建主题、状态动作、导出、信源治理 smoke test 仍需连接数据库后补；搜索输入目前是前端入口，尚未接入真实搜索逻辑。
+
+### 新增前端设计规范
+
+- Cause: 用户希望按照 Kinetic Typography 风格生成前端设计规范，用于后续统一望潮 Web UI 的视觉语言和交互边界。
+- Changed: 新增 `FRONTEND.md`，将原风格收敛为适合情报工作台的 Kinetic Intelligence 规范，覆盖设计原则、token、页面组合、组件变体、动效、响应式、可访问性和实施顺序；同步 `CODEGUIDE.md` 的文档优先级、目录树和关键文件说明。
+- Files: `FRONTEND.md`, `CODEGUIDE.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `git diff --check`。
+- Notes / Risk: 本轮只新增设计文档，没有改动实际 `apps/web` 组件或样式；后续落地时需要补浏览器视觉检查和 workspace 验证。
+
+### 修复 Prisma 7 兼容并补全 workspace 验证
+
+- Cause: 恢复依赖后真实 `pnpm typecheck` 暴露 Prisma 7、JSON 类型、workspace package exports 和 worker health 脚本问题；此前多个阶段只完成静态验证，需要补实际工具链验证。
+- Changed: 新增 Prisma 7 `prisma.config.ts`，移除 schema datasource URL；引入 `@prisma/adapter-pg` 并改造 Prisma Client/seed 初始化；集中转换 Prisma JSON input；修复 core fixture assertion 类型收窄；为 workspace packages 增加 `exports.types` 指向源码；worker health 改为运行 build 后的 `dist/index.js`；更新 README、`CODEGUIDE.md`、`docs/deployment.md` 和 `DEVELOPE_LOGS.md` 的验证状态。
+- Files: `README.md`, `README-en.md`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`, `docs/deployment.md`, `package.json`, `pnpm-lock.yaml`, `packages/*/package.json`, `packages/core/src/intelligence.fixtures.ts`, `packages/db/prisma.config.ts`, `packages/db/prisma/schema.prisma`, `packages/db/prisma/seed.ts`, `packages/db/src/client.ts`, `packages/db/src/repositories.ts`, `apps/worker/package.json`
+- Verification: 已通过 `CI=true pnpm db:generate`、`CI=true pnpm db:validate`、`CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、`CI=true pnpm worker:health`、`git diff --check`。
+- Notes / Risk: 仍未连接真实 Postgres 执行 migration/seed，也未做 Web 浏览器 smoke test、Server Action 端到端、worker fetch cycle 或 Playwright 视觉验证。
+
+### 对齐 README 与 TypeScript 主路径
+
+- Cause: Phase 14 已将旧 Python 原型归档，但 `README.md` / `README-en.md` 仍描述 Python/SQLite/静态 JSON 主路径，和当前仓库状态冲突。
+- Changed: 重写中英文 README，改为 TypeScript monorepo、Next.js、Prisma/Postgres、Node worker、health check、审计文件和 legacy 归档说明；同步 `AGENTS.md` 与 `CODEGUIDE.md` 中 README 的文档角色；更新 `DEVELOPE_LOGS.md` 的 Phase 14 审计，移除 README 未重写的遗留项。
+- Files: `README.md`, `README-en.md`, `AGENTS.md`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `rg` 检查 README/文档中的旧 Python 主路径引用；已运行 `git diff --check`，通过。
+- Notes / Risk: README 现在描述目标主路径和当前实现；真实 `pnpm` 验证已在后续记录中补齐，但 DB/browser 端到端仍未验证。
+
+### 归档旧 Python 原型并完成 Phase 14 cleanup
+
+- Cause: 按 `REFACTOR_PLAN.md` Phase 14 推进 legacy cleanup，让仓库根目录主开发路径切换为 TypeScript monorepo，同时保留旧 Python 原型作为行为参考。
+- Changed: 将旧 Python runtime、processors、sources、prompts、旧静态 `index.html`、旧 Python tests、Python 项目文件移动到 `legacy/python-prototype/`；新增归档说明；更新 `CODEGUIDE.md`，移除根目录 Python 主路径描述，改为 TypeScript monorepo 架构和 legacy 说明；更新项目阶段标识；同步 `DEVELOPE_LOGS.md`。
+- Files: `legacy/python-prototype/**`, `packages/core/src/index.ts`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `git diff --check`，通过；已运行 `rg` 检查 `CODEGUIDE.md` 中旧 Python 根路径引用，确认剩余引用均位于 legacy 说明语境。
+- Notes / Risk: 由于真实 DB/browser 端到端尚未验证，本阶段选择归档而不是删除；README 已在后续记录中重写为 Node.js 主路径。
+
+### 建立 Phase 13 部署运维基础 MVP
+
+- Cause: 按 `REFACTOR_PLAN.md` Phase 13 推进 deployment and operations，让 Web 和 worker 在正式部署前具备健康检查、环境变量说明、日志边界和回滚指导。
+- Changed: 新增 Web `/api/health` route，支持可选数据库 ping；扩展 worker，新增 `runWorkerHealthCheck()` 和 `--health` CLI 模式；新增 worker/package 根健康检查脚本；新增 `docs/deployment.md` 记录服务拆分、环境变量、健康检查、部署顺序、日志、备份和回滚；同步 `CODEGUIDE.md` 与 `DEVELOPE_LOGS.md`。
+- Files: `package.json`, `apps/worker/package.json`, `apps/worker/src/index.ts`, `apps/web/src/app/api/health/route.ts`, `docs/deployment.md`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `git diff --check`，通过；已运行 `rg` 静态调用链检查，确认 `/api/health`、`runWorkerHealthCheck()`、`worker:health`、`docs/deployment.md` 和 Phase 13 文档入口存在。
+- Notes / Risk: 当前没有平台特定部署配置、worker scheduler、集中错误上报、生产备份任务或 CI/CD；TypeScript/Next/Prisma 编译和 worker health dry run 已在后续记录中验证，Web health runtime 与真实 Postgres ping 仍未验证。
+
+### 建立 Phase 12 商业化基础 MVP
+
+- Cause: 按 `REFACTOR_PLAN.md` Phase 12 推进 commercial readiness，让当前单用户 MVP 具备组织、成员角色、权限断言和用量审计基础，为未来多租户商业化预留边界。
+- Changed: `packages/db` 新增 UsageEvent schema/migration、membership 查询、role guard、usage event 记录和用量汇总；Prisma seed 复用默认租户环境变量；Web Server Actions 与 Markdown export routes 加入权限检查和 usage event；worker 抓取、简报和信源治理观测写入 usage event；Dashboard 新增组织权限与近 30 天用量审计；补默认组织/用户环境变量；同步 `CODEGUIDE.md` 与 `DEVELOPE_LOGS.md`。
+- Files: `.env_example`, `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/0001_init/migration.sql`, `packages/db/prisma/seed.ts`, `packages/db/src/index.ts`, `packages/db/src/repositories.ts`, `apps/web/src/app/actions.ts`, `apps/web/src/app/exports/briefings/[briefingId]/route.ts`, `apps/web/src/app/exports/events/[eventId]/route.ts`, `apps/web/src/app/page.tsx`, `apps/web/src/app/globals.css`, `apps/web/src/lib/topic-source-data.ts`, `apps/worker/src/index.ts`, `packages/core/src/index.ts`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `git diff --check`，通过；已运行 `rg` 静态调用链检查，确认 `UsageEvent`、`recordUsageEvent()`、`assertMembershipRole()`、`listUsageSummary()`、web/export/worker usage 调用和 Phase 12 文档入口存在；已人工检查 `.env_example`、`CODEGUIDE.md` 和阶段审计记录；后续跨阶段验证已通过 `CI=true pnpm db:generate`、`CI=true pnpm db:validate`、`CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build` 和 `CI=true pnpm worker:health`。
+- Notes / Risk: 当前没有真实 auth/session provider、组织切换、邀请、付费计划、限额拦截或 tenant isolation 自动化测试；仍未完成真实 Postgres 写入验证和浏览器验证。
+
+### 建立 Phase 11 信源治理 MVP
+
+- Cause: 按 `REFACTOR_PLAN.md` Phase 11 推进 source governance，让候选源、启用源、静音源、拒绝源有可审核状态流，并生成可追溯质量报告。
+- Changed: `packages/db` 新增候选 RSS 创建、source governance report、source status 更新、SourceObservation 质量观测；`apps/web` 新增候选源表单、source quality report、approve/observe/mute/reject 操作；`apps/worker` 新增 source quality observation cycle；daily briefing 查询增加 active-source 过滤；同步 `CODEGUIDE.md` 与 `DEVELOPE_LOGS.md`。
+- Files: `packages/db/src/index.ts`, `packages/db/src/repositories.ts`, `apps/web/src/app/actions.ts`, `apps/web/src/app/page.tsx`, `apps/web/src/app/globals.css`, `apps/web/src/lib/topic-source-data.ts`, `apps/worker/src/index.ts`, `packages/core/src/index.ts`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `git diff --check`，通过；已运行 `rg` 静态调用链检查，确认 `createCandidateRssSource()`、`listSourceGovernanceReport()`、`updateSourceGovernanceStatus()`、`recordSourceQualityObservation()`、web governance actions 和 worker governance cycle 存在；已人工检查 daily briefing 查询只使用 active source；后续跨阶段验证已通过 `CI=true pnpm typecheck`、`CI=true pnpm build` 和 `CI=true pnpm worker:health`。
+- Notes / Risk: 当前没有自动信源发现或 LLM 推荐解释；质量报告是规则型 MVP。仍未完成真实 Postgres 写入验证和浏览器审核流程验证。
+
+### 建立 Phase 10 简报与 Markdown 导出 MVP
+
+- Cause: 按 `REFACTOR_PLAN.md` Phase 10 推进 briefing and Markdown export，让情报事件和 daily briefing 可以沉淀为 Obsidian-friendly Markdown，并记录导出审计。
+- Changed: `packages/core` 新增 event/daily briefing Markdown 渲染和 content hash；`packages/db` 新增 daily briefing 事件读取、Briefing 创建、最新简报查询、下载读取和 ExportEvent 记录；`apps/worker` 新增 daily briefing generation cycle；`apps/web` 新增最新简报卡片、单条事件导出链接、简报下载 route 和事件下载 route；同步 `CODEGUIDE.md` 与 `DEVELOPE_LOGS.md`。
+- Files: `packages/core/src/index.ts`, `packages/core/src/intelligence.fixtures.ts`, `packages/db/src/index.ts`, `packages/db/src/repositories.ts`, `apps/worker/src/index.ts`, `apps/web/src/lib/topic-source-data.ts`, `apps/web/src/app/page.tsx`, `apps/web/src/app/globals.css`, `apps/web/src/app/exports/briefings/[briefingId]/route.ts`, `apps/web/src/app/exports/events/[eventId]/route.ts`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `git diff --check`，通过；已运行 `rg` 静态调用链检查，确认 `renderDailyBriefingMarkdown()`、`renderEventMarkdown()`、`createDailyBriefing()`、`recordMarkdownExport()`、worker briefing cycle 和 web export routes 存在；已确认导出 route 文件存在；后续跨阶段验证已通过 `CI=true pnpm typecheck`、`CI=true pnpm test`、`CI=true pnpm build` 和 `CI=true pnpm worker:health`。
+- Notes / Risk: 当前是确定性 Markdown 模板，不是 LLM briefing rewrite；仍未完成真实 Postgres 写入验证和浏览器下载验证。worker 当前每轮生成 briefing，后续需要按日期/任务调度去重。
+
+### 建立 Phase 9 反馈学习与偏好记忆 MVP
+
+- Cause: 按 `REFACTOR_PLAN.md` Phase 9 推进 feedback and preference memory，让 Phase 8 记录的已读、收藏、忽略反馈不只是审计记录，而是能归纳成可解释偏好并影响 Dashboard 排序。
+- Changed: `packages/core` 新增反馈信号归纳、偏好 key、偏好权重排序和 fixtures；`packages/db` 新增近期反馈读取、PreferenceMemory dashboard 查询和 upsert；`apps/web` 在事件状态动作后归纳近期反馈、写入偏好记忆，并在 Dashboard loader 中应用偏好权重重排事件；页面新增“已学习偏好”卡片；`apps/worker` 新增 preference learning cycle；同步 `CODEGUIDE.md` 与 `DEVELOPE_LOGS.md`。
+- Files: `packages/core/src/index.ts`, `packages/core/src/intelligence.fixtures.ts`, `packages/db/src/index.ts`, `packages/db/src/repositories.ts`, `apps/web/src/app/actions.ts`, `apps/web/src/app/page.tsx`, `apps/web/src/app/globals.css`, `apps/web/src/lib/topic-source-data.ts`, `apps/worker/src/index.ts`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `git diff --check`，通过；已运行 `rg` 静态调用链检查，确认 `generatePreferenceDeltas()`、`applyPreferenceWeights()`、`listRecentFeedbackSignals()`、`upsertPreferenceMemory()`、Dashboard preference rendering 和 worker preference cycle 路径存在；后续跨阶段验证已通过 `CI=true pnpm typecheck`、`CI=true pnpm test`、`CI=true pnpm build` 和 `CI=true pnpm worker:health`。
+- Notes / Risk: 当前是规则型 MVP，不是 LLM 归纳；仍未完成真实 Postgres 写入验证、浏览器验证和 feedback -> preference -> rerank 端到端验证。
+
+### 建立 Phase 8 Dashboard MVP
+
+- Cause: 按 `REFACTOR_PLAN.md` Phase 8 推进 Dashboard MVP，让 Phase 7 生成的 `IntelligenceEvent` 成为 Web 主阅读流，并提供已读、收藏、忽略动作。
+- Changed: `packages/db` 新增 Dashboard event 查询和状态写入，状态动作同时写 `IntelligenceEvent`、`UserItemState` 与 `FeedbackEvent`；`apps/web` 新增 Dashboard event fixture、事件详情、来源展示、空状态、已读/收藏/忽略 Server Action 表单和对应样式；同步 `CODEGUIDE.md` 与 `DEVELOPE_LOGS.md`。
+- Files: `packages/db/src/index.ts`, `packages/db/src/repositories.ts`, `apps/web/src/app/actions.ts`, `apps/web/src/app/page.tsx`, `apps/web/src/app/globals.css`, `apps/web/src/lib/topic-source-data.ts`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `git diff --check`，通过；已运行 `rg` 静态调用链检查，确认 Dashboard loader、Server Action、repository helper 和样式入口存在；后续跨阶段验证已通过 `CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test` 和 `CI=true pnpm build`。
+- Notes / Risk: 当前仍未完成真实 Postgres 写入验证和浏览器交互验证；筛选 tab、批量已读、收藏集合、分页留给后续阶段，反馈学习聚合已在 Phase 9 MVP 中接入。
+
+### 建立 Phase 7 情报管线 MVP
+
+- Cause: 按 `REFACTOR_PLAN.md` Phase 7 推进 AI intelligence pipeline，让 Phase 5 抓取到的 Item 可以经过 relevance/noise、事件草稿、评分、去重 hash 和排序，进入 Dashboard 可消费的 IntelligenceEvent 主链路。
+- Changed: `packages/core` 新增确定性 relevance/noise、topic keywords、event draft、event hash、gravity score 和 intelligence fixtures；`packages/db` 新增待分析 Item 查询、过滤标记、IntelligenceEvent upsert，并修复过滤时覆盖 `rawMetadata` 的风险；`apps/worker` 在 fetch cycle 后追加 analysis cycle；同步 `CODEGUIDE.md` 与 `DEVELOPE_LOGS.md`。
+- Files: `packages/core/package.json`, `packages/core/src/index.ts`, `packages/core/src/intelligence.fixtures.ts`, `packages/db/src/index.ts`, `packages/db/src/repositories.ts`, `apps/worker/src/index.ts`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `git diff --check`，通过；已运行 `rg` 静态调用链检查，确认 `evaluateRelevance()`、`createIntelligenceEventDraft()`、`runAnalysisCycle()`、`listFetchedItemsForAnalysis()`、`upsertIntelligenceEventFromItem()` 和 fixture 入口存在；后续跨阶段验证已通过 `CI=true pnpm typecheck`、`CI=true pnpm test`、`CI=true pnpm build` 和 `CI=true pnpm worker:health`。
+- Notes / Risk: 当前 Phase 7 是确定性 MVP，没有接入 Phase 6 的真实 LLM adapter/parser；仍未完成本地 Postgres worker 端到端验证。
+
+### 建立 Phase 6 OpenAI-compatible adapter 与 parser
+
+- Cause: 按 `REFACTOR_PLAN.md` Phase 6 推进 AI adapter/parser，为后续 relevance/noise、event extraction 和 briefing 阶段提供 provider-neutral 的 LLM 调用与 JSON 解析边界。
+- Changed: `packages/ai` 新增 OpenAI-compatible Chat Completions adapter、共享类型、JSON mode fallback、timeout/retry、response sanitizer、JSON object extraction、常见 JSON 修复、schema validation 和 parser fixtures；更新 `packages/ai` test script；同步 `CODEGUIDE.md` 与 `DEVELOPE_LOGS.md`。
+- Files: `packages/ai/package.json`, `packages/ai/src/index.ts`, `packages/ai/src/types.ts`, `packages/ai/src/openai-compatible.ts`, `packages/ai/src/parser.ts`, `packages/ai/src/parser.fixtures.ts`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `git diff --check`，通过；已运行 `rg` 静态调用链检查确认 adapter/parser/fixtures 导出存在；后续跨阶段验证已通过 `CI=true pnpm test` 和完整 workspace 验证。
+- Notes / Risk: parser fixtures 已跑通；adapter 仍未经过 mock provider 或真实 provider HTTP 验证。
+
+### 建立 Phase 5 Worker RSS 抓取管线
+
+- Cause: 按 `REFACTOR_PLAN.md` Phase 5 推进 worker fetch pipeline，让 Phase 4 绑定的 active RSS sources 可以由后台 worker 抓取并幂等写入 Item。
+- Changed: `packages/sources` 新增无依赖 RSS/Atom fetch、parse、normalize 和 content hash；`packages/db` 新增 active RSS source 查询、TaskRun 创建/完成/失败、source fetch 成功记录和 Item upsert helper；`apps/worker` 新增 `runFetchCycle()`、逐 source 抓取、最多 3 次 retry 和 CLI 输出；同步 `CODEGUIDE.md` 与 `DEVELOPE_LOGS.md`。
+- Files: `packages/sources/src/index.ts`, `packages/db/src/index.ts`, `packages/db/src/repositories.ts`, `packages/core/src/index.ts`, `apps/worker/package.json`, `apps/worker/src/index.ts`, `pnpm-lock.yaml`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `git diff --check`，通过；已运行 `rg` 静态调用链检查，确认 worker -> sources -> db 的 Phase 5 路径存在；后续跨阶段验证已通过 `CI=true pnpm typecheck`、`CI=true pnpm build` 和 `CI=true pnpm worker:health`。
+- Notes / Risk: 真实 worker/Postgres/RSS 端到端未验证；RSS parser 是 MVP 级轻量实现，后续应替换为正式 parser 或补 fixture tests。
+
+### 建立 Phase 4 主题与 RSS 信源 MVP
+
+- Cause: 按 `REFACTOR_PLAN.md` Phase 4 推进 Topic CRUD 和 manual RSS source attachment，为单主题闭环提供创建主题和绑定 active RSS source 的入口。
+- Changed: 在 `packages/db` 新增默认 workspace、Topic 创建、active RSS source 绑定、Topic/Source overview 和 URL canonicalization helper；在 web 新增 `@wangchao/db` 依赖、Server Action、Topic/Source 数据 loader、创建主题并绑定 RSS 表单、主题/信源列表和数据库/fixture 状态提示；同步 `CODEGUIDE.md` 与 `DEVELOPE_LOGS.md`。
+- Files: `apps/web/package.json`, `pnpm-lock.yaml`, `packages/db/src/index.ts`, `packages/db/src/repositories.ts`, `apps/web/src/app/actions.ts`, `apps/web/src/lib/topic-source-data.ts`, `apps/web/src/app/page.tsx`, `apps/web/src/app/globals.css`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `git diff --check`，通过；已运行静态文件存在性检查和 `rg` 调用链检查。尝试 `PNPM_CONFIG_OFFLINE=true pnpm --filter @wangchao/web typecheck`，但 pnpm 仍触发自动安装并访问 registry，因 DNS 失败持续重试后被中断，未完成。
+- Notes / Risk: 真实数据库写入、Prisma generate、Next typecheck/build 和浏览器表单提交仍未验证；当前页面无 `DATABASE_URL` 时回退 fixture，表单提交需要本地 Postgres 和 Prisma migration ready。
+
+### 建立 Phase 3 Next.js 产品壳
+
+- Cause: 按 `REFACTOR_PLAN.md` Phase 3 推进产品壳与设计系统基础，为后续 Topic/Source/Worker/AI workflow 提供可扩展界面框架。
+- Changed: 新增 `apps/web/components.json`、本地 `cn()` helper、Button/Card/Badge/Tabs primitives、route loading/error 状态；重写首页为主题情报工作台，包含侧边导航、顶部操作、指标卡、未读情报列表、处理管线和空/提示状态；重写全局 CSS token、布局、组件样式和响应式规则；同步 `CODEGUIDE.md` 与 `DEVELOPE_LOGS.md` 的 Phase 3 审计。
+- Files: `apps/web/components.json`, `apps/web/src/lib/utils.ts`, `apps/web/src/components/ui/**`, `apps/web/src/app/layout.tsx`, `apps/web/src/app/page.tsx`, `apps/web/src/app/loading.tsx`, `apps/web/src/app/error.tsx`, `apps/web/src/app/globals.css`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `git diff --check`，通过。尝试运行 `pnpm --filter @wangchao/web typecheck`，但因当前 `node_modules` 链接未恢复而触发自动安装，普通沙箱 DNS 持续失败，命令被中断，未完成。
+- Notes / Risk: 当前为离线落地的 shadcn 风格本地 primitives，尚未通过 shadcn CLI 初始化完整 Tailwind/Radix 组件链；首页使用静态 fixture 数据，未接入数据库或 worker。恢复联网/配额后必须补完整安装、typecheck、build、lint、test 和视觉验证。
+
+### 建立 Phase 2 Prisma/Postgres 数据库基础
+
+- Cause: 按 `REFACTOR_PLAN.md` Phase 2 和 `AGENTS.md` 数据库规则推进分阶段开发，需要为后续 topic/source/worker/AI pipeline 建立 tenant-ready 数据模型、migration、seed 和访问边界。
+- Changed: 新增 Prisma schema、首版 Postgres migration、seed 脚本、懒加载 Prisma Client、tenant/topic scoped repository helpers、根目录 DB scripts 和 `DATABASE_URL` 模板；固定 Prisma 版本；更新 `pnpm-workspace.yaml` approved builds；同步 `CODEGUIDE.md` 和 `DEVELOPE_LOGS.md` 的 Phase 2 审计。
+- Files: `.env_example`, `package.json`, `pnpm-lock.yaml`, `pnpm-workspace.yaml`, `packages/db/package.json`, `packages/db/prisma/**`, `packages/db/src/**`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `node` 静态检查确认 `schema.prisma` 包含 14 个核心模型且 `migration.sql` 包含 14 个核心表；已运行 `git diff --check`，通过。Prisma CLI validate/generate、workspace typecheck/build/lint/test、本地 migration/seed 因当前依赖恢复和本地 Postgres 环境受限未完成。
+- Notes / Risk: 本轮普通沙箱安装多次因 DNS 失败；一次联网安装已更新锁文件并下载依赖，但后续恢复安装被系统配额限制拦截，导致 `node_modules` workspace 链接暂不可用。恢复联网/配额后必须先补跑 `pnpm install`、Prisma validate/generate 和完整 workspace 验证。
+
+### 建立 Phase 1 TypeScript monorepo 基础
+
+- Cause: 按 `REFACTOR_PLAN.md` Phase 1 和 `AGENTS.md` 要求开始分阶段开发，需要先建立 pnpm/Turborepo/TypeScript/Next.js monorepo 基础。
+- Changed: 新增根 `package.json`、`pnpm-workspace.yaml`、`turbo.json`、`tsconfig.base.json`、Next.js web app、Node worker、五个共享 packages 占位模块和 `pnpm-lock.yaml`；更新 `.gitignore`、`CODEGUIDE.md`、`DEVELOPE_LOGS.md`。
+- Files: `.gitignore`, `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `turbo.json`, `tsconfig.base.json`, `apps/web/**`, `apps/worker/**`, `packages/**`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已运行 `CI=true pnpm typecheck`、`CI=true pnpm build`、`CI=true pnpm lint`、`CI=true pnpm test`、`git diff --check`，均通过。
+- Notes / Risk: 当前 lint/test 仍是 `tsc --noEmit` 占位；尚未引入 Prisma、真实测试框架、shadcn/ui 或业务功能。安装依赖时因沙箱网络失败，已通过授权网络完成 `CI=true pnpm install`。
+
+### 建立分阶段开发审计机制
+
+- Cause: 用户要求后续按 `AGENTS.md` 分阶段开发，并在每个阶段完成后审计是否符合 `REFACTOR_PLAN.md` 和 `AGENTS.md`、是否缺功能、是否有 bug，同时维护 `DEVELOPE_LOGS.md` 追踪延期功能。
+- Changed: 新增 `DEVELOPE_LOGS.md`；更新 `AGENTS.md`，加入 `DEVELOPE_LOGS.md` 规则和任务结束检查项；更新 `CODEGUIDE.md`，加入该文件职责和文档优先级。
+- Files: `AGENTS.md`, `AGENTS_CHANGELOGS.md`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`
+- Verification: 已运行 `git diff --check`，通过。
+- Notes / Risk: 本阶段仅完成 Phase 0 文档和审计机制；尚未开始 Phase 1 monorepo 基础代码开发。
+
+### 初始化 AI Agent 协作规范
+
+- Cause: 用户要求为当前仓库初始化 AI Agent 协作规范，并明确 `AGENTS_CHANGELOGS.md` 替代 `CHANGELOG.md`，技术路线以 `REFACTOR_PLAN.md` 为核心。
+- Changed: 新增 `AGENTS.md` 作为仓库级 Agent 协作规范；新增本审计日志；更新 `CODEGUIDE.md` 的文档优先级、目录树和维护规则；在 `CHANGELOG.md` 顶部标记废弃。
+- Files: `AGENTS.md`, `AGENTS_CHANGELOGS.md`, `CODEGUIDE.md`, `CHANGELOG.md`
+- Verification: 已运行 `git diff --check`，通过。
+- Notes / Risk: 本次只初始化协作文档，不修改运行代码；`CODEGUIDE.md` 仍主要描述当前 Python 原型，Node.js 绿地重构落地后需要重写为 monorepo 结构。
