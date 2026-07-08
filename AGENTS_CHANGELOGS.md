@@ -4,6 +4,14 @@
 
 ## 2026-07-08
 
+### 修复 Railway Cron 服务运行时 workspace dist 缺失
+
+- Cause: Web 配置修复并 push 后，Railway GitHub 自动部署触发 `wangchao-worker`，其 cron config 仅构建 worker 包，运行时缺少 `@wangchao/ai/dist/index.js`，导致 deployment `CRASHED`。
+- Changed: 将 `deploy/railway/worker-cron.railway.json` 和 `deploy/railway/source-discovery-cron.railway.json` 的 build command 从 `pnpm railway:worker:build` 改为 `pnpm railway:build`，让 cron services 与 Web service 一样保留完整 workspace build 输出；同步 `CODEGUIDE.md` 和 `deploy/railway/README.md`。
+- Files: `deploy/railway/worker-cron.railway.json`, `deploy/railway/source-discovery-cron.railway.json`, `CODEGUIDE.md`, `deploy/railway/README.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已通过三个 Railway JSON 配置解析检查、`pnpm railway:build`、`pnpm typecheck`、`pnpm lint`、`pnpm test` 和 `git diff --check`。
+- Notes / Risk: 该修复会再次触发 Railway 自动部署；预期能解决 worker/source-discovery 运行时找不到 workspace dist 的问题，但会增加 cron service build 范围。
+
 ### 修复 Railway Web Config as Code 构建命令
 
 - Cause: Railway Web service 切换到 `deploy/railway/web.railway.json` 后，GitHub 自动部署中的 Web-only build 无法解析 `@wangchao/*` workspace 包，导致最新 Web deployment 失败。
