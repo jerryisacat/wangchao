@@ -1,6 +1,7 @@
 import { Download, FileText } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
@@ -14,9 +15,9 @@ export default async function BriefingsPage() {
   return (
     <>
       <PageHeader eyebrow="简报中心" title="今日简报">
-        <Link className="ui-button ui-button-ghost ui-button-sm" href="/">
-          ← 返回情报流
-        </Link>
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/">← 返回情报流</Link>
+        </Button>
       </PageHeader>
 
       <div>

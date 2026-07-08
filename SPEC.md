@@ -723,31 +723,19 @@ active sources
 记录 export event，作为该信息有价值的正反馈
 ```
 
-## 8. 当前代码与目标架构的关系
+## 8. 实现架构分层
 
-当前仓库来自 GitHub fork，目前没有真实用户、生产数据或外部兼容承诺。因此后续实现可以采用绿地重构：当前 Python 代码应作为原型参考，而不是必须渐进迁移或兼容保留的运行系统。
+当前仓库已绿地重构为 TypeScript 主路径，旧 Python 原型已在开源清洗中删除。实现细节按 L0-L4 抽象层级组织文档，详见 `CODEGUIDE.md` 及 `docs/` 下分层文件：
 
-当前代码中值得参考的部分：
+| 层 | 内容 | 文件 |
+|---|---|---|
+| L0 | 系统架构、运行时拓扑、主干数据流 | `CODEGUIDE.md` §L0 |
+| L1 | 设计原则、依赖方向、安全与边界 | `CODEGUIDE.md` §L1 |
+| L2 | 领域模型、状态机、术语 | `docs/L2-domain.md` |
+| L3 | 模块职责、关键文件、调用链 | `docs/L3-modules.md` |
+| L4 | 命令、环境变量、部署、测试 | `docs/L4-operations.md` |
 
-| 当前模块 | 参考价值 |
-|----------|----------|
-| `sources/rss.py` | RSS fetcher adapter 和条目标准化思路 |
-| `processors/l1_filter.py` | 主题相关性/噪音过滤的阶段化思路 |
-| `processors/l2_scorer.py` | 情报事件抽取、摘要、评分和去重思路 |
-| `ai_service.py` | OpenAI-compatible LLM adapter、重试、JSON mode fallback |
-| `response_utils.py` | LLM JSON 解析、清洗和容错思路 |
-| `ranking.py` | importance/time ranking 的初始算法参考 |
-| `index.html` | 早期 dashboard 信息密度和字段参考 |
-| `tests_*` | 运行时安全、schema 兼容、解析容错等边界样例 |
-
-可以直接重建的部分：
-
-1. `news` 单表不需要保留，目标模型应直接设计为 topic/source/item/event/state/feedback/preference 等明确实体。
-2. `RSS_FEEDS` 不应继续作为主要产品入口，应直接重建为 source registry / source packs / discovered sources。
-3. Prompt 系统不应保留全局 `user_profile.md` 结构，应直接重建为 topic profile + rules + preference memory。
-4. 静态 HTML 不需要渐进演进，应直接替换为可交互 dashboard。
-5. Python 主循环不需要兼容保留，应直接替换为 worker / task runner。
-6. 单一 `dashboard.json` 输出不需要作为新系统契约，应直接转为 topic-scoped API / briefing / export。
+旧 Python 原型的参考行为映射见 `REFACTOR_PLAN.md` §9。文档分层归属规则和 AI Agent 阅读协议见 `AGENTS.md`。
 
 ## 9. MVP 分阶段建议
 
@@ -758,7 +746,7 @@ active sources
 产出：
 
 - 本 `SPEC.md`。
-- 更新 `README.md` / `CODEGUIDE.md` / `CHANGELOG.md`。
+- 更新 `README.md` / `CODEGUIDE.md`（L0-L4）/ `AGENTS_CHANGELOGS.md`。
 
 ### Phase 1：主题层与单用户状态
 

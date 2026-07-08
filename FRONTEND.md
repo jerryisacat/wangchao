@@ -446,19 +446,23 @@ Badge 用于状态，不用于装饰堆叠。
 
 建议分三步落地，而不是一次重写所有页面。
 
-### Step 1：Token 对齐
+### Step 1：Token 对齐（已完成）
 
 - 整理 `globals.css` 的语义 token。
 - 将散落颜色替换为 token。
 - 明确 `accent / success / warning / danger / muted` 的状态语义。
 - 给 motion 和 reduced-motion 加全局规则。
+- 已映射为 Tailwind v4 `@theme` 块，支持 `bg-accent`/`text-muted-foreground` 等工具类。
 
-### Step 2：组件变体
+### Step 2：组件变体（已完成）
 
 - 收敛 Button、Card、Badge、Tabs 的 variant。
 - 增加 `work-card` 和 `kinetic-card` 的差异。
 - 补齐 hover、focus、active、disabled 状态。
 - 保持 lucide-react 图标作为按钮图标来源。
+- 已接入 shadcn/Radix/Tailwind v4 标准组件链：Button（primary/secondary/ghost/danger + asChild）、Card（work/kinetic variant）、Badge（default/muted/success/warning/danger/accent）、Tabs（基于 Radix，完整键盘导航和 ARIA）、Input、Label、Textarea。
+- `cn()` 升级为 `twMerge(clsx(...))` 标准 shadcn 实现。
+- Form primitive 已通过 Input/Label/Textarea 落地，满足"label 始终显示、错误靠近字段"要求。
 
 ### Step 3：首页重构试点
 
@@ -466,7 +470,7 @@ Badge 用于状态，不用于装饰堆叠。
 
 1. 首页 App Shell：移除固定左侧栏，改为顶部导航。
 2. 首页主体：改为中间限宽单列未读情报流。
-3. 情报卡片：改为阅读结构，突出摘要和“为什么重要”。
+3. 情报卡片：改为阅读结构，突出摘要和"为什么重要"。
 4. 空状态：改为用户语言，避免工程流程提示。
 
 完成首页后，再把 `新增主题`、`信源管理`、`今日简报` 和 `已保存` 拆成独立页面或清晰二级入口。

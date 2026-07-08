@@ -8,7 +8,7 @@
 
 > **这是一个开源项目（MIT License）。** 代码、文档、数据模型、worker 管线、前端界面全部公开。商业化仅用于维护服务器运营——给自己买杯咖啡，不是产品主线。
 >
-> **特别欢迎用 AI Agent 定制这个仓库。** Fork 之后，你可以让 Claude Code、Cursor、Copilot 或任何 coding agent 按照你的领域、信源、偏好和部署环境改造它。`AGENTS.md` 和 `CODEGUIDE.md` 是给 AI Agent 看的协作规范和代码结构地图，帮助 agent 快速理解这个仓库。
+> **特别欢迎用 AI Agent 定制这个仓库。** Fork 之后，你可以让 Claude Code、Cursor、Copilot 或任何 coding agent 按照你的领域、信源、偏好和部署环境改造它。`AGENTS.md` 定义 AI Agent 协作规则和文档阅读协议，`CODEGUIDE.md` 是 L0/L1 架构总览，`docs/` 下按 L2-L4 分层组织领域模型、模块细节和操作运维，帮助 agent 按抽象层级快速理解这个仓库。
 >
 > ---
 >
@@ -147,6 +147,9 @@ packages/
   sources/             RSS/source adapter
   ui/                  共享 UI 包
 docs/
+  L2-domain.md            L2 领域模型、状态机、术语表
+  L3-modules.md           L3 模块职责、关键文件、调用链
+  L4-operations.md        L4 命令、环境变量、部署、测试
   deployment.md            通用部署运维说明
   railway-deployment.md    Railway 部署完整指南
 ```
@@ -213,7 +216,7 @@ curl -fsS http://127.0.0.1:3000/api/health
 
 本仓库按 `AGENTS.md` 和 `REFACTOR_PLAN.md` 分阶段开发。每个阶段完成后需要同步：
 
-- `CODEGUIDE.md`: 当前代码结构、数据流、命令和安全边界。
+- `CODEGUIDE.md`（L0/L1）+ `docs/L2-domain.md` + `docs/L3-modules.md` + `docs/L4-operations.md`: 代码结构、数据流、命令和安全边界，按 L0-L4 分层归属更新。
 - `DEVELOPE_LOGS.md`: 阶段审计、缺失功能、已知风险和后续追踪。
 - `AGENTS_CHANGELOGS.md`: AI Agent 每轮修改审计日志。
 
@@ -230,13 +233,18 @@ curl -fsS http://127.0.0.1:3000/api/health
 
 ## 参考文档
 
+望潮的代码结构文档采用 L0-L4 分层组织，帮助 AI 和人工按抽象层级阅读：
+
 - `SPEC.md`: 产品目标、边界、数据模型和功能方向的 source of truth。
 - `REFACTOR_PLAN.md`: Node.js/TypeScript 重构路线。
+- `AGENTS.md`: AI Agent 协作规范、文档分层规则和阅读协议。
+- `CODEGUIDE.md`: **L0 系统架构 + L1 设计原则**，抽象层，高频阅读。
+- `docs/L2-domain.md`: **L2 领域模型**，核心实体、状态机、术语表。
+- `docs/L3-modules.md`: **L3 模块细节**，按包分章节的关键文件和调用链。
+- `docs/L4-operations.md`: **L4 操作运维**，命令、环境变量、部署、测试。
 - `FRONTEND.md`: 前端视觉语言、交互规则和页面组合规范。
-- `CODEGUIDE.md`: 当前代码结构和维护规则。
 - `docs/deployment.md`: 通用部署运维说明（健康检查、日志、备份、回滚）。
-- `docs/railway-deployment.md`: Railway 部署完整指南（项目创建、服务配置、环境变量、部署命令、定时任务）。
-- `AGENTS.md`: AI Agent 协作规范。
+- `docs/railway-deployment.md`: Railway 部署完整指南。
 - `AGENTS_CHANGELOGS.md`: AI Agent 工作审计日志。
 - `DEVELOPE_LOGS.md`: 分阶段开发审计和延期功能追踪。
 

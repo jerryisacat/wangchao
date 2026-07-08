@@ -1,5 +1,6 @@
 import { Plus, Rss, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 const mainLinks = [
@@ -33,14 +34,18 @@ export function TopNav({ className }: TopNavProps) {
         </nav>
 
         <div className="top-nav-actions">
-          <Link className="ui-button ui-button-primary ui-button-sm" href="/topics/new">
-            <Plus aria-hidden="true" size={14} />
-            新增主题
-          </Link>
-          <Link className="ui-button ui-button-secondary ui-button-sm" href="/sources">
-            <Rss aria-hidden="true" size={14} />
-            信源管理
-          </Link>
+          <Button asChild size="sm" variant="primary">
+            <Link href="/topics/new">
+              <Plus aria-hidden="true" size={14} />
+              新增主题
+            </Link>
+          </Button>
+          <Button asChild size="sm" variant="secondary">
+            <Link href="/sources">
+              <Rss aria-hidden="true" size={14} />
+              信源管理
+            </Link>
+          </Button>
         </div>
       </div>
     </header>

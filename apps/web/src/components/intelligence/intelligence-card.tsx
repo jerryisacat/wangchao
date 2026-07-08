@@ -45,7 +45,7 @@ export function IntelligenceCard({
   return (
     <article className="intelligence-card">
       <div className="intelligence-card-header">
-        <Badge tone="default">{event.topicName}</Badge>
+        <Badge variant="default">{event.topicName}</Badge>
         <span className="intelligence-card-source">
           {linkUrl ? (
             <a href={linkUrl} rel="noreferrer" target="_blank">
@@ -59,7 +59,7 @@ export function IntelligenceCard({
             · {formatDateTime(event.occurredAt)}
           </span>
         </span>
-        {event.userSaved ? <Badge tone="accent">已收藏</Badge> : null}
+        {event.userSaved ? <Badge variant="accent">已收藏</Badge> : null}
       </div>
 
       <h3 className="intelligence-card-title">

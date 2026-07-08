@@ -8,7 +8,7 @@ The current product path is a TypeScript monorepo for a personal intelligence wo
 
 > **This is an open-source project (MIT License).** Code, docs, data models, worker pipeline, and frontend are all public. Commercialization only covers server costs — buying the maintainer a coffee, not a product storyline.
 >
-> **You are especially welcome to customize this repo with your AI Agent.** Fork it, then have Claude Code, Cursor, Copilot, or any coding agent adapt it to your domain, sources, preferences, and deployment environment. `AGENTS.md` and `CODEGUIDE.md` are the collaboration spec and code-structure map for AI agents.
+> **You are especially welcome to customize this repo with your AI Agent.** Fork it, then have Claude Code, Cursor, Copilot, or any coding agent adapt it to your domain, sources, preferences, and deployment environment. `AGENTS.md` defines AI Agent collaboration rules and a document reading protocol, `CODEGUIDE.md` is the L0/L1 architecture overview, and `docs/` organizes domain models, module details, and operations by L2-L4 layers, helping agents understand the repo by abstraction level.
 
 ## Current Status
 
@@ -50,6 +50,9 @@ packages/
   sources/             RSS/source adapter
   ui/                  Shared UI package
 docs/
+  L2-domain.md         L2 domain model, state machines, glossary
+  L3-modules.md        L3 module details, key files, call chains
+  L4-operations.md     L4 commands, env vars, deployment, testing
   deployment.md        Deployment and operations guide
 ```
 
@@ -101,7 +104,7 @@ curl -fsS http://127.0.0.1:3000/api/health
 
 Development is organized by `AGENTS.md` and `REFACTOR_PLAN.md`. After each phase, keep these files synchronized:
 
-- `CODEGUIDE.md`: current structure, data flow, commands, and safety boundaries.
+- `CODEGUIDE.md` (L0/L1) + `docs/L2-domain.md` + `docs/L3-modules.md` + `docs/L4-operations.md`: code structure, data flow, commands, and safety boundaries, updated by L0-L4 layer attribution.
 - `DEVELOPE_LOGS.md`: phase audit, missing functionality, known risks, and follow-ups.
 - `AGENTS_CHANGELOGS.md`: AI Agent work audit log.
 
@@ -117,9 +120,15 @@ Development is organized by `AGENTS.md` and `REFACTOR_PLAN.md`. After each phase
 
 ## Reference Docs
 
+Wangchao's code structure docs are organized by L0-L4 layers to help AI and humans read by abstraction level:
+
 - `SPEC.md`: product goals and boundaries.
 - `REFACTOR_PLAN.md`: Node.js/TypeScript refactor plan.
-- `CODEGUIDE.md`: current code structure and maintenance rules.
+- `AGENTS.md`: AI Agent collaboration rules, document layering rules, and reading protocol.
+- `CODEGUIDE.md`: **L0 system architecture + L1 design principles**, abstract layer, high-frequency reading.
+- `docs/L2-domain.md`: **L2 domain model**, core entities, state machines, glossary.
+- `docs/L3-modules.md`: **L3 module details**, key files and call chains per package.
+- `docs/L4-operations.md`: **L4 operations**, commands, env vars, deployment, testing.
 - `docs/deployment.md`: deployment, health checks, logging, and rollback guidance.
 
 ## Contributing & Customization

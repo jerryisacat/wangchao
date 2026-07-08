@@ -9,9 +9,9 @@ export default function NewTopicPage() {
   return (
     <>
       <PageHeader eyebrow="TRACK WHAT MATTERS" title="新建观察主题">
-        <Link className="ui-button ui-button-ghost ui-button-sm" href="/">
-          ← 返回情报流
-        </Link>
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/">← 返回情报流</Link>
+        </Button>
       </PageHeader>
 
       <Card className="topic-lab" variant="kinetic">

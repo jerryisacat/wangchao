@@ -4,6 +4,20 @@
 
 ## 2026-07-08
 
+### 前端组件链迁移到 shadcn/Radix/Tailwind v4
+
+- Cause: Issue #16 要求评估并补齐 shadcn/Radix/Tailwind 组件链。原前端使用本地 primitives + 1631 行纯原生 CSS，`components.json` 形同虚设，Tabs 无键盘导航/ARIA，无 Form 组件。用户选择路径 A（完整切换到标准组件链）。
+- Changed: 安装 Tailwind v4 + `@tailwindcss/postcss` + `class-variance-authority` + `clsx` + `tailwind-merge` + `@radix-ui/react-tabs` + `@radix-ui/react-slot` + `radix-ui` 聚合包；新建 `postcss.config.mjs`；`globals.css` 顶部加 `@import "tailwindcss"` 和 `@theme` 块映射语义 token 为 `--color-*`；`cn()` 升级为 `twMerge(clsx(...))`；通过 `shadcn add` 生成标准 Button/Card/Badge/Tabs/Input/Label/Textarea；自定义 Button 增加 `primary`/`danger` 变体和 44px 最小点击区域；自定义 Card 增加 `work`/`kinetic` variant；自定义 Badge 增加 `accent`/`success`/`warning`/`danger` 语义变体；Tabs 现基于 Radix 提供完整键盘导航和 ARIA；所有页面 `<Link className="ui-button...">` 迁移到 Button `asChild`；表单 `<button className="ui-button...">` 迁移到 shadcn Button；删除 globals.css 中已废弃的 `.ui-button-*`/`.ui-card-*`/`.ui-badge-*`/`.ui-tabs-*`/`.metric-*`/`.metrics-grid` CSS 块和对应响应式规则。
+- Files: `apps/web/package.json`, `apps/web/postcss.config.mjs`(new), `apps/web/src/app/globals.css`, `apps/web/src/lib/utils.ts`, `apps/web/src/components/ui/{button,card,badge,tabs,input,label,textarea}.tsx`, `apps/web/src/components/layout/top-nav.tsx`, `apps/web/src/components/intelligence/intelligence-card.tsx`, `apps/web/src/app/{page,saved,preferences,briefings,sources,events/[eventId],topics/new}/page.tsx`, `apps/web/src/app/error.tsx`, `CODEGUIDE.md`, `docs/L3-modules.md`, `FRONTEND.md`, `AGENTS_CHANGELOGS.md`
+- Verification: `pnpm --filter @wangchao/web typecheck` 通过；`pnpm --filter @wangchao/web build` 通过（Next.js 16 + Turbopack，所有 11 条路由生成成功）。尚未运行完整 `pnpm lint`/`pnpm test`/`pnpm build`（根 workspace 级）和浏览器视觉检查。
+- Notes / Risk: Kinetic Intelligence 视觉风格（酸黄、硬边、网格背景、topic-lab 水印、shimmer 动效、reduced-motion）全部保留为 `@layer components` 自定义类，未迁移为纯 Tailwind 工具类，以控制工作量并避免视觉回归。`radix-ui` 聚合包提供 Slot/Tabs/Label 等 primitives。Tabs 现在具备真正的 a11y 行为（键盘箭头导航、roving tabindex、aria-selected/aria-controls）。本次会触发 Railway 自动部署（web 依赖变更 + globals.css 变更），已通过 typecheck + build 验证。
+
+- Cause: 随着代码量增长，原 `CODEGUIDE.md` 扁平 6 节结构把所有抽象层混在一起（基础设施、领域逻辑、编排、接口层全塞进一个超长数据流图），AI 和人工都难定位。需要按抽象层级重组文档，方便逐层下钻。
+- Changed: 将 `CODEGUIDE.md` 重组为 L0（系统架构）+ L1（设计原则与边界）主文件 + L2/L3/L4 索引段。新建 `docs/L2-domain.md`（领域模型/状态机/术语表）、`docs/L3-modules.md`（按包分章节的模块细节和调用链）、`docs/L4-operations.md`（命令/环境变量/部署/测试）。在 `AGENTS.md` 新增第 8 节"文档分层规则与阅读协议"，明确分层定义、阅读协议、分层归属规则和维护原则。更新 `SPEC.md` 第 8 节为分层指引表。更新 `README.md`/`README-en.md` 引用新文档结构。
+- Files: `CODEGUIDE.md`, `docs/L2-domain.md`(new), `docs/L3-modules.md`(new), `docs/L4-operations.md`(new), `AGENTS.md`, `SPEC.md`, `README.md`, `README-en.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 纯文档重组，无代码改动，无需 lint/typecheck/build。已检查所有内部链接锚点一致、无内容丢失（原 CODEGUIDE 内容按分层归属迁移到对应文件）。
+- Notes / Risk: L3/L4 文件锚点链接使用 GitHub markdown 自动生成格式，后续如发现锚点不匹配需修正。本次不触发 Railway 自动部署（纯文档变更）。
+
 ### 修复 Railway Cron 服务运行时 workspace dist 缺失
 
 - Cause: Web 配置修复并 push 后，Railway GitHub 自动部署触发 `wangchao-worker`，其 cron config 仅构建 worker 包，运行时缺少 `@wangchao/ai/dist/index.js`，导致 deployment `CRASHED`。

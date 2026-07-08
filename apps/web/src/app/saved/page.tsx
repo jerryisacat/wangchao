@@ -8,6 +8,7 @@ import {
 import Link from "next/link";
 import { updateDashboardEventStateAction } from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
@@ -24,9 +25,9 @@ export default async function SavedPage() {
   return (
     <>
       <PageHeader eyebrow="已收藏" title="已保存情报">
-        <Link className="ui-button ui-button-ghost ui-button-sm" href="/">
-          ← 返回情报流
-        </Link>
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/">← 返回情报流</Link>
+        </Button>
       </PageHeader>
 
       <div>
@@ -47,7 +48,7 @@ export default async function SavedPage() {
                   <article className="event-row" key={event.eventId}>
                     <div className="event-copy">
                       <div className="event-copy-header">
-                        <Badge tone="default">{event.topicName}</Badge>
+                        <Badge variant="default">{event.topicName}</Badge>
                         <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted-foreground)" }}>
                           {event.sourceName} · {formatDateTime(event.occurredAt)}
                         </span>
@@ -62,7 +63,7 @@ export default async function SavedPage() {
                       ) : null}
                     </div>
                     <div className="event-actions">
-                      <Badge tone="accent">已收藏</Badge>
+                      <Badge variant="accent">已收藏</Badge>
                       <form action={updateDashboardEventStateAction}>
                         <input name="eventId" type="hidden" value={event.eventId} />
                         <button

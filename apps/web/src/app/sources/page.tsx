@@ -39,9 +39,9 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
   return (
     <>
       <PageHeader eyebrow="信源治理" title="信源管理">
-        <Link className="ui-button ui-button-ghost ui-button-sm" href="/">
-          ← 返回情报流
-        </Link>
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/">← 返回情报流</Link>
+        </Button>
       </PageHeader>
 
       {notice ? (
@@ -127,7 +127,7 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                     <div>
                       <div className="source-quality-title">
                         <h3>{source.name}</h3>
-                        <Badge tone={sourceTone(source.status)}>
+                        <Badge variant={sourceTone(source.status)}>
                           {formatSourceStatus(source.status)}
                         </Badge>
                       </div>

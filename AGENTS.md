@@ -20,10 +20,11 @@
 |---|---|---|
 | 1 | `SPEC.md` | 产品目标、边界、数据模型和功能方向的 source of truth。 |
 | 2 | `REFACTOR_PLAN.md` | 技术选型、目标架构、重构阶段的核心依据。 |
-| 3 | `AGENTS.md` | AI Agent 协作规则。 |
-| 4 | `CODEGUIDE.md` | 当前代码结构、模块职责、数据流和命令说明。 |
-| 5 | `AGENTS_CHANGELOGS.md` | AI Agent 每轮修改审计日志。 |
-| 6 | `DEVELOPE_LOGS.md` | 分阶段开发审计和延期功能追踪。 |
+| 3 | `AGENTS.md` | AI Agent 协作规则、文档分层规则和阅读协议。 |
+| 4 | `CODEGUIDE.md`（L0+L1）+ `docs/L2-L4` | 代码结构、模块职责、数据流和命令说明，按 L0-L4 分层组织（见第 8 节）。 |
+| 5 | `FRONTEND.md` | 前端视觉语言、交互规则、组件风格和页面组合方式。 |
+| 6 | `AGENTS_CHANGELOGS.md` | AI Agent 每轮修改审计日志。 |
+| 7 | `DEVELOPE_LOGS.md` | 分阶段开发审计和延期功能追踪。 |
 | 入口说明 | `README.md` / `README-en.md` | 当前 TypeScript 主路径的用户入口说明；架构决策仍以 `SPEC.md` 和 `REFACTOR_PLAN.md` 为准。 |
 | 废弃 | `CHANGELOG.md` | 不再维护，由 `AGENTS_CHANGELOGS.md` 替代。 |
 
@@ -72,8 +73,8 @@
 - 默认开发分支使用 `main`，除非仓库后续明确新增分支策略。
 - 以 `SPEC.md` 和 `REFACTOR_PLAN.md` 为准做设计；`README.md` / `README-en.md` 用于对外说明当前主路径和运行入口。
 - 不提交 `.env`、密钥、token、`data/*`、生成 JSON、`.venv`、本地缓存。
-- 新增环境变量必须同步 `.env_example` 和 `CODEGUIDE.md`。
-- 修改目录、命令、数据流、数据库、worker、API、输出契约，必须同步 `CODEGUIDE.md`。
+- 新增环境变量必须同步 `.env_example` 和 `docs/L4-operations.md`。
+- 修改目录、命令、数据流、数据库、worker、API、输出契约，必须按第 8 节"文档分层归属规则"同步对应文档层。
 - LLM 输出一律视为不可信输入，后端 sanitize，前端安全渲染。
 - 抓取、AI、简报、导出等长任务必须放在 worker，不放进 request lifecycle。
 
@@ -143,23 +144,72 @@ feat:实现主题创建页面
 - 用户要求“只讨论 / 不写文件”时，不更新。
 - 不再更新 `CHANGELOG.md`。
 
-## 8. CODEGUIDE.md 规则
+## 8. 文档分层规则与阅读协议
 
-`CODEGUIDE.md` 记录代码结构，不记录发布日志。
+代码结构文档采用 **L0-L4 分层结构**。L0/L1 是抽象层，留在 `CODEGUIDE.md` 主文件；L2/L3/L4 是细节层，拆到 `docs/` 下独立文件。
 
-必须覆盖：
+### 8.1 分层定义
 
-- 每个目录职责
-- 重要文件目的
-- 模块依赖关系
-- 关键数据流
-- 关键调用链
-- 常用命令
-- 测试/验证入口
-- 环境变量
-- 安全边界
+| 层 | 回答的问题 | 内容 | 文件 | 变更频率 |
+|---|---|---|---|---|
+| **L0** | 系统长什么样 | 整体架构图、仓库布局清单、主干数据流、文档优先级表 | `CODEGUIDE.md` | 低 |
+| **L1** | 为什么这样设计 | 分层依赖方向、worker 边界、tenant 边界、不可信输入处理、候选源隔离、反馈影响输出、幂等去重、安全隐私 | `CODEGUIDE.md` | 低 |
+| **L2** | 系统处理什么 | 核心实体职责表、状态机、FeedbackKind 枚举、领域术语表、实体关系概览 | `docs/L2-domain.md` | 中 |
+| **L3** | 具体怎么实现 | 目录结构树、每个包/目录职责、关键文件表、关键函数表、前端维护规则、Worker cycle 函数、调用链汇总 | `docs/L3-modules.md` | 高 |
+| **L4** | 怎么跑起来 | 本地运行命令、验证四件套、Prisma 命令、Docker Postgres、Railway 部署、环境变量全表、测试入口、验证注意事项 | `docs/L4-operations.md` | 中 |
 
-新增、移动、删除文件后必须同步更新。Node.js 重构落地后，`CODEGUIDE.md` 应从 Python 原型结构改为 monorepo 结构。
+### 8.2 文档阅读协议
+
+AI Agent 进入仓库工作时应按以下顺序阅读文档。
+
+**进场必读**（建立全局认知）：
+
+1. `AGENTS.md` — 协作规则、文档分层规则和阅读协议（本文件）
+2. `SPEC.md` §1-3 — 产品定位、目标、核心原则
+3. `CODEGUIDE.md` L0 — 系统架构全景
+4. `CODEGUIDE.md` L1 — 设计原则与边界
+
+**按任务按需读**（下钻细节）：
+
+| 任务类型 | 先读 | 再读 |
+|---|---|---|
+| 新增/修改实体或状态机 | `docs/L2-domain.md` | `docs/L3-modules.md` 相关模块段 |
+| 新增/修改模块或文件 | `docs/L3-modules.md` 相关模块段 | `docs/L4-operations.md` 命令验证 |
+| 新增环境变量或部署变更 | `docs/L4-operations.md` | `.env_example` |
+| 修改架构或依赖方向 | `CODEGUIDE.md` L1 | `CODEGUIDE.md` L0 |
+| 修 bug | `docs/L3-modules.md` 相关模块段 + 调用链 | `docs/L2-domain.md` 相关状态机 |
+| 新增/修改前端组件 | `FRONTEND.md` + `docs/L3-modules.md` §apps/web | `docs/L4-operations.md` 验证命令 |
+
+**读取规则**：
+
+- 先 L0/L1 建立全局认知，再下钻 L2/L3/L4。不要一进场就全量读 L3/L4。
+- L0/L1 发生变更时，必须重新通读确认影响面。
+- `CODEGUIDE.md` 底部的 L2/L3/L4 索引段提供每个文件的摘要和锚点链接，可用于快速定位。
+- 修改代码后，按"文档分层归属规则"（§8.3）更新对应文档层。
+
+### 8.3 文档分层归属规则
+
+修改代码或仓库结构后，必须按以下归属表更新对应文档层。不要把 L3 文件级细节回灌到 L0/L1。
+
+| 修改类型 | 更新位置 | 具体文件 |
+|---|---|---|
+| 新增/删除 package 或 app | L0 仓库布局 + L3 对应模块段 | `CODEGUIDE.md` §L0.2 + `docs/L3-modules.md` |
+| 新增/修改依赖方向 | L1 分层依赖方向 | `CODEGUIDE.md` §L1.1 |
+| 新增/修改 entity 或状态机 | L2 领域模型 | `docs/L2-domain.md` |
+| 新增/修改关键文件或调用链 | L3 对应模块段 | `docs/L3-modules.md` |
+| 新增/修改命令、环境变量、部署 | L4 操作运维 | `docs/L4-operations.md` + `.env_example` |
+| 安全/边界/不可信输入规则 | L1 对应小节 | `CODEGUIDE.md` §L1 |
+| 前端视觉/交互规则 | `FRONTEND.md` + L3 §apps/web | `FRONTEND.md` + `docs/L3-modules.md` |
+| 产品目标/数据模型方向 | `SPEC.md` | `SPEC.md` |
+| AI Agent 协作流程/审计规则 | `AGENTS.md` | `AGENTS.md` |
+
+### 8.4 文档维护原则
+
+- **L0/L1 保持稳定**：只放抽象后的架构和原则，不塞文件级细节。L0/L1 变更意味着架构级调整，需要审慎。
+- **L3/L4 随实现演进**：新增文件、修改函数签名、调整调用链、变更环境变量时同步更新。
+- **不跨层混写**：不要在 L0 架构图里放 L3 文件表，也不要在 L3 模块段里放 L1 设计原则。
+- **索引段保持最新**：`CODEGUIDE.md` 底部的 L2/L3/L4 索引段摘要必须与对应文件内容一致。如果 `docs/L3-modules.md` 新增了一个模块段，`CODEGUIDE.md` §L3 索引也要加一行。
+- 新增、移动、删除文件后必须同步更新 L3（`docs/L3-modules.md`）和 `CODEGUIDE.md` §L3 索引段。
 
 ## 9. DEVELOPE_LOGS.md 规则
 
@@ -192,7 +242,7 @@ feat:实现主题创建页面
 
 - Prisma schema 和 migrations 进入版本控制。
 - 不直接手改生产数据库。
-- schema 变更必须包含 migration、测试、查询层更新、`CODEGUIDE.md` 更新。
+- schema 变更必须包含 migration、测试、查询层更新、`docs/L2-domain.md` 和 `docs/L3-modules.md` 更新。
 - tenant-owned 数据预留 `organizationId`。
 - user-specific state 预留 `userId`。
 - usage events 记录 AI 调用、抓取、导出、简报生成等用量。
@@ -204,7 +254,7 @@ feat:实现主题创建页面
 - Next.js route handlers 用于外部 API、webhooks、export downloads、status endpoints。
 - Server Actions 用于内部产品 mutations。
 - Worker 负责抓取、AI 分析、简报、导出。
-- API schema 变更必须同步类型、调用方、测试和 `CODEGUIDE.md`。
+- API schema 变更必须同步类型、调用方、测试和 `docs/L3-modules.md`。
 - 当前仓库没有 MCP/CLI 契约；后续新增时必须文档化输入、输出、认证、安全边界。
 
 ## 12. 安全与隐私规则
@@ -238,7 +288,7 @@ AI parser fixture test
 Playwright single-topic smoke test
 ```
 
-当前没有正式发布流程。新增部署后必须补充环境变量、worker health、日志、回滚策略和 `CODEGUIDE.md`。
+当前没有正式发布流程。新增部署后必须补充环境变量、worker health、日志、回滚策略和 `docs/L4-operations.md`。
 
 ## 14. 每轮任务结束前必须检查
 
@@ -246,19 +296,22 @@ Playwright single-topic smoke test
 
 - `AGENTS.md`
 - `AGENTS_CHANGELOGS.md`
-- `CODEGUIDE.md`
+- `CODEGUIDE.md`（L0/L1）
+- `docs/L2-domain.md`
+- `docs/L3-modules.md`
+- `docs/L4-operations.md`
 - `DEVELOPE_LOGS.md`
 
-按变更类型追加检查：
+按变更类型追加检查（按文档分层归属规则定位，见 §8.3）：
 
 | 变更 | 检查 |
 |---|---|
 | 产品目标 | `SPEC.md`、`REFACTOR_PLAN.md` |
-| 架构/目录/命令 | `CODEGUIDE.md` |
-| 环境变量 | `.env_example`、`CODEGUIDE.md` |
-| DB schema | Prisma migration、测试、`CODEGUIDE.md` |
-| API/输出契约 | 类型、调用方、测试、`CODEGUIDE.md` |
-| 安全边界 | `SPEC.md`、测试 |
+| 架构/目录/命令 | `CODEGUIDE.md` L0/L1 + `docs/L3-modules.md` + `docs/L4-operations.md` |
+| 环境变量 | `.env_example`、`docs/L4-operations.md` |
+| DB schema | Prisma migration、测试、`docs/L2-domain.md`、`docs/L3-modules.md` |
+| API/输出契约 | 类型、调用方、测试、`docs/L3-modules.md` |
+| 安全边界 | `SPEC.md`、测试、`CODEGUIDE.md` L1 |
 | AI Agent 修改 | `AGENTS_CHANGELOGS.md` |
 | 阶段完成/审计 | `DEVELOPE_LOGS.md` |
 

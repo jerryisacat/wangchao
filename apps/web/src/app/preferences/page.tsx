@@ -1,6 +1,7 @@
 import { Brain } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
@@ -14,9 +15,9 @@ export default async function PreferencesPage() {
   return (
     <>
       <PageHeader eyebrow="学习记录" title="偏好记忆">
-        <Link className="ui-button ui-button-ghost ui-button-sm" href="/">
-          ← 返回情报流
-        </Link>
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/">← 返回情报流</Link>
+        </Button>
       </PageHeader>
 
       <div>
@@ -40,7 +41,7 @@ export default async function PreferencesPage() {
                       <p>{preference.explanation}</p>
                     </div>
                     <div className="preference-meta">
-                      <Badge tone={preference.weight >= 0 ? "success" : "danger"}>
+                      <Badge variant={preference.weight >= 0 ? "success" : "danger"}>
                         {preference.weight >= 0 ? "+" : ""}
                         {preference.weight}
                       </Badge>

@@ -285,6 +285,7 @@
 - Fixes: 避免新增网络依赖，使用本地 primitives 和 CSS token 落地产品壳；页面使用 lucide 图标、固定尺寸按钮/指标/列表行和响应式断点，减少文字溢出与布局抖动风险；新增 error/loading 状态避免只有 happy path。
 - Verification: 已运行 `git diff --check`，通过。尝试运行 `pnpm --filter @wangchao/web typecheck`，但因 `node_modules` 链接未恢复触发自动安装，普通沙箱 DNS 持续失败，命令被中断，未完成。未运行 build/lint/test/Playwright。
 - Follow-up: 恢复联网/配额后先运行 `CI=true pnpm install --no-frozen-lockfile`，再运行 `pnpm --filter @wangchao/web typecheck`、`CI=true pnpm build`、`CI=true pnpm lint`、`CI=true pnpm test`；随后启动 web 并做桌面/移动端视觉检查。后续 Phase 4 需要把静态 topic/source/event fixture 替换成真实 Topic CRUD 和 Source 绑定。
+- Update (2026-07-08): Issue #16 follow-up 已关闭。shadcn/Radix/Tailwind v4 组件链已完整接入（见 `AGENTS_CHANGELOGS.md` 同日"前端组件链迁移到 shadcn/Radix/Tailwind v4"条目）。`pnpm --filter @wangchao/web typecheck` 和 `build` 均通过。Tabs 现基于 Radix 提供完整 a11y。Form primitive（Input/Label/Textarea）已落地。
 
 ### Phase 2：数据库基础
 

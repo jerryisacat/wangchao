@@ -14,6 +14,7 @@ import { updateDashboardEventStateAction } from "@/app/actions";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBanner } from "@/components/common/status-banner";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getDashboardEventDetail } from "@/lib/topic-source-data";
 
@@ -55,10 +56,12 @@ export default async function EventDetailPage({
         }
         title="情报详情"
       >
-        <Link className="ui-button ui-button-ghost ui-button-sm" href="/">
-          <ArrowLeft aria-hidden="true" size={14} />
-          返回情报流
-        </Link>
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/">
+            <ArrowLeft aria-hidden="true" size={14} />
+            返回情报流
+          </Link>
+        </Button>
       </PageHeader>
 
       {notice ? (
@@ -79,8 +82,8 @@ export default async function EventDetailPage({
       <Card variant="work">
         <CardHeader>
           <div className="event-detail-kicker">
-            <Badge tone="default">{event.category}</Badge>
-            {event.userSaved ? <Badge tone="accent">已收藏</Badge> : null}
+            <Badge variant="default">{event.category}</Badge>
+            {event.userSaved ? <Badge variant="accent">已收藏</Badge> : null}
             <span>重要度 {event.score}</span>
           </div>
           <CardTitle>{event.title}</CardTitle>
@@ -119,69 +122,65 @@ export default async function EventDetailPage({
               <form action={updateDashboardEventStateAction}>
                 <input name="eventId" type="hidden" value={event.eventId} />
                 <input name="returnTo" type="hidden" value={returnTo} />
-                <button
-                  className="ui-button ui-button-secondary ui-button-sm"
+                <Button
                   name="action"
+                  size="sm"
                   type="submit"
                   value="read"
+                  variant="secondary"
                 >
                   <Check aria-hidden="true" size={14} />
                   已读
-                </button>
+                </Button>
               </form>
               <form action={updateDashboardEventStateAction}>
                 <input name="eventId" type="hidden" value={event.eventId} />
                 <input name="returnTo" type="hidden" value={returnTo} />
-                <button
-                  className="ui-button ui-button-secondary ui-button-sm"
+                <Button
                   name="action"
+                  size="sm"
                   type="submit"
                   value="save"
+                  variant="secondary"
                 >
                   <Bookmark aria-hidden="true" size={14} />
                   收藏
-                </button>
+                </Button>
               </form>
               <form action={updateDashboardEventStateAction}>
                 <input name="eventId" type="hidden" value={event.eventId} />
                 <input name="returnTo" type="hidden" value={returnTo} />
-                <button
-                  className="ui-button ui-button-secondary ui-button-sm"
+                <Button
                   name="action"
+                  size="sm"
                   type="submit"
                   value="dismiss"
+                  variant="secondary"
                 >
                   <ThumbsDown aria-hidden="true" size={14} />
                   减少这类
-                </button>
+                </Button>
               </form>
-              <a
-                className="ui-button ui-button-primary ui-button-sm"
-                href={`/exports/events/${event.eventId}`}
-              >
-                <Download aria-hidden="true" size={14} />
-                Markdown
-              </a>
+              <Button asChild size="sm" variant="primary">
+                <a href={`/exports/events/${event.eventId}`}>
+                  <Download aria-hidden="true" size={14} />
+                  Markdown
+                </a>
+              </Button>
               {itemUrl ? (
-                <a
-                  className="ui-button ui-button-ghost ui-button-sm"
-                  href={itemUrl}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <ExternalLink aria-hidden="true" size={14} />
-                  原文
-                </a>
+                <Button asChild size="sm" variant="ghost">
+                  <a href={itemUrl} rel="noreferrer" target="_blank">
+                    <ExternalLink aria-hidden="true" size={14} />
+                    原文
+                  </a>
+                </Button>
               ) : sourceUrl ? (
-                <a
-                  className="ui-button ui-button-ghost ui-button-sm"
-                  href={sourceUrl}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  <ExternalLink aria-hidden="true" size={14} />
-                  来源
-                </a>
+                <Button asChild size="sm" variant="ghost">
+                  <a href={sourceUrl} rel="noreferrer" target="_blank">
+                    <ExternalLink aria-hidden="true" size={14} />
+                    来源
+                  </a>
+                </Button>
               ) : null}
             </div>
           </article>
