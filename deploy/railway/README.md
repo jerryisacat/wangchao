@@ -23,4 +23,12 @@ Web service 在部署前运行：
 pnpm db:deploy && pnpm db:seed
 ```
 
+Web service 的 build 阶段使用完整 monorepo 构建：
+
+```bash
+pnpm railway:build
+```
+
+这样可以确保 `apps/web` 构建时 `@wangchao/core`、`@wangchao/db`、`@wangchao/sources`、`@wangchao/worker` 等 workspace 包都在 Railpack 构建上下文中可解析。
+
 Worker cron service 默认每小时运行一次。Source discovery cron service 默认每周一 02:00 UTC 运行一次。Railway cron 使用 UTC crontab；如需调整频率，修改 `cronSchedule`。

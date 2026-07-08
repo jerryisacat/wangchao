@@ -4,6 +4,22 @@
 
 ## 2026-07-08
 
+### 修复 Railway Web Config as Code 构建命令
+
+- Cause: Railway Web service 切换到 `deploy/railway/web.railway.json` 后，GitHub 自动部署中的 Web-only build 无法解析 `@wangchao/*` workspace 包，导致最新 Web deployment 失败。
+- Changed: 将 `deploy/railway/web.railway.json` 的 build command 从 `pnpm railway:web:build` 改为 `pnpm railway:build`，让 Web service 在 Railpack 中执行完整 monorepo 构建；同步 `CODEGUIDE.md` 和 `deploy/railway/README.md`，说明该配置是为了保留 workspace 包解析上下文。
+- Files: `deploy/railway/web.railway.json`, `CODEGUIDE.md`, `deploy/railway/README.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已通过 `node` JSON 解析检查、`pnpm railway:build`、`pnpm typecheck`、`pnpm lint`、`pnpm test` 和 `git diff --check`。
+- Notes / Risk: 该配置会增加 Web deployment 构建范围，但避免 per-service Web 构建在 Railway/Railpack 中裁剪 workspace 依赖；本地未 commit/push，不会立即触发 GitHub 自动部署。
+
+### 明确 GitHub/Railway 自动部署提交边界
+
+- Cause: 用户计划采用 Railway 连接 GitHub 自动部署，并要求在 `AGENTS.md` 明确说明 commit / push 可能触发部署，避免 AI Agent 把小修小改默认提交到默认分支。
+- Changed: 在 `AGENTS.md` 新增“GitHub / Railway 自动部署与 commit 治理”规则，说明默认分支 commit / push 可能触发 Railway Web、Worker 或 Cron 服务重新部署；要求只有重要功能更新、线上修复、部署/DB/环境变量变更、用户明确要求发布或完成可验证阶段性改动时才提交，并要求提交前说明部署影响与完成相应验证。
+- Files: `AGENTS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已检查文档位置和规则表述；本次仅修改协作规范与审计日志，未改运行时代码、部署配置或环境变量。
+- Notes / Risk: 规则本身不会启用 GitHub 自动部署；后续真正连接 Railway GitHub integration 或新增 GitHub Actions 时，仍需单独同步 `CODEGUIDE.md`、部署文档和验证流程。
+
 ### 新建主题自动生成 profile 并发现候选源
 
 - Cause: 修复 GitHub Issue #2，将新建主题入口从“必须手动绑定 RSS”调整为“只填写主题名称和描述”，并在创建后自动生成关键词/profile、匹配内置信源包和写入可治理候选源。

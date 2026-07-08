@@ -401,7 +401,7 @@ pnpm db:deploy
 
 说明：
 
-- `deploy/railway/web.railway.json` 使用 `pnpm railway:web:build` 构建 Web，在 pre-deploy 阶段运行 `pnpm db:deploy && pnpm db:seed`，启动命令为 `pnpm railway:web:start`，健康检查路径为 `/api/health`。
+- `deploy/railway/web.railway.json` 使用 `pnpm railway:build` 执行完整 monorepo 构建，避免 Railway/Railpack 在 Web-only 构建时裁掉 `@wangchao/*` workspace 包；在 pre-deploy 阶段运行 `pnpm db:deploy && pnpm db:seed`，启动命令为 `pnpm railway:web:start`，健康检查路径为 `/api/health`。
 - `deploy/railway/worker-cron.railway.json` 使用 `pnpm railway:worker:build` 构建 worker，按 `0 * * * *` UTC 每小时执行一次 `pnpm railway:worker:start`。
 - `deploy/railway/source-discovery-cron.railway.json` 使用 `pnpm railway:worker:build` 构建 worker，按 `0 2 * * 1` UTC 每周执行一次 `pnpm --filter @wangchao/worker source-discovery`。
 - `railway.json` 是当前 CLI 本地上传部署入口。由于当前仓库有大量未提交绿地重构改动，生产部署使用 `railway up --service ...` 上传本地目录；两个服务通过 `WANGCHAO_RAILWAY_ROLE` 分发启动行为：`web` 跑 migration/seed 并启动 Next.js，`worker` 跳过 predeploy 并执行一轮 Node worker。

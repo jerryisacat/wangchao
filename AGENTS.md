@@ -77,6 +77,18 @@
 - LLM 输出一律视为不可信输入，后端 sanitize，前端安全渲染。
 - 抓取、AI、简报、导出等长任务必须放在 worker，不放进 request lifecycle。
 
+### 5.1 GitHub / Railway 自动部署与 commit 治理
+
+本仓库计划采用 Railway 连接 GitHub 的自动部署方式。完成连接后，默认分支上的 commit / push 可能直接触发 Railway Web、Worker 或 Cron 服务重新部署。
+
+因此 AI Agent 必须遵守：
+
+- 不把每个小修小改都默认 commit / push；只有重要功能更新、修复线上问题、数据库/部署/环境变量变更、用户明确要求发布，或已经完成一组可验证的阶段性改动时，才提交到默认分支。
+- 仅文案微调、讨论中的方案草稿、未验证实验、临时调试、日志补充或本地排查产物，默认保持为未提交工作区改动，除非用户明确要求提交。
+- 准备 commit 前必须说明本次提交是否会触发 Railway 自动部署，并确认改动已通过与风险相匹配的验证。
+- 涉及数据库 migration、部署脚本、Railway 配置、GitHub Actions、环境变量或 worker 调度的提交，必须视为可触发生产影响的高风险变更，提交前至少完成 `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`git diff --check`，并按变更类型补充 DB/worker/smoke 验证。
+- 如果只是为了保存中间状态，应优先使用本地未提交改动或临时分支，不要推送到会触发自动部署的默认分支。
+
 ## 6. CommitLog 规则
 
 Commit message 使用中文格式：
