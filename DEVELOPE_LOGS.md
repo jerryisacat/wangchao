@@ -2,6 +2,30 @@
 
 本文件记录分阶段开发审计和延期功能追踪，辅助 `AGENTS_CHANGELOGS.md` 使用。它不是传统 release changelog；重点是记录每个阶段是否达成 `REFACTOR_PLAN.md` 和 `AGENTS.md` 目标、缺失功能、已知问题、修复情况和后续追踪项。
 
+## 2026-07-08
+
+### Phase 5：自动信源发现
+
+- Phase: Phase 5 (自动信源发现)
+- Scope: 落地 worker 周期/手动触发的 source discovery 主路径：关键词搜索 RSS/Atom、从高分情报原文页反查 RSS/Atom、从 active source 最近 item 外链网络发现候选；候选源写入 `Source.status='CANDIDATE'`，携带发现渠道、推荐理由、0-1 相关性评分和 SourceObservation evidence；写入 `SOURCE_DISCOVERY` TaskRun/UsageEvent；Web 信源管理页可手动触发并展示推荐理由；新增周频 Railway cron 示例。
+- Alignment: 符合 `SPEC.md` 5.2 / Phase 5、Issue #1 和 `AGENTS.md`。AI adapter 保持 OpenAI-compatible，Brave Search 通过 provider 接口隔离；无 key 时优雅降级；长任务在 worker 中执行；candidate/muted/rejected 仍不会进入 fetch/briefing；发现到已存在 active source 时只写 observation，不改变 source 状态。
+- Missing: 尚未接入 Tavily/Serper/SearXNG、自建 SearXNG、专用 arXiv/GitHub releases/政府公告适配器、社媒观察、候选源低频抓取策略、批量治理或到期提醒；Playwright smoke 已通过，但没有新增专门点击“发现新源”的浏览器用例。
+- Bugs: 首次真实 discovery 验证发现默认探测范围过大导致运行过慢，已增加 `WANGCHAO_DISCOVERY_HIGHSCORE_PAGE_LIMIT`、`WANGCHAO_DISCOVERY_ACTIVE_PAGE_LIMIT`、`WANGCHAO_DISCOVERY_OUTLINKS_PER_PAGE`、`WANGCHAO_DISCOVERY_FETCH_TIMEOUT_MS`。同次验证发现已存在 active source 不应写入 discovery 字段或计为候选，已改为仅写 `SourceObservation` 并计入 `existingSourcesObserved`。
+- Fixes: 新增 `0002_source_discovery` migration；新增 `packages/sources/src/discovery.ts`、`packages/ai/src/source-recommendation.ts`；新增 `runSourceDiscoveryCycle()`、`runSourceDiscoveryAction()`、信源治理页“发现新源”按钮和推荐理由展示；新增 source/AI fixture 测试；同步 `.env_example`、`README.md`、`SPEC.md`、`CODEGUIDE.md`、Railway config 文档和本日志。
+- Verification: 已通过 `pnpm db:generate`、`pnpm db:validate`、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`git diff --check`。临时 Docker Postgres 验证 `pnpm db:deploy`、`pnpm db:seed`、worker 单轮抓取分析、`pnpm worker:source-discovery`，并用 SQL 检查 `SOURCE_DISCOVERY` TaskRun/UsageEvent、existing source observation、active source 未被 discovery 字段污染；直接执行 repository 写入验证新 candidate 的 `status/channel/reason/trustScore`。带临时数据库并在沙箱外运行 `pnpm smoke:web`，4 个 Playwright smoke tests 通过。
+- Follow-up: 在真实部署中配置 `deploy/railway/source-discovery-cron.railway.json` 对应服务；用真实 `BRAVE_SEARCH_API_KEY` 和 AI key 验证关键词搜索/LLM 推荐路径；后续可补 Playwright 手动 discovery 点击流和 provider 扩展。
+
+### 前端体验缺口补齐：详情页、URL 筛选和 smoke test
+
+- Phase: Cross-phase / Phase 8 (Dashboard MVP) 体验补齐
+- Scope: 新增 `/events/[eventId]` 情报详情页；首页主题筛选改为基于 topic id，并与 `q` 搜索和 `view=all|high|saved` URL 状态互相保留；情报卡片标题可进入详情页；事件状态动作支持 `returnTo` 回到详情页；新增 Playwright smoke 配置和 `pnpm smoke:web` 脚本。
+- Alignment: 符合 `REFACTOR_PLAN.md` Phase 8 对 event detail、筛选状态和 Dashboard 主阅读工作流的目标，也符合 `CODEGUIDE.md` 对可点击、可刷新、可分享 URL 状态的要求。长任务仍不进入 request lifecycle，详情页通过 `packages/db` repository 读取。
+- Missing: Playwright 用例已写入，但当前本机 Chromium 被 macOS sandbox 拦截，未能完成浏览器级执行；详情页尚未扩展 merged sources、反馈历史或更丰富实体/后续跟踪信息。
+- Bugs: 修复首页 `topic` URL 参数用 topic id 生成却拿 topic name 比较，导致主题筛选无法正确过滤和高亮的问题；修复事件状态 action 固定回首页，详情页无法留在当前上下文的问题。验证过程中发现现有 `packages/core` test script 仍引用已删除 fixture dist，已改回当前可运行的 `tsc --noEmit` 测试入口；`packages/ai` source recommendation schema 常量补类型锚点以通过 build。
+- Fixes: 新增 `getDashboardEventById()` repository；新增 `getDashboardEventDetail()` web data helper；新增 `apps/web/src/app/events/[eventId]/page.tsx`；补 `TopicFilter` URL 状态保留、首页 view 筛选、详情页样式、Playwright smoke tests 和文档说明。
+- Verification: 已通过 `CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、`git diff --check`。使用临时 Docker Postgres (`127.0.0.1:55434`) 运行 `pnpm db:migrate`、`pnpm db:seed`、`pnpm --filter @wangchao/worker start`，生成 30 条事件；再用 Next production server HTTP smoke 验证 `/api/health` database `ok`、`/?q=OpenAI&view=high` 保留搜索/视图/主题链接状态、`/events/[eventId]` 返回详情内容、`/exports/events/[eventId]` 返回 200。`pnpm smoke:web` 启动 production server 成功，但 Chromium launch 因 `bootstrap_check_in ... MachPortRendezvousServer ... Permission denied` 失败，属于当前 macOS sandbox 限制。
+- Follow-up: 在允许 Chromium 启动的本机/CI 环境跑 `pnpm smoke:web`；后续可扩展详情页 merged sources、反馈历史、实体和 follow-up suggestion。
+
 ## 2026-07-07
 
 ### 放宽前端整体间距

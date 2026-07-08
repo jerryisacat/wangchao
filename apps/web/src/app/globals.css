@@ -602,6 +602,12 @@ a:hover {
   border-color: var(--accent);
 }
 
+.source-discovery-toolbar {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 12px;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: minmax(0, 0.45fr) minmax(0, 0.55fr);
@@ -901,6 +907,11 @@ a:hover {
   font-size: 42px;
   font-weight: 950;
   line-height: 0.9;
+}
+
+.source-quality-row .source-recommendation {
+  max-width: 62ch;
+  color: var(--foreground);
 }
 
 .source-quality-metrics {
@@ -1231,6 +1242,36 @@ a:hover {
   color: var(--accent);
 }
 
+.view-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.view-filter a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 750;
+  padding: 0 12px;
+  text-decoration: none;
+}
+
+.view-filter a:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--foreground);
+}
+
+.view-filter a[aria-current="page"] {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+}
+
 /* ===== Intelligence Feed ===== */
 
 .intelligence-feed {
@@ -1288,6 +1329,15 @@ a:hover {
   -webkit-line-clamp: 2;
 }
 
+.intelligence-card-title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.intelligence-card-title a:hover {
+  color: #cffafe;
+}
+
 .intelligence-card-summary {
   display: -webkit-box;
   margin: 0 0 14px;
@@ -1318,6 +1368,79 @@ a:hover {
   display: flex;
   gap: 8px;
   padding-top: 6px;
+}
+
+/* ===== Event Detail Page ===== */
+
+.event-detail-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.event-detail-page {
+  display: grid;
+  gap: 18px;
+}
+
+.event-detail-summary {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.event-detail-reason {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-strong);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.55;
+  padding: 12px 14px;
+}
+
+.event-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.event-detail-grid div {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-strong);
+  padding: 12px;
+}
+
+.event-detail-grid dt {
+  margin: 0 0 6px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.event-detail-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.event-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 /* ===== Empty State v2 ===== */
@@ -1450,6 +1573,10 @@ a:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .event-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .page-header {
     flex-direction: column;
   }
@@ -1479,6 +1606,7 @@ a:hover {
   }
 
   .briefing-row,
+  .event-detail-grid,
   .membership-row,
   .usage-row,
   .preference-row,

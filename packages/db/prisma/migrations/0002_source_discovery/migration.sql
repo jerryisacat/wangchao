@@ -1,0 +1,6 @@
+ALTER TYPE "TaskRunType" ADD VALUE 'SOURCE_DISCOVERY';
+ALTER TYPE "UsageEventType" ADD VALUE 'SOURCE_DISCOVERY';
+
+ALTER TABLE "Source"
+  ADD COLUMN "recommendationReason" TEXT,
+  ADD COLUMN "discoveryChannel" TEXT;

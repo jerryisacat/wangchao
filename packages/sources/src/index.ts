@@ -1,5 +1,20 @@
 export type SourceKind = "rss" | "web";
 
+export {
+  BraveSearchProvider,
+  buildTopicSearchQueries,
+  discoverFeedCandidatesFromPage,
+  discoverFeedCandidatesFromSearchResult,
+  extractExternalLinks,
+  extractExternalLinksFromPage,
+  extractTopicKeywords,
+  type FeedCandidate,
+  type FeedProbeOptions,
+  type SearchProvider,
+  type SearchResult,
+  type SearchSourcesOptions,
+} from "./discovery.js";
+
 export interface SourceAdapterDescriptor {
   kind: SourceKind;
   longRunning: true;

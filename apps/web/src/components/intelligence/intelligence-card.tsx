@@ -7,6 +7,7 @@ import {
   Sparkles,
   ThumbsDown,
 } from "lucide-react";
+import Link from "next/link";
 import type { DashboardEventSummary } from "@/lib/topic-source-data";
 import { Badge } from "@/components/ui/badge";
 
@@ -61,7 +62,9 @@ export function IntelligenceCard({
         {event.userSaved ? <Badge tone="accent">已收藏</Badge> : null}
       </div>
 
-      <h3 className="intelligence-card-title">{event.title}</h3>
+      <h3 className="intelligence-card-title">
+        <Link href={`/events/${event.eventId}`}>{event.title}</Link>
+      </h3>
 
       <p className="intelligence-card-summary">{event.summary}</p>
 
@@ -75,6 +78,7 @@ export function IntelligenceCard({
       <div className="intelligence-card-actions">
         <form action={eventStateAction}>
           <input name="eventId" type="hidden" value={event.eventId} />
+          <input name="returnTo" type="hidden" value="/" />
           <button
             aria-label="标记已读"
             className="icon-action"
@@ -88,6 +92,7 @@ export function IntelligenceCard({
         </form>
         <form action={eventStateAction}>
           <input name="eventId" type="hidden" value={event.eventId} />
+          <input name="returnTo" type="hidden" value="/" />
           <button
             aria-label="收藏"
             className="icon-action"
@@ -101,6 +106,7 @@ export function IntelligenceCard({
         </form>
         <form action={eventStateAction}>
           <input name="eventId" type="hidden" value={event.eventId} />
+          <input name="returnTo" type="hidden" value="/" />
           <button
             aria-label="减少这类"
             className="icon-action"

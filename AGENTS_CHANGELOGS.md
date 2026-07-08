@@ -2,6 +2,24 @@
 
 本文件是 AI Agent 工作审计日志，替代已废弃的 `CHANGELOG.md`。每条记录说明修改的原因、实际变更、涉及文件、验证方式和风险。
 
+## 2026-07-08
+
+### 实现 Phase 5 自动信源发现
+
+- Cause: 修复 GitHub Issue #1，落地 SPEC Phase 5 自动信源发现，让系统可围绕主题主动发现候选 RSS/Atom 信源，并接入现有 source governance 状态机。
+- Changed: 新增 `SOURCE_DISCOVERY` TaskRun/UsageEvent 枚举、`Source.recommendationReason`、`Source.discoveryChannel` 和 migration；新增 sources discovery 模块（Brave Search provider、RSS/Atom 探测、外链提取、topic query 生成）及 fixture；新增 AI source recommendation prompt/JSON 解析/sanitize/fallback 及 fixture；worker 新增 `runSourceDiscoveryCycle()`、`--source-discovery` CLI、关键词搜索/高分反查/外链网络三渠道、小批量限流和审计写入；Web 信源页新增“发现新源”按钮、推荐理由/发现渠道展示；新增 Railway 周频 discovery cron 示例；同步 `.env_example`、`SPEC.md`、`README.md`、`CODEGUIDE.md`、`deploy/railway/README.md` 和 `DEVELOPE_LOGS.md`。
+- Files: `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/0002_source_discovery/migration.sql` (新建), `packages/db/src/repositories.ts`, `packages/db/src/index.ts`, `packages/sources/src/discovery.ts` (新建), `packages/sources/src/discovery.fixtures.ts` (新建), `packages/sources/src/index.ts`, `packages/sources/package.json`, `packages/ai/src/source-recommendation.ts` (新建), `packages/ai/src/source-recommendation.fixtures.ts` (新建), `packages/ai/src/parser.fixtures.ts` (新建), `packages/ai/src/index.ts`, `packages/ai/package.json`, `apps/worker/src/index.ts`, `apps/worker/package.json`, `apps/web/src/app/actions.ts`, `apps/web/src/app/sources/page.tsx`, `apps/web/src/lib/topic-source-data.ts`, `apps/web/package.json`, `deploy/railway/source-discovery-cron.railway.json` (新建), `.env_example`, `README.md`, `SPEC.md`, `CODEGUIDE.md`, `deploy/railway/README.md`, `package.json`, `pnpm-lock.yaml`, `AGENTS_CHANGELOGS.md`, `DEVELOPE_LOGS.md`
+- Verification: 已通过 `pnpm db:generate`、`pnpm db:validate`、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`git diff --check`。临时 Docker Postgres 上顺序验证 `pnpm db:deploy` 应用 0001/0002 migration、`pnpm db:seed`、`pnpm --filter @wangchao/worker start` 生成 1874 条 item/29 条事件/1 份简报；`pnpm worker:source-discovery` 在无 Brave/AI key 时跳过关键词搜索，完成 `SOURCE_DISCOVERY` TaskRun/UsageEvent 写入，并正确把已存在 active source 计为 observed 而不污染 active source；直接验证 `createCandidateRssSource()` 对新 URL 写入 `CANDIDATE`、`discoveryChannel`、`recommendationReason`、`trustScore=0.9`。带临时数据库并在沙箱外重跑 `pnpm smoke:web`，4 个 Playwright desktop/mobile smoke tests 全部通过。
+- Notes / Risk: 本地 seed 拉取 GitHub raw link 时返回 404/timeout 后按设计 fallback 到仓库内 `packages/db/seed-sources.json`。Brave Search 和 AI recommendation 均为 BYOK；未配置时不会阻塞 discovery，但关键词搜索会跳过、推荐理由走 deterministic fallback。
+
+### 补齐前端详情页、URL 筛选联动和 smoke test
+
+- Cause: 用户要求按前端体验缺口计划落地：情报详情独立页面、搜索与主题筛选 URL 高亮联动、Playwright smoke test 覆盖。
+- Changed: 新增 `/events/[eventId]` 情报详情页，卡片标题跳转到稳定详情 URL，详情页包含主题/来源/时间/分数/解释、已读/收藏/减少、Markdown 导出和原文链接；新增 `getDashboardEventById()` 和 `getDashboardEventDetail()`；首页 `topic` 参数改为 topic id 过滤并正确高亮，搜索表单和主题/视图筛选互相保留 `topic`、`q`、`view=all|high|saved`；事件状态 action 支持 `returnTo`；新增 Playwright 配置、`pnpm smoke:web` 和 smoke 用例；同步 `CODEGUIDE.md`、`DEVELOPE_LOGS.md`。
+- Files: `apps/web/src/app/events/[eventId]/page.tsx` (新建), `apps/web/src/app/page.tsx`, `apps/web/src/app/actions.ts`, `apps/web/src/app/globals.css`, `apps/web/src/components/intelligence/intelligence-card.tsx`, `apps/web/src/components/intelligence/topic-filter.tsx`, `apps/web/src/lib/topic-source-data.ts`, `packages/db/src/repositories.ts`, `packages/db/src/index.ts`, `playwright.config.ts` (新建), `tests/smoke/web.spec.ts` (新建), `package.json`, `pnpm-lock.yaml`, `CODEGUIDE.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已通过 `CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、`git diff --check`。临时 Docker Postgres + `pnpm db:migrate` + `pnpm db:seed` + worker 单轮运行生成事件后，HTTP smoke 验证 `/api/health`、`/?q=OpenAI&view=high`、`/events/[eventId]`、`/exports/events/[eventId]`。`pnpm smoke:web` 可启动 production server，但当前 macOS sandbox 阻止 Chromium 启动（`MachPortRendezvousServer ... Permission denied`），浏览器级执行需在允许 Playwright Chromium 的环境重跑。
+- Notes / Risk: 本轮验证过程中发现并修复已有测试/构建漂移：`packages/core` test script 仍引用已删除 fixture dist，已改为当前可运行的 `tsc --noEmit`；`packages/ai/src/source-recommendation.ts` schema 常量补 `JsonSchema` 类型锚点以通过 build。工作区中已有 source discovery 相关未提交改动，本轮未回退。
+
 ## 2026-07-07
 
 ### seed 改为多主题信源列表 + 仓库 raw link 默认拉取

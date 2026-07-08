@@ -72,6 +72,7 @@ wangchao/
 │       └── worker-cron.railway.json  # Worker Cron build/start/schedule 配置
 ├── railway.json                      # 当前 CLI 本地上传部署使用的 Railway root config
 ├── package.json                      # pnpm workspace 根 package 与统一 scripts
+├── playwright.config.ts              # Web smoke test 配置，默认使用已 build 的 Next.js production server
 ├── pnpm-workspace.yaml               # pnpm workspace 范围与 approved builds
 ├── pnpm-lock.yaml                    # pnpm 锁定文件
 ├── turbo.json                        # Turborepo task pipeline
@@ -85,6 +86,8 @@ wangchao/
 │   ├── db/                           # Postgres/Prisma schema、migration、client、repositories
 │   ├── sources/                      # RSS/Web source adapter
 │   └── ui/                           # 共享 UI 包
+├── tests/
+│   └── smoke/                         # Playwright Web smoke tests
 ├── .env_example                      # 环境变量模板
 └── (no legacy directory — old Python prototype removed in open-source cleanup)
 ```
@@ -157,6 +160,10 @@ packages/db listDashboardEvents()
 apps/web applies PreferenceMemory weights
   ↓
 apps/web page renders unread/saved IntelligenceEvent list + detail
+  ↓ apps/web /events/[eventId]
+packages/db getDashboardEventById()
+  ↓
+Stable event detail URL + Markdown/original/source/actions
   ↓ Server Action updateDashboardEventStateAction()
 packages/db updateDashboardEventState()
   ↓
@@ -196,6 +203,19 @@ FeedbackEvent(kind='SOURCE_APPROVE' | 'SOURCE_REJECT')
   ↓ apps/worker runSourceGovernanceObservationCycle()
 SourceObservation(hitRate/noiseRate/duplicateRate)
 
+Source discovery
+  ↓ apps/web runSourceDiscoveryAction() 或 apps/worker --source-discovery
+apps/worker runSourceDiscoveryCycle()
+  ↓ packages/sources BraveSearchProvider / feed probe / external links
+keyword-search + backlink-from-highscore + outlink-network candidates
+  ↓ packages/ai recommendSourceCandidate() 或 deterministic fallback
+packages/db createCandidateRssSource()
+  ↓
+Source(status='CANDIDATE', discoveryChannel, recommendationReason, trustScore)
+SourceObservation(evidence)
+TaskRun(type='SOURCE_DISCOVERY')
+UsageEvent(type='SOURCE_DISCOVERY')
+
 Commercial readiness boundary
   ↓ packages/db ensureDefaultWorkspace()
 Organization + User + Membership(role)
@@ -208,8 +228,8 @@ OWNER/ADMIN/MEMBER: read/save/dismiss/export
 UsageEvent(type, quantity, unit, subject)
   ↓ apps/web getTopicSourceWorkspace()
 Organization card + membership list + 30-day usage summary
-  ↓ apps/worker runFetchCycle()
-FETCH / BRIEFING / SOURCE_GOVERNANCE usage events
+  ↓ apps/worker runFetchCycle() / runSourceDiscoveryCycle()
+FETCH / BRIEFING / SOURCE_GOVERNANCE / SOURCE_DISCOVERY usage events
 
 Deployment and health
   ↓ apps/web /api/health
@@ -269,18 +289,19 @@ apps/web/src/app/globals.css
 | `apps/web/src/components/layout/top-nav.tsx` | 顶部导航：品牌、未读情报/简报/已保存、新增主题/信源管理。 |
 | `apps/web/src/components/intelligence/intelligence-card.tsx` | 情报卡片 client 组件：主题标签、来源时间、标题、摘要、为什么重要、已读/收藏/减少/原文动作。 |
 | `apps/web/src/components/intelligence/intelligence-feed.tsx` | 情报流 client 组件，空状态时显示 EmptyState。 |
-| `apps/web/src/components/intelligence/topic-filter.tsx` | 主题筛选标签条。 |
+| `apps/web/src/components/intelligence/topic-filter.tsx` | 主题筛选标签条；保留 `topic` / `q` / `view` URL 状态并用 `aria-selected` 标识当前主题。 |
 | `apps/web/src/components/common/empty-state.tsx` | 通用空状态组件。 |
 | `apps/web/src/components/common/status-banner.tsx` | 状态横幅组件，支持 info/notice/error/warning tone。 |
 | `apps/web/src/components/common/page-header.tsx` | 页面标题 + eyebrow + meta + 操作区。 |
-| `apps/web/src/app/page.tsx` | 首页：未读情报流，顶部搜索、主题筛选、情报卡片列表、已读/收藏/减少动作。 |
+| `apps/web/src/app/page.tsx` | 首页：未读情报流，顶部搜索、主题筛选、`view=all|high|saved` 视图、情报卡片列表、已读/收藏/减少动作。 |
+| `apps/web/src/app/events/[eventId]/page.tsx` | 单条情报详情页：稳定 URL、来源/时间/分数/解释、已读/收藏/减少、Markdown 导出和原文链接。 |
 | `apps/web/src/app/topics/new/page.tsx` | 新建主题页：Kinetic 风格大表单。 |
-| `apps/web/src/app/sources/page.tsx` | 信源治理页：候选源表单、质量报告、批准/观察/静音/拒绝动作。 |
+| `apps/web/src/app/sources/page.tsx` | 信源治理页：候选源表单、手动触发 source discovery、LLM/兜底推荐理由展示、质量报告、批准/观察/静音/拒绝动作。 |
 | `apps/web/src/app/briefings/page.tsx` | 简报列表页 + Markdown 导出。 |
 | `apps/web/src/app/saved/page.tsx` | 已收藏情报页。 |
 | `apps/web/src/app/preferences/page.tsx` | 偏好记忆页：权重、置信度、解释。 |
-| `apps/web/src/app/actions.ts` | Server Action 入口；创建主题、更新事件状态、创建候选源、信源治理。失败通过 stderr 记录，成功/失败通过 redirect URL 参数反馈。 |
-| `apps/web/src/lib/topic-source-data.ts` | 读取工作台数据；`DATABASE_URL` 未配置时抛出错误，不再静默降级为预览模式。 |
+| `apps/web/src/app/actions.ts` | Server Action 入口；创建主题、更新事件状态、创建候选源、手动 source discovery、信源治理。失败通过 stderr 记录，成功/失败通过 redirect URL 参数反馈。 |
+| `apps/web/src/lib/topic-source-data.ts` | 读取工作台数据和单条情报详情；`DATABASE_URL` 未配置时抛出错误，不再静默降级为预览模式。 |
 | `apps/web/src/app/exports/briefings/[briefingId]/route.ts` | 简报 Markdown 下载 route。 |
 | `apps/web/src/app/exports/events/[eventId]/route.ts` | 单条情报 Markdown 下载 route。 |
 | `apps/web/src/app/loading.tsx` | Next.js route loading 骨架屏。 |
@@ -288,11 +309,15 @@ apps/web/src/app/globals.css
 | `apps/web/src/app/globals.css` | 全局 token、布局、组件样式、motion/reduced-motion、焦点状态和响应式规则；按 `FRONTEND.md` 语义 token 定义。 |
 | `FRONTEND.md` | `apps/web` 前端设计规范，定义 Kinetic Intelligence 风格、token、组件变体、页面组合、动效、响应式和可访问性边界。 |
 | `packages/db/src/repositories.ts` | Topic/Source/Worker/Dashboard/Preference/Briefing/Governance repository。 |
-| `apps/worker/src/index.ts` | Worker 入口：抓取 RSS、分析、简报生成、source quality observation、health check。 |
+| `apps/worker/src/index.ts` | Worker 入口：抓取 RSS、分析、简报生成、source quality observation、source discovery、health check。 |
 | `packages/core/src/index.ts` | 领域逻辑：relevance/noise 判定、event draft、gravity ranking、feedback delta、preference ranking、Markdown 渲染。 |
-| `packages/sources/src/index.ts` | RSS source adapter：抓取 RSS/Atom，解析 item/entry，规范化输出。已移除 `fixture:` 协议和离线 fixture 数据。 |
+| `packages/sources/src/index.ts` | Sources 包公共出口：RSS source adapter、search provider、feed probe、外链提取。 |
+| `packages/sources/src/discovery.ts` | Source discovery 工具：`SearchProvider`、`BraveSearchProvider`、主题 query 生成、RSS/Atom 探测、外链提取和 URL 安全过滤。 |
+| `packages/sources/src/discovery.fixtures.ts` | Source discovery fixture 测试：mock Brave 响应、RSS 探测、外链提取和 topic keywords。 |
 | `packages/ai/src/openai-compatible.ts` | OpenAI-compatible Chat Completions adapter。 |
 | `packages/ai/src/parser.ts` | LLM response parser：清理、抽取 JSON、schema 校验。 |
+| `packages/ai/src/source-recommendation.ts` | 候选信源推荐 prompt、严格 JSON 解析、推荐理由 sanitize、0-1 相关性评分和 deterministic fallback。 |
+| `packages/ai/src/source-recommendation.fixtures.ts` | Source recommendation fixture 测试：正常 JSON、畸形/空响应、score clamp 和 HTML 文本 sanitize。 |
 | `packages/ai/src/types.ts` | AI adapter 共享类型。 |
 | `packages/db/prisma.config.ts` | Prisma 7 CLI 配置入口。移除硬编码 localhost 默认 DATABASE_URL，依赖运行时环境变量。 |
 
@@ -314,6 +339,8 @@ apps/web/src/app/globals.css
 - Daily briefing 生成必须由 worker 执行；Web 下载 route 只读取已持久化的 `Briefing.markdown` 并记录导出。
 - Markdown 导出必须包含生成时间、来源、摘要、解释和原文链接；单条情报导出应作为 `FeedbackEvent(kind='EXPORT')` 正反馈记录。
 - Candidate sources 必须保持隔离：worker fetch 和 daily briefing 默认只使用 `ACTIVE` sources；candidate/muted/rejected 不得进入正式抓取和简报。
+- Source discovery 只能写入 candidate pool，不得绕过治理流程直接标记为 `ACTIVE`；如果发现已存在 source，只更新推荐信息和 observation，不改变现有治理状态。
+- Source discovery 当前有三条渠道：`keyword-search`（Brave Search API + RSS/Atom 探测）、`backlink-from-highscore`（高分事件原文页反查 RSS/Atom）、`outlink-network`（active source 最近 item 外链网络）。无 `BRAVE_SEARCH_API_KEY` 时跳过关键词搜索，但不阻塞后两条渠道。
 - Source governance 状态动作必须写 `SourceObservation`；approve/reject/mute/observe 还应记录可追溯 evidence，approve/reject/mute 通过 `FeedbackEvent` 给偏好和质量报告留下信号。
 - Source quality report 当前基于 Item/IntelligenceEvent 状态计算 hit/noise/duplicate 指标，worker 每轮把指标快照写入 `SourceObservation`。
 - Topic/Source 写入必须保留 tenant scope：先通过默认 organization/user 获取 `organizationId`/`userId`，再写入 `Topic` 与 `Source`。
@@ -323,6 +350,7 @@ apps/web/src/app/globals.css
 - 当前分析管线用 topic profile keywords 做 relevance/noise，用标题和 URL 生成 `eventHash`，用 `topicId + eventHash` 幂等 upsert 事件；如果接入更深语义抽取，仍需保留可解释性和幂等写入。
 - `markItemFiltered()` 必须保留原有 `rawMetadata`，只追加过滤原因，避免丢失 RSS 原始追溯信息。
 - AI adapter 保持 OpenAI-compatible，不绑定具体 vendor SDK；provider response 视为不可信，必须先 sanitize，再 parse，再 validate。
+- Source recommendation 使用 `packages/ai` 生成一句推荐理由和 0-1 相关性评分；AI 调用失败或未配置 `AI_API_KEY`/`AI_BASE_URL` 时使用 deterministic fallback，并在 evidence 中记录推荐模式。
 - JSON mode 不可用时允许 fallback，但需要按 model 记忆失败，避免每次都重复使用不兼容参数。
 - 完整 shadcn/Radix/Tailwind CLI 初始化被网络环境延后，后续恢复依赖后应评估是否替换本地 primitives。
 
@@ -351,6 +379,8 @@ CI=true pnpm build
 CI=true pnpm lint
 CI=true pnpm test
 pnpm worker:health
+pnpm worker:source-discovery
+pnpm smoke:web
 ```
 
 ### Railway 部署脚本
@@ -363,6 +393,7 @@ pnpm railway:predeploy
 pnpm railway:start
 pnpm railway:worker:build
 pnpm railway:worker:start
+pnpm worker:source-discovery
 pnpm db:deploy
 ```
 
@@ -370,8 +401,9 @@ pnpm db:deploy
 
 - `deploy/railway/web.railway.json` 使用 `pnpm railway:web:build` 构建 Web，在 pre-deploy 阶段运行 `pnpm db:deploy && pnpm db:seed`，启动命令为 `pnpm railway:web:start`，健康检查路径为 `/api/health`。
 - `deploy/railway/worker-cron.railway.json` 使用 `pnpm railway:worker:build` 构建 worker，按 `0 * * * *` UTC 每小时执行一次 `pnpm railway:worker:start`。
+- `deploy/railway/source-discovery-cron.railway.json` 使用 `pnpm railway:worker:build` 构建 worker，按 `0 2 * * 1` UTC 每周执行一次 `pnpm --filter @wangchao/worker source-discovery`。
 - `railway.json` 是当前 CLI 本地上传部署入口。由于当前仓库有大量未提交绿地重构改动，生产部署使用 `railway up --service ...` 上传本地目录；两个服务通过 `WANGCHAO_RAILWAY_ROLE` 分发启动行为：`web` 跑 migration/seed 并启动 Next.js，`worker` 跳过 predeploy 并执行一轮 Node worker。
-- Railway Web 与 Worker Cron 应连接同一个 Railway Postgres，并共享 `DATABASE_URL` 与默认 workspace 环境变量。
+- Railway Web、Worker Cron 与 Source Discovery Cron 应连接同一个 Railway Postgres，并共享 `DATABASE_URL`、默认 workspace、AI 和 discovery 环境变量。
 - 2026-07-06 已创建 Railway project `wangchao`，添加 `Postgres`、`wangchao-web` 和 `wangchao-worker` 服务；Web、Worker、Postgres 已迁移到 `southeast-asia`，实际 region ID 为 `asia-southeast1-eqsg3a`。Worker 当前是部署后执行一轮并停止，尚未通过 CLI 配置成定时 Cron。
 
 ### Prisma / Postgres 命令
@@ -408,6 +440,16 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 说明：
 
 - `DATABASE_URL` 由 `.env_example` 提供占位模板，真实值不得提交。
+- `AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL_L1`、`AI_MODEL_L2` 用于 OpenAI-compatible AI 调用；source recommendation 当前使用 `AI_MODEL_L1`，未配置时走 deterministic fallback。
+- `BRAVE_SEARCH_API_KEY` 是 Brave Search API BYOK；为空时 source discovery 跳过 `keyword-search` 渠道。
+- `WANGCHAO_SEARCH_PROVIDER` 当前支持 `brave`，默认 `brave`，后续可接 Tavily/Serper/SearXNG。
+- `WANGCHAO_DISCOVERY_HIGHSCORE_THRESHOLD` 控制高分事件反查阈值，默认 `0.7`。
+- `WANGCHAO_DISCOVERY_LOOKBACK_DAYS` 控制高分事件反查时间窗，默认 `14`。
+- `WANGCHAO_DISCOVERY_WEEKLY_LIMIT` 控制每轮每个 topic 最多写入候选源数量，默认 `5`。
+- `WANGCHAO_DISCOVERY_HIGHSCORE_PAGE_LIMIT` 控制每轮最多探测多少条高分原文页，默认 `10`。
+- `WANGCHAO_DISCOVERY_ACTIVE_PAGE_LIMIT` 控制每轮最多探测多少条 active source item，默认 `12`。
+- `WANGCHAO_DISCOVERY_OUTLINKS_PER_PAGE` 控制每个 active item 最多探测多少条外链，默认 `3`。
+- `WANGCHAO_DISCOVERY_FETCH_TIMEOUT_MS` 控制 discovery 网页/RSS 探测超时，默认 `5000`。
 - `WANGCHAO_DEFAULT_ORGANIZATION_SLUG`、`WANGCHAO_DEFAULT_ORGANIZATION_NAME`、`WANGCHAO_DEFAULT_USER_EMAIL`、`WANGCHAO_DEFAULT_USER_NAME` 是当前个人版默认工作区/用户配置；真实商业化前必须替换为正式 auth/session provider。
 - `WANGCHAO_SEED_SOURCES_URL` 指定多主题信源列表 JSON 的 URL（Gist raw 或任意公开 JSON），留空时默认拉本仓库 raw link `https://raw.githubusercontent.com/jerryisacat/wangchao/main/packages/db/seed-sources.json`。拉取失败时 fallback 到随部署 bundle 的本地 `packages/db/seed-sources.json`。
 - `WANGCHAO_SEED_SOURCE_NAME`、`WANGCHAO_SEED_SOURCE_URL` 是旧单源模式：两者同时设置时优先生效，会内联成单 topic 单 source 的列表，跳过列表解析。
@@ -415,10 +457,12 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - `packages/db/prisma/schema.prisma` 是目标数据模型入口。
 - `packages/db/prisma.config.ts` 是 Prisma 7 CLI 配置入口，提供 schema、migration path、seed command 和 datasource URL。datasource URL 从 `DATABASE_URL` 环境变量读取，无硬编码默认值。
 - `packages/db/prisma/migrations/0001_init/migration.sql` 是首版 Postgres migration。
+- `packages/db/prisma/migrations/0002_source_discovery/migration.sql` 新增 `SOURCE_DISCOVERY` task/usage 枚举，以及 `Source.recommendationReason`、`Source.discoveryChannel`。
 - `packages/db/prisma/seed.ts` 创建默认工作区、默认用户，然后按 seed 列表创建 topic 和 source。topic 和 source 都是 **create-only**：已存在的不被重置 status 或覆盖 profile，保证用户在 UI 上的 mute/reject 和 profile 编辑不被 seed 重置。
 - `packages/sources/src/index.ts` 支持 RSS/Atom 抓取，仅接受 HTTP/HTTPS URL。
 - `packages/db/src/client.ts` 懒加载 Prisma Client，并用 `@prisma/adapter-pg` 注入 Postgres adapter，避免 build-time 读取运行时数据库。
 - `packages/db/src/repositories.ts` 提供 tenant/topic scoped 查询 helper，后续新增查询应优先放在这里或同包内的清晰模块中。
+- `pnpm smoke:web` 运行 Playwright smoke tests；默认启动 `@wangchao/web` production server，因此需要先完成 `pnpm build`，并提供可用 `DATABASE_URL`。如已有服务可用，可设置 `PLAYWRIGHT_BASE_URL` 跳过内置 webServer。
 - `apps/web/src/app/api/health/route.ts` 是 Web health endpoint，返回 web service 状态和数据库检查结果。
 - `apps/worker/src/index.ts --health` 是 worker health check 入口，可通过根脚本 `pnpm worker:health` 调用。
 - `docs/deployment.md` 记录当前 Railway 部署顺序、环境变量、服务配置、日志、备份和回滚策略。
@@ -434,7 +478,7 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - 2026-07-06 本地 Docker Postgres 已通过 `db:validate`、`db:generate`、`db:migrate`、`db:seed`、数据库写入 smoke test、Web `/api/health` 和 `worker:health`；浏览器创建主题 + RSS Server Action 已验证写入 Postgres。
 - 当前环境曾出现公网 RSS 抓取 `https://hnrss.org/newest?points=100` 失败并记录 `TaskRun(FAILED)`；后续个人使用前需要用真实可访问 RSS 复测，或手动使用离线 fixture source 验证 worker 闭环。
 - 2026-07-06 生产发现 `apps/web/src/app/page.tsx` 被 Next.js 静态预渲染，导致 Railway 上 `/api/health` database `ok` 但首页仍显示预览 fallback；已通过 `export const dynamic = "force-dynamic"` 修复，后续首页会读取运行时工作区数据。
-- 下载 route、真实事件状态按钮和真实 RSS worker fetch cycle 仍需在可用源/事件数据下继续补 smoke test。
+- 2026-07-08 已补 Playwright smoke 用例覆盖首页搜索/主题/视图 URL 状态和事件详情入口；当前本机 Chromium 因 macOS sandbox `MachPortRendezvousServer` permission denied 无法启动，已用临时 Docker Postgres + production server + HTTP smoke 验证 `/api/health`、`/?q=OpenAI&view=high`、`/events/[eventId]` 和 `/exports/events/[eventId]`。
 
 ## 6. 维护规则
 

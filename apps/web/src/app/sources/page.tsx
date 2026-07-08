@@ -3,12 +3,14 @@ import {
   CircleAlert,
   Clock3,
   Plus,
+  Search,
   ShieldCheck,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import {
   createCandidateSourceAction,
+  runSourceDiscoveryAction,
   updateSourceGovernanceAction,
 } from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
@@ -64,6 +66,14 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
               <CardTitle>添加候选信源</CardTitle>
             </CardHeader>
             <CardContent>
+              <div className="source-discovery-toolbar">
+                <form action={runSourceDiscoveryAction}>
+                  <Button size="sm" type="submit" variant="primary">
+                    <Search aria-hidden="true" size={14} />
+                    发现新源
+                  </Button>
+                </form>
+              </div>
               <form action={createCandidateSourceAction} className="candidate-form">
                 <input name="topicId" type="hidden" value={activeTopic.id} />
                 <label>
@@ -90,7 +100,7 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                     placeholder="来源、推荐理由或观察目标。"
                   />
                 </label>
-                <Button size="sm" type="submit" variant="primary">
+                <Button size="sm" type="submit" variant="secondary">
                   <Plus aria-hidden="true" size={14} />
                   加入候选
                 </Button>
@@ -124,11 +134,19 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                       <div className="source-quality-score">
                         {Math.round(source.qualityScore)}
                       </div>
+                      {source.recommendationReason ? (
+                        <p className="source-recommendation">
+                          {source.recommendationReason}
+                        </p>
+                      ) : null}
                       <div className="source-quality-metrics">
                         <span>命中 {formatPercent(source.hitRate)}</span>
                         <span>噪声 {formatPercent(source.noiseRate)}</span>
                         <span>重复 {formatPercent(source.duplicateRate)}</span>
                         <span>事件 {source.eventCount}</span>
+                        {source.discoveryChannel ? (
+                          <span>{formatDiscoveryChannel(source.discoveryChannel)}</span>
+                        ) : null}
                       </div>
                       <p>
                         {source.topicName} · 建议 {formatRecommendation(source.recommendation)} · 最近{" "}
@@ -249,6 +267,15 @@ function formatRecommendation(value: string): string {
     MUTE: "静音",
     OBSERVE: "观察",
     REJECT: "拒绝",
+  };
+  return labels[value] ?? value;
+}
+
+function formatDiscoveryChannel(value: string): string {
+  const labels: Record<string, string> = {
+    "backlink-from-highscore": "高分反查",
+    "keyword-search": "关键词搜索",
+    "outlink-network": "外链网络",
   };
   return labels[value] ?? value;
 }

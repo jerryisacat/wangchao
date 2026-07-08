@@ -41,8 +41,11 @@ export interface AttachRssSourceInput extends TopicScope {
 
 export interface CreateCandidateRssSourceInput extends TopicScope {
   description?: string;
+  discoveryChannel?: string;
   evidence?: Record<string, unknown>;
   name: string;
+  recommendationReason?: string;
+  relevanceScore?: number;
   url: string;
 }
 
@@ -119,6 +122,29 @@ export interface DashboardEventRecord {
   userStatus: "UNREAD" | "READ" | "SAVED" | "DISMISSED" | "ARCHIVED" | null;
 }
 
+type DashboardEventQueryResult = Prisma.IntelligenceEventGetPayload<{
+  include: {
+    primaryItem: {
+      select: {
+        source: {
+          select: {
+            name: true;
+            url: true;
+          };
+        };
+        sourceId: true;
+        url: true;
+      };
+    };
+    topic: {
+      select: {
+        name: true;
+      };
+    };
+    userStates: true;
+  };
+}>;
+
 export interface FeedbackSignalRecord {
   category: string | null;
   kind: "READ" | "SAVE" | "DISMISS" | "EXPORT";
@@ -162,6 +188,7 @@ export interface DashboardBriefingRecord {
 }
 
 export interface SourceGovernanceRecord {
+  discoveryChannel: string | null;
   duplicateRate: number;
   eventCount: number;
   filteredItems: number;
@@ -171,6 +198,7 @@ export interface SourceGovernanceRecord {
   noiseRate: number;
   qualityScore: number;
   recommendation: "APPROVE" | "OBSERVE" | "MUTE" | "REJECT";
+  recommendationReason: string | null;
   sourceId: string;
   status: "ACTIVE" | "CANDIDATE" | "MUTED" | "REJECTED";
   topicId: string;
@@ -179,6 +207,20 @@ export interface SourceGovernanceRecord {
   trustScore: number;
   url: string;
   name: string;
+}
+
+export interface SourceDiscoveryTopicRecord {
+  description: string | null;
+  id: string;
+  name: string;
+  organizationId: string;
+  profile: unknown;
+}
+
+export interface SourceDiscoveryPageRecord {
+  sourceId?: string;
+  topicId: string;
+  url: string;
 }
 
 export type SourceGovernanceAction = "approve" | "mute" | "reject" | "observe";
@@ -246,6 +288,7 @@ export interface RecordUsageEventInput extends TenantScope {
     | "EXPORT"
     | "BRIEFING"
     | "SOURCE_GOVERNANCE"
+    | "SOURCE_DISCOVERY"
     | "WEB_ACTION";
   unit: string;
   userId?: string;
@@ -260,6 +303,7 @@ export interface UsageSummaryRecord {
     | "EXPORT"
     | "BRIEFING"
     | "SOURCE_GOVERNANCE"
+    | "SOURCE_DISCOVERY"
     | "WEB_ACTION";
   unit: string;
 }
@@ -430,6 +474,40 @@ export async function createCandidateRssSource(
   input: CreateCandidateRssSourceInput,
 ) {
   const canonicalUrl = canonicalizeUrl(input.url);
+  const recommendationReason =
+    input.recommendationReason ?? input.description ?? undefined;
+  const trustScore =
+    typeof input.relevanceScore === "number"
+      ? clamp(input.relevanceScore, 0, 1)
+      : undefined;
+  const existingSource = await prisma.source.findUnique({
+    where: {
+      topicId_canonicalUrl: {
+        topicId: input.topicId,
+        canonicalUrl,
+      },
+    },
+  });
+
+  if (existingSource && existingSource.status !== "CANDIDATE") {
+    await prisma.sourceObservation.create({
+      data: {
+        organizationId: input.organizationId,
+        topicId: input.topicId,
+        sourceId: existingSource.id,
+        candidateUrl: input.url,
+        evidence: {
+          ...input.evidence,
+          discoveryChannel: input.discoveryChannel,
+          relevanceScore: trustScore,
+          reason: "candidate-discovery-existing-source",
+        },
+      },
+    });
+
+    return existingSource;
+  }
+
   const source = await prisma.source.upsert({
     where: {
       topicId_canonicalUrl: {
@@ -439,8 +517,10 @@ export async function createCandidateRssSource(
     },
     update: {
       description: input.description,
+      discoveryChannel: input.discoveryChannel,
       name: input.name,
-      status: "CANDIDATE",
+      recommendationReason,
+      trustScore,
       url: input.url,
     },
     create: {
@@ -452,6 +532,9 @@ export async function createCandidateRssSource(
       url: input.url,
       canonicalUrl,
       description: input.description,
+      discoveryChannel: input.discoveryChannel,
+      recommendationReason,
+      trustScore,
     },
   });
 
@@ -460,8 +543,11 @@ export async function createCandidateRssSource(
       organizationId: input.organizationId,
       topicId: input.topicId,
       sourceId: source.id,
+      candidateUrl: input.url,
       evidence: {
         ...input.evidence,
+        discoveryChannel: input.discoveryChannel,
+        relevanceScore: trustScore,
         reason: "candidate-created",
       },
     },
@@ -523,6 +609,26 @@ export async function listActiveTopics(prisma: PrismaClient, scope: TenantScope)
       status: "ACTIVE",
     },
     orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function listTopicsForSourceDiscovery(
+  prisma: PrismaClient,
+  scope: TenantScope,
+): Promise<SourceDiscoveryTopicRecord[]> {
+  return prisma.topic.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      status: "ACTIVE",
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      description: true,
+      id: true,
+      name: true,
+      organizationId: true,
+      profile: true,
+    },
   });
 }
 
@@ -623,6 +729,7 @@ export async function listSourceGovernanceReport(
     const observation = source.sourceObservations[0];
 
     return {
+      discoveryChannel: source.discoveryChannel,
       duplicateRate,
       eventCount,
       filteredItems,
@@ -633,6 +740,7 @@ export async function listSourceGovernanceReport(
       noiseRate,
       qualityScore,
       recommendation,
+      recommendationReason: source.recommendationReason,
       sourceId: source.id,
       status: source.status,
       topicId: source.topicId,
@@ -768,6 +876,27 @@ export async function createSourceFetchTaskRun(
   });
 }
 
+export async function createSourceDiscoveryTaskRun(
+  prisma: PrismaClient,
+  input: TenantScope & { input?: Record<string, unknown>; userId?: string },
+) {
+  return prisma.taskRun.create({
+    data: {
+      organizationId: input.organizationId,
+      type: "SOURCE_DISCOVERY",
+      status: "RUNNING",
+      attempt: 1,
+      maxAttempts: 1,
+      scheduledAt: new Date(),
+      startedAt: new Date(),
+      input: toInputJson({
+        ...(input.input ?? {}),
+        userId: input.userId,
+      }),
+    },
+  });
+}
+
 export async function completeTaskRun(
   prisma: PrismaClient,
   taskRunId: string,
@@ -895,6 +1024,77 @@ export async function listFetchedItemsForAnalysis(
   }));
 }
 
+export async function listHighScoreEventPagesForDiscovery(
+  prisma: PrismaClient,
+  scope: TenantScope & { days: number; threshold: number },
+  limit = 50,
+): Promise<SourceDiscoveryPageRecord[]> {
+  const since = new Date();
+  since.setDate(since.getDate() - scope.days);
+  const events = await prisma.intelligenceEvent.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      OR: [
+        { score: { gte: scope.threshold } },
+        { gravityScore: { gte: scope.threshold } },
+      ],
+      updatedAt: {
+        gte: since,
+      },
+      primaryItem: {
+        is: {
+          url: {
+            not: "",
+          },
+        },
+      },
+    },
+    orderBy: [{ gravityScore: "desc" }, { updatedAt: "desc" }],
+    select: {
+      topicId: true,
+      primaryItem: {
+        select: {
+          url: true,
+        },
+      },
+    },
+    take: limit,
+  });
+
+  return events.flatMap((event) =>
+    event.primaryItem?.url
+      ? [{ topicId: event.topicId, url: event.primaryItem.url }]
+      : [],
+  );
+}
+
+export async function listRecentActiveSourcePagesForDiscovery(
+  prisma: PrismaClient,
+  scope: TenantScope,
+  limit = 100,
+): Promise<SourceDiscoveryPageRecord[]> {
+  const items = await prisma.item.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      source: {
+        status: "ACTIVE",
+      },
+      url: {
+        not: "",
+      },
+    },
+    orderBy: [{ publishedAt: "desc" }, { fetchedAt: "desc" }],
+    select: {
+      sourceId: true,
+      topicId: true,
+      url: true,
+    },
+    take: limit,
+  });
+
+  return items;
+}
+
 export async function markItemFiltered(
   prisma: PrismaClient,
   itemId: string,
@@ -1006,30 +1206,73 @@ export async function listDashboardEvents(
     take: limit,
   });
 
-  return events.map((event) => {
-    const userState = event.userStates[0];
+  return events.map(mapDashboardEventRecord);
+}
 
-    return {
-      category: event.category,
-      eventId: event.id,
-      explanation: event.explanation,
-      gravityScore: event.gravityScore,
-      occurredAt: event.occurredAt,
-      primaryItemUrl: event.primaryItem?.url ?? null,
-      score: event.score,
-      sourceId: event.primaryItem?.sourceId ?? null,
-      sourceName: event.primaryItem?.source.name ?? null,
-      sourceUrl: event.primaryItem?.source.url ?? null,
-      status: event.status,
-      summary: event.summary,
-      title: event.title,
-      topicId: event.topicId,
-      topicName: event.topic.name,
-      updatedAt: event.updatedAt,
-      userSaved: userState?.saved ?? event.status === "SAVED",
-      userStatus: userState?.status ?? null,
-    };
+export async function getDashboardEventById(
+  prisma: PrismaClient,
+  scope: TenantScope & { eventId: string; userId: string },
+): Promise<DashboardEventRecord | null> {
+  const event = await prisma.intelligenceEvent.findFirst({
+    where: {
+      id: scope.eventId,
+      organizationId: scope.organizationId,
+    },
+    include: {
+      topic: {
+        select: {
+          name: true,
+        },
+      },
+      primaryItem: {
+        select: {
+          sourceId: true,
+          url: true,
+          source: {
+            select: {
+              name: true,
+              url: true,
+            },
+          },
+        },
+      },
+      userStates: {
+        where: {
+          userId: scope.userId,
+        },
+        take: 1,
+      },
+    },
   });
+
+  return event ? mapDashboardEventRecord(event) : null;
+}
+
+function mapDashboardEventRecord(
+  event: DashboardEventQueryResult,
+): DashboardEventRecord {
+  const userState = event.userStates[0];
+
+  return {
+    category: event.category,
+    eventId: event.id,
+    explanation: event.explanation,
+    gravityScore: event.gravityScore,
+    occurredAt: event.occurredAt,
+    primaryItemUrl: event.primaryItem?.url ?? null,
+    score: event.score,
+    sourceId: event.primaryItem?.sourceId ?? null,
+    sourceName: event.primaryItem?.source.name ?? null,
+    sourceUrl: event.primaryItem?.source.url ?? null,
+    status: event.status,
+    summary: event.summary,
+    title: event.title,
+    topicId: event.topicId,
+    topicName: event.topic.name,
+    updatedAt: event.updatedAt,
+    userSaved: userState?.saved ?? event.status === "SAVED",
+    userStatus: userState?.status ?? null,
+  };
 }
 
 export async function listPreferenceMemoryForDashboard(
@@ -1581,6 +1824,10 @@ function ratio(value: number, total: number): number {
   }
 
   return Number((value / total).toFixed(4));
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }
 
 function readObservationReason(value: unknown): string | null {

@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json && node -e \"import('./dist/discovery.fixtures.js').then((m) => m.runSourceDiscoveryFixtures())\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

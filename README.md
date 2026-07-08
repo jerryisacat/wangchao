@@ -40,13 +40,12 @@
 **当前实现**的进入路径：
 
 1. **种子源**：部署时 seed 读取一个多主题信源列表（优先级：`WANGCHAO_SEED_SOURCE_NAME`+`WANGCHAO_SEED_SOURCE_URL` 旧单源模式 > `WANGCHAO_SEED_SOURCES_URL` > 仓库内 `packages/db/seed-sources.json`），把列表中的源直接创建为 `ACTIVE`。默认 `WANGCHAO_SEED_SOURCES_URL` 指向本仓库 raw link，拉取失败时 fallback 到随部署 bundle 的本地文件。re-seed 不会重置你在 UI 上改过的源状态或主题 profile。
-2. **候选源**：在"信源管理"页通过表单提交一个 RSS URL，进入 `candidate` 观察池。
+2. **候选源**：在"信源管理"页通过表单提交一个 RSS URL，或点击"发现新源"触发自动发现，进入 `candidate` 观察池。
 3. **批准 / 静音 / 拒绝**：在"信源管理"页对候选源执行治理动作，状态切换会写入 `SourceObservation` 和 `FeedbackEvent`，可追溯。
 4. **质量观测**：Worker 每轮抓取后计算每个信源的 hit rate / noise rate / duplicate rate，快照写入 `SourceObservation`，作为后续治理决策依据。
+5. **自动发现**：`runSourceDiscoveryCycle()` 支持关键词搜索 RSS、高分情报原文反查和 active source 外链网络三条渠道；候选源会带推荐理由、相关性评分、发现渠道和 `TaskRun` / `UsageEvent` 审计记录。无 `BRAVE_SEARCH_API_KEY` 时跳过关键词搜索，不阻塞其他渠道。
 
 **重要边界**：`candidate` / `muted` / `rejected` 源的内容**不会**进入正式抓取和日报，必须先批准为 `active`。
-
-**未来阶段（SPEC Phase 5，当前未实现）**：从高分情报的原文链接反查一手来源、从 active 源外链网络发现候选、按主题关键词定期搜索 RSS。当前版本聚焦在"人工提交 + 系统观测治理"的闭环。
 
 ## 未读情报是如何被筛选和录入的
 
@@ -196,7 +195,16 @@ curl -fsS http://127.0.0.1:3000/api/health
 | `WANGCHAO_SEED_SOURCE_URL` | 旧单源模式：seed 源 RSS URL |
 | `AI_BASE_URL` | OpenAI-compatible API endpoint |
 | `AI_API_KEY` | AI provider API key |
-| `AI_MODEL_L1` / `AI_MODEL_L2` | 后续 AI pipeline 默认模型配置 |
+| `AI_MODEL_L1` / `AI_MODEL_L2` | AI pipeline 默认模型配置；source recommendation 使用 `AI_MODEL_L1` |
+| `BRAVE_SEARCH_API_KEY` | Brave Search API BYOK；为空时 source discovery 跳过关键词搜索 |
+| `WANGCHAO_SEARCH_PROVIDER` | Search provider，当前支持 `brave` |
+| `WANGCHAO_DISCOVERY_HIGHSCORE_THRESHOLD` | 高分情报原文反查阈值 |
+| `WANGCHAO_DISCOVERY_LOOKBACK_DAYS` | 高分情报原文反查时间窗 |
+| `WANGCHAO_DISCOVERY_WEEKLY_LIMIT` | 每轮每个 topic 最多写入候选源数量 |
+| `WANGCHAO_DISCOVERY_HIGHSCORE_PAGE_LIMIT` | 每轮最多探测的高分原文页数量 |
+| `WANGCHAO_DISCOVERY_ACTIVE_PAGE_LIMIT` | 每轮最多探测的 active source item 数量 |
+| `WANGCHAO_DISCOVERY_OUTLINKS_PER_PAGE` | 每个 active item 最多探测的外链数量 |
+| `WANGCHAO_DISCOVERY_FETCH_TIMEOUT_MS` | discovery 网页/RSS 探测超时 |
 
 ## 开发阶段审计
 
@@ -214,8 +222,8 @@ curl -fsS http://127.0.0.1:3000/api/health
 - 已完成 Railway Web + Postgres 生产 smoke test。
 - 当前面向个人工作区使用，默认工作区身份由环境变量配置。
 - Worker 可执行抓取、分析和简报生成；部署平台负责定时触发。
-- AI 情报管线当前以可解释规则为主；`packages/ai` 提供 OpenAI-compatible 边界，可按需要接入更深的语义抽取和简报改写。
-- 自动信源发现（高分链接反查、外链网络、关键词搜索 RSS）是 SPEC Phase 5 目标，当前未实现。
+- AI 情报管线当前以可解释规则为主；`packages/ai` 提供 OpenAI-compatible 边界，source recommendation 已接入 OpenAI-compatible JSON 解析和兜底推荐。
+- 自动信源发现已支持高分链接反查、外链网络和关键词搜索 RSS；部署平台可用 `pnpm worker:source-discovery` 周期触发。
 
 ## 参考文档
 

@@ -71,6 +71,7 @@ enum ExportFormat {
 
 enum TaskRunType {
   SOURCE_FETCH
+  SOURCE_DISCOVERY
   AI_RELEVANCE
   AI_EVENT_EXTRACTION
   BRIEFING_GENERATION
@@ -91,6 +92,7 @@ enum UsageEventType {
   EXPORT
   BRIEFING
   SOURCE_GOVERNANCE
+  SOURCE_DISCOVERY
   WEB_ACTION
 }
 
@@ -180,6 +182,8 @@ model Source {
   url                String
   canonicalUrl       String
   description        String?
+  recommendationReason String?
+  discoveryChannel   String?
   trustScore         Float               @default(0)
   qualityScore       Float               @default(0)
   lastFetchedAt      DateTime?

@@ -20,3 +20,12 @@ export {
   type JsonValidationIssue,
   type JsonValidationResult,
 } from "./parser.js";
+export {
+  buildSourceRecommendationMessages,
+  fallbackSourceRecommendation,
+  parseSourceRecommendationResponse,
+  recommendSourceCandidate,
+  type SourceRecommendation,
+  type SourceRecommendationAdapter,
+  type SourceRecommendationInput,
+} from "./source-recommendation.js";

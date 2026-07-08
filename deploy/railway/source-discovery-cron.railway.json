@@ -1,0 +1,13 @@
+{
+  "$schema": "https://railway.com/railway.schema.json",
+  "build": {
+    "builder": "RAILPACK",
+    "buildCommand": "pnpm railway:worker:build"
+  },
+  "deploy": {
+    "startCommand": "pnpm --filter @wangchao/worker source-discovery",
+    "cronSchedule": "0 2 * * 1",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 1
+  }
+}

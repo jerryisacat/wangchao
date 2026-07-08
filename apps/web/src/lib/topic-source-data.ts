@@ -8,6 +8,7 @@ export interface SourceSummary {
 }
 
 export interface SourceGovernanceSummary {
+  discoveryChannel: string;
   duplicateRate: number;
   eventCount: number;
   filteredItems: number;
@@ -17,6 +18,7 @@ export interface SourceGovernanceSummary {
   noiseRate: number;
   qualityScore: number;
   recommendation: "APPROVE" | "OBSERVE" | "MUTE" | "REJECT";
+  recommendationReason: string;
   sourceId: string;
   status: "ACTIVE" | "CANDIDATE" | "MUTED" | "REJECTED";
   topicId: string;
@@ -49,6 +51,7 @@ export interface DashboardEventSummary {
   status: "UNREAD" | "READ" | "SAVED" | "DISMISSED" | "ARCHIVED";
   summary: string;
   title: string;
+  topicId: string;
   topicName: string;
   updatedAt: string;
   userSaved: boolean;
@@ -93,6 +96,7 @@ export interface UsageSummary {
     | "EXPORT"
     | "BRIEFING"
     | "SOURCE_GOVERNANCE"
+    | "SOURCE_DISCOVERY"
     | "WEB_ACTION";
   unit: string;
 }
@@ -239,6 +243,7 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
         status: event.userStatus ?? event.status,
         summary: event.summary,
         title: event.title,
+        topicId: event.topicId,
         topicName: event.topicName,
         updatedAt: event.updatedAt.toISOString(),
         userSaved: event.userSaved,
@@ -256,6 +261,7 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
       })),
       sourceGovernance: sourceGovernance.map((source) => ({
         duplicateRate: source.duplicateRate,
+        discoveryChannel: source.discoveryChannel ?? "",
         eventCount: source.eventCount,
         filteredItems: source.filteredItems,
         hitRate: source.hitRate,
@@ -264,6 +270,7 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
         noiseRate: source.noiseRate,
         qualityScore: source.qualityScore,
         recommendation: source.recommendation,
+        recommendationReason: source.recommendationReason ?? "",
         sourceId: source.sourceId,
         status: source.status,
         topicId: source.topicId,
@@ -298,5 +305,60 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
       error instanceof Error ? error.message : "工作区暂时无法读取，请稍后重试。";
 
     return emptyWorkspace(message);
+  }
+}
+
+export async function getDashboardEventDetail(
+  eventId: string,
+): Promise<DashboardEventSummary | null> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not configured. Set DATABASE_URL to connect to Postgres.",
+    );
+  }
+
+  try {
+    const {
+      ensureDefaultWorkspace,
+      getDashboardEventById,
+      getPrismaClient,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+    const event = await getDashboardEventById(prisma, {
+      eventId,
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
+    });
+
+    if (!event) {
+      return null;
+    }
+
+    return {
+      category: event.category ?? "general",
+      eventId: event.eventId,
+      explanation: event.explanation ?? "",
+      gravityScore: event.gravityScore,
+      occurredAt:
+        event.occurredAt?.toISOString() ?? event.updatedAt.toISOString(),
+      primaryItemUrl: event.primaryItemUrl ?? "",
+      score: event.score,
+      sourceId: event.sourceId ?? "",
+      sourceName: event.sourceName ?? "Unknown source",
+      sourceUrl: event.sourceUrl ?? "",
+      status: event.userStatus ?? event.status,
+      summary: event.summary,
+      title: event.title,
+      topicId: event.topicId,
+      topicName: event.topicName,
+      updatedAt: event.updatedAt.toISOString(),
+      userSaved: event.userSaved,
+    };
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "情报详情暂时无法读取，请稍后重试。";
+
+    throw new Error(message);
   }
 }

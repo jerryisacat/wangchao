@@ -104,6 +104,7 @@ export async function updateDashboardEventStateAction(
 ): Promise<void> {
   let message = "情报状态已更新。";
   let type: ActionRedirectType = "notice";
+  const returnTo = readSafeReturnPath(formData, "returnTo") ?? "/";
 
   try {
     await updateDashboardEventStateFromForm(formData);
@@ -114,7 +115,8 @@ export async function updateDashboardEventStateAction(
   }
 
   revalidatePath("/");
-  redirect(actionRedirectHref("/", type, message));
+  revalidatePath(returnTo);
+  redirect(actionRedirectHref(returnTo, type, message));
 }
 
 async function updateDashboardEventStateFromForm(formData: FormData) {
@@ -257,6 +259,52 @@ async function createCandidateSource(formData: FormData) {
   });
 }
 
+export async function runSourceDiscoveryAction(): Promise<void> {
+  let message = "信源发现已完成。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    const result = await runSourceDiscoveryFromDashboard();
+    message = `信源发现已完成，新增或更新 ${result.candidateSourcesWritten} 个候选源，观察到 ${result.existingSourcesObserved} 个已有源。`;
+  } catch (error) {
+    logActionError("runSourceDiscoveryAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/sources");
+  redirect(actionRedirectHref("/sources", type, message));
+}
+
+async function runSourceDiscoveryFromDashboard() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("Database connection is required to run source discovery.");
+  }
+
+  const {
+    assertMembershipRole,
+    ensureDefaultWorkspace,
+    getPrismaClient,
+  } = await import("@wangchao/db");
+  const { runSourceDiscoveryCycle } = await import("@wangchao/worker");
+  const prisma = getPrismaClient();
+  const workspace = await ensureDefaultWorkspace(prisma);
+
+  await assertMembershipRole(
+    prisma,
+    {
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
+    },
+    ["OWNER", "ADMIN"],
+  );
+
+  return runSourceDiscoveryCycle({
+    mode: "manual",
+    userId: workspace.userId,
+  });
+}
+
 export async function updateSourceGovernanceAction(
   formData: FormData,
 ): Promise<void> {
@@ -339,7 +387,8 @@ function actionRedirectHref(
   message: string,
 ): string {
   const params = new URLSearchParams({ [type]: message });
-  return `${path}?${params.toString()}`;
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}${params.toString()}`;
 }
 
 function toUserActionError(error: unknown): string {
@@ -365,6 +414,11 @@ function readRequiredField(formData: FormData, key: string): string {
 function readOptionalField(formData: FormData, key: string): string {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim() : "";
+}
+
+function readSafeReturnPath(formData: FormData, key: string): string | null {
+  const value = readOptionalField(formData, key);
+  return value.startsWith("/") && !value.startsWith("//") ? value : null;
 }
 
 function readRequiredUrl(formData: FormData, key: string): string {

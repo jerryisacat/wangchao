@@ -251,6 +251,14 @@ preference_updates:
 3. 对主题关键词定期搜索 RSS/Atom 或官网公告入口。
 4. 维护少量内置 source packs 作为 seed。
 
+当前 TypeScript 主路径已落地：
+
+- `runSourceDiscoveryCycle()` 聚合 `keyword-search`、`backlink-from-highscore`、`outlink-network` 三条渠道。
+- `keyword-search` 默认使用 Brave Search API，`BRAVE_SEARCH_API_KEY` 未配置时跳过该渠道，不阻塞其他发现路径。
+- 每条 candidate source 写入 `discoveryChannel`、`recommendationReason`、`trustScore` 和 `SourceObservation.evidence`。
+- Source recommendation 优先使用 OpenAI-compatible adapter 生成一句推荐理由和 0-1 相关性评分；未配置 AI 或调用失败时使用确定性兜底推荐。
+- 每轮 discovery 写入 `TaskRun(type='SOURCE_DISCOVERY')` 和 `UsageEvent(type='SOURCE_DISCOVERY')`。
+
 重要原则：
 
 - 自动发现不等于自动信任。
