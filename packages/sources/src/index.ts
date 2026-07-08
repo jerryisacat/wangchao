@@ -36,6 +36,12 @@ export interface FetchRssFeedOptions {
   timeoutMs?: number;
 }
 
+export interface RssFeedValidationResult {
+  itemCount: number;
+  title: string;
+  url: string;
+}
+
 export const rssSourceAdapter: SourceAdapterDescriptor = {
   kind: "rss",
   longRunning: true,
@@ -64,6 +70,54 @@ export async function fetchRssFeed(
     }
 
     return parseRssFeed(await response.text());
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+export async function validateRssFeedUrl(
+  feedUrl: string,
+  options: FetchRssFeedOptions = {},
+): Promise<RssFeedValidationResult> {
+  const parsedUrl = new URL(feedUrl);
+  if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+    throw new Error("RSS validation only accepts HTTP/HTTPS URLs.");
+  }
+
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetchImpl(feedUrl, {
+      headers: {
+        accept: "application/rss+xml, application/atom+xml, application/xml, text/xml",
+        "user-agent": "WangchaoSourceValidator/1.0 RSS validator",
+      },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`RSS validation failed with HTTP ${response.status}`);
+    }
+
+    const xml = await response.text();
+    if (!/<(rss|feed)\b/i.test(xml)) {
+      throw new Error("URL did not return an RSS or Atom feed.");
+    }
+
+    const items = parseRssFeed(xml);
+    const title = firstFeedTitle(xml);
+    if (!title) {
+      throw new Error("RSS validation could not read feed title.");
+    }
+
+    return {
+      itemCount: items.length,
+      title,
+      url: response.url || feedUrl,
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -129,6 +183,11 @@ function firstText(xml: string, tagName: string): string | undefined {
     new RegExp(`<${escapedTag}\\b[^>]*>([\\s\\S]*?)<\\/${escapedTag}>`, "i"),
   );
   return match?.[1] ? decodeXml(stripCdata(match[1]).trim()) : undefined;
+}
+
+function firstFeedTitle(xml: string): string | undefined {
+  const withoutEntries = xml.replace(/<(item|entry)\b[\s\S]*?<\/\1>/gi, "");
+  return firstText(withoutEntries, "title");
 }
 
 function firstLink(xml: string): string | undefined {

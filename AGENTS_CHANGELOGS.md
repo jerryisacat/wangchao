@@ -4,6 +4,14 @@
 
 ## 2026-07-08
 
+### 新建主题自动生成 profile 并发现候选源
+
+- Cause: 修复 GitHub Issue #2，将新建主题入口从“必须手动绑定 RSS”调整为“只填写主题名称和描述”，并在创建后自动生成关键词/profile、匹配内置信源包和写入可治理候选源。
+- Changed: 新增 `createTopicAction()`，创建主题时生成 `Topic.profile` 初稿，并基于 `packages/db/seed-sources.json` 匹配候选 RSS/Atom；新增 RSS feed validator，要求 HTTP/HTTPS、真实 RSS/Atom 根节点和 feed title，并记录 feed title、item count、validation URL、匹配关键词等 `SourceObservation.evidence`；新建主题页面移除关键词/RSS 字段；新增 smoke 覆盖“只需名称和描述”；Playwright smoke 改为单 worker 以避免真实 Server Action 与公网 RSS 验证并行干扰；同步 `.env_example`、`README.md`、`SPEC.md`、`CODEGUIDE.md` 和 `DEVELOPE_LOGS.md`。
+- Files: `apps/web/src/app/actions.ts`, `apps/web/src/app/topics/new/page.tsx`, `apps/web/package.json`, `packages/core/src/index.ts`, `packages/sources/src/index.ts`, `packages/sources/src/discovery.fixtures.ts`, `tests/smoke/web.spec.ts`, `playwright.config.ts`, `.env_example`, `README.md`, `SPEC.md`, `CODEGUIDE.md`, `AGENTS_CHANGELOGS.md`, `DEVELOPE_LOGS.md`, `pnpm-lock.yaml`
+- Verification: 已通过 `pnpm db:validate`、临时 Docker Postgres 上 `pnpm db:deploy` 应用 0001/0002 migration、`pnpm db:seed`；已通过 `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`git diff --check`；已通过沙箱外 `pnpm smoke:web`（desktop/mobile 共 4 passed，2 skipped；详情页跳过因临时库未运行 worker 生成事件）。SQL 验证最新 smoke 主题包含 `profile.keywords`，候选源以 `CANDIDATE` 写入，`SourceObservation.evidence` 包含 feed title、feed item count、validation URL、matched keywords 和 discovery channel。
+- Notes / Risk: 新建主题的候选源发现仍依赖公网 RSS 响应；为避免表单长时间等待，默认 `WANGCHAO_TOPIC_CREATE_FEED_TIMEOUT_MS=2000`，超时或无匹配时主题仍会创建成功并提示用户去信源管理页继续发现。真实部署中可按网络质量调高该值。
+
 ### 实现 Phase 5 自动信源发现
 
 - Cause: 修复 GitHub Issue #1，落地 SPEC Phase 5 自动信源发现，让系统可围绕主题主动发现候选 RSS/Atom 信源，并接入现有 source governance 状态机。

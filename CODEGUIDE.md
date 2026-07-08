@@ -255,7 +255,7 @@ env template + service start + logging + rollback guidance
 
 ### 目标 Next.js 产品壳
 
-`apps/web` 是当前产品界面入口。按 `FRONTEND.md` 重构后，首页改为顶部导航 + 中间限宽单列未读情报流，组织权限、用量审计、处理管线、KPI 指标卡等从首页移除。新建主题、信源管理、简报、已收藏、偏好记忆拆分为独立路由。数据层通过 `getTopicSourceWorkspace()` 统一获取工作区数据，Server Actions 处理 mutations。`DATABASE_URL` 未配置时首页抛出错误，不再静默降级为预览模式。
+`apps/web` 是当前产品界面入口。按 `FRONTEND.md` 重构后，首页改为顶部导航 + 中间限宽单列未读情报流，组织权限、用量审计、处理管线、KPI 指标卡等从首页移除。新建主题、信源管理、简报、已收藏、偏好记忆拆分为独立路由。数据层通过 `getTopicSourceWorkspace()` 统一获取工作区数据，Server Actions 处理 mutations。新建主题只收集名称和描述，Server Action 会生成初始 topic profile，并从内置信源包匹配、验证 RSS/Atom 后写入候选源。`DATABASE_URL` 未配置时首页抛出错误，不再静默降级为预览模式。
 
 ```text
 apps/web/src/app/layout.tsx
@@ -295,12 +295,12 @@ apps/web/src/app/globals.css
 | `apps/web/src/components/common/page-header.tsx` | 页面标题 + eyebrow + meta + 操作区。 |
 | `apps/web/src/app/page.tsx` | 首页：未读情报流，顶部搜索、主题筛选、`view=all|high|saved` 视图、情报卡片列表、已读/收藏/减少动作。 |
 | `apps/web/src/app/events/[eventId]/page.tsx` | 单条情报详情页：稳定 URL、来源/时间/分数/解释、已读/收藏/减少、Markdown 导出和原文链接。 |
-| `apps/web/src/app/topics/new/page.tsx` | 新建主题页：Kinetic 风格大表单。 |
+| `apps/web/src/app/topics/new/page.tsx` | 新建主题页：只填写主题名称和描述，提交后自动生成 topic profile 并尝试发现候选信源。 |
 | `apps/web/src/app/sources/page.tsx` | 信源治理页：候选源表单、手动触发 source discovery、LLM/兜底推荐理由展示、质量报告、批准/观察/静音/拒绝动作。 |
 | `apps/web/src/app/briefings/page.tsx` | 简报列表页 + Markdown 导出。 |
 | `apps/web/src/app/saved/page.tsx` | 已收藏情报页。 |
 | `apps/web/src/app/preferences/page.tsx` | 偏好记忆页：权重、置信度、解释。 |
-| `apps/web/src/app/actions.ts` | Server Action 入口；创建主题、更新事件状态、创建候选源、手动 source discovery、信源治理。失败通过 stderr 记录，成功/失败通过 redirect URL 参数反馈。 |
+| `apps/web/src/app/actions.ts` | Server Action 入口；创建主题并自动匹配候选源、更新事件状态、创建候选源、手动 source discovery、信源治理。失败通过 stderr 记录，成功/失败通过 redirect URL 参数反馈。 |
 | `apps/web/src/lib/topic-source-data.ts` | 读取工作台数据和单条情报详情；`DATABASE_URL` 未配置时抛出错误，不再静默降级为预览模式。 |
 | `apps/web/src/app/exports/briefings/[briefingId]/route.ts` | 简报 Markdown 下载 route。 |
 | `apps/web/src/app/exports/events/[eventId]/route.ts` | 单条情报 Markdown 下载 route。 |
@@ -310,8 +310,8 @@ apps/web/src/app/globals.css
 | `FRONTEND.md` | `apps/web` 前端设计规范，定义 Kinetic Intelligence 风格、token、组件变体、页面组合、动效、响应式和可访问性边界。 |
 | `packages/db/src/repositories.ts` | Topic/Source/Worker/Dashboard/Preference/Briefing/Governance repository。 |
 | `apps/worker/src/index.ts` | Worker 入口：抓取 RSS、分析、简报生成、source quality observation、source discovery、health check。 |
-| `packages/core/src/index.ts` | 领域逻辑：relevance/noise 判定、event draft、gravity ranking、feedback delta、preference ranking、Markdown 渲染。 |
-| `packages/sources/src/index.ts` | Sources 包公共出口：RSS source adapter、search provider、feed probe、外链提取。 |
+| `packages/core/src/index.ts` | 领域逻辑：topic profile 初稿生成、relevance/noise 判定、event draft、gravity ranking、feedback delta、preference ranking、Markdown 渲染。 |
+| `packages/sources/src/index.ts` | Sources 包公共出口：RSS source adapter、search provider、feed validation/probe、外链提取。 |
 | `packages/sources/src/discovery.ts` | Source discovery 工具：`SearchProvider`、`BraveSearchProvider`、主题 query 生成、RSS/Atom 探测、外链提取和 URL 安全过滤。 |
 | `packages/sources/src/discovery.fixtures.ts` | Source discovery fixture 测试：mock Brave 响应、RSS 探测、外链提取和 topic keywords。 |
 | `packages/ai/src/openai-compatible.ts` | OpenAI-compatible Chat Completions adapter。 |
@@ -338,6 +338,8 @@ apps/web/src/app/globals.css
 - Dashboard 排序使用 `gravityScore` 作为基础分，再应用 `PreferenceMemory` 权重；不得只记录反馈而不影响排序。
 - Daily briefing 生成必须由 worker 执行；Web 下载 route 只读取已持久化的 `Briefing.markdown` 并记录导出。
 - Markdown 导出必须包含生成时间、来源、摘要、解释和原文链接；单条情报导出应作为 `FeedbackEvent(kind='EXPORT')` 正反馈记录。
+- 新建主题入口只要求用户填写主题名称和描述；`createTopicAction()` 负责生成 `Topic.profile.keywords` 等初始 profile 字段，并从 `packages/db/seed-sources.json` 匹配 HTTP/HTTPS RSS/Atom 候选源。
+- 新建主题时的候选源必须通过真实 HTTP/HTTPS feed 验证，读取 feed title 后才能写入 `Source.status='CANDIDATE'` 和 `SourceObservation.evidence`；没有候选源时仍应创建主题并给出清晰提示。
 - Candidate sources 必须保持隔离：worker fetch 和 daily briefing 默认只使用 `ACTIVE` sources；candidate/muted/rejected 不得进入正式抓取和简报。
 - Source discovery 只能写入 candidate pool，不得绕过治理流程直接标记为 `ACTIVE`；如果发现已存在 source，只更新推荐信息和 observation，不改变现有治理状态。
 - Source discovery 当前有三条渠道：`keyword-search`（Brave Search API + RSS/Atom 探测）、`backlink-from-highscore`（高分事件原文页反查 RSS/Atom）、`outlink-network`（active source 最近 item 外链网络）。无 `BRAVE_SEARCH_API_KEY` 时跳过关键词搜索，但不阻塞后两条渠道。
@@ -450,6 +452,8 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - `WANGCHAO_DISCOVERY_ACTIVE_PAGE_LIMIT` 控制每轮最多探测多少条 active source item，默认 `12`。
 - `WANGCHAO_DISCOVERY_OUTLINKS_PER_PAGE` 控制每个 active item 最多探测多少条外链，默认 `3`。
 - `WANGCHAO_DISCOVERY_FETCH_TIMEOUT_MS` 控制 discovery 网页/RSS 探测超时，默认 `5000`。
+- `WANGCHAO_TOPIC_CREATE_SOURCE_LIMIT` 控制新建主题时从内置信源包最多写入多少个候选源，默认 `3`。
+- `WANGCHAO_TOPIC_CREATE_FEED_TIMEOUT_MS` 控制新建主题时 RSS/Atom 候选源验证超时，默认 `2000`。
 - `WANGCHAO_DEFAULT_ORGANIZATION_SLUG`、`WANGCHAO_DEFAULT_ORGANIZATION_NAME`、`WANGCHAO_DEFAULT_USER_EMAIL`、`WANGCHAO_DEFAULT_USER_NAME` 是当前个人版默认工作区/用户配置；真实商业化前必须替换为正式 auth/session provider。
 - `WANGCHAO_SEED_SOURCES_URL` 指定多主题信源列表 JSON 的 URL（Gist raw 或任意公开 JSON），留空时默认拉本仓库 raw link `https://raw.githubusercontent.com/jerryisacat/wangchao/main/packages/db/seed-sources.json`。拉取失败时 fallback 到随部署 bundle 的本地 `packages/db/seed-sources.json`。
 - `WANGCHAO_SEED_SOURCE_NAME`、`WANGCHAO_SEED_SOURCE_URL` 是旧单源模式：两者同时设置时优先生效，会内联成单 topic 单 source 的列表，跳过列表解析。
@@ -462,7 +466,7 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - `packages/sources/src/index.ts` 支持 RSS/Atom 抓取，仅接受 HTTP/HTTPS URL。
 - `packages/db/src/client.ts` 懒加载 Prisma Client，并用 `@prisma/adapter-pg` 注入 Postgres adapter，避免 build-time 读取运行时数据库。
 - `packages/db/src/repositories.ts` 提供 tenant/topic scoped 查询 helper，后续新增查询应优先放在这里或同包内的清晰模块中。
-- `pnpm smoke:web` 运行 Playwright smoke tests；默认启动 `@wangchao/web` production server，因此需要先完成 `pnpm build`，并提供可用 `DATABASE_URL`。如已有服务可用，可设置 `PLAYWRIGHT_BASE_URL` 跳过内置 webServer。
+- `pnpm smoke:web` 运行 Playwright smoke tests；默认单 worker 启动 `@wangchao/web` production server，避免真实 Server Action 与外部 RSS 验证并行互相干扰，因此需要先完成 `pnpm build`，并提供可用 `DATABASE_URL`。如已有服务可用，可设置 `PLAYWRIGHT_BASE_URL` 跳过内置 webServer。
 - `apps/web/src/app/api/health/route.ts` 是 Web health endpoint，返回 web service 状态和数据库检查结果。
 - `apps/worker/src/index.ts --health` 是 worker health check 入口，可通过根脚本 `pnpm worker:health` 调用。
 - `docs/deployment.md` 记录当前 Railway 部署顺序、环境变量、服务配置、日志、备份和回滚策略。

@@ -5,10 +5,12 @@ import {
   extractExternalLinks,
   extractTopicKeywords,
 } from "./discovery.js";
+import { validateRssFeedUrl } from "./index.js";
 
 export async function runSourceDiscoveryFixtures(): Promise<void> {
   await assertBraveSearchProvider();
   await assertFeedProbe();
+  await assertFeedValidation();
   assertExternalLinkExtraction();
   assertTopicQueries();
 }
@@ -70,6 +72,46 @@ async function assertFeedProbe(): Promise<void> {
   assert(candidates[0]?.name === "Example Updates", "Feed probe should read feed title.");
 }
 
+async function assertFeedValidation(): Promise<void> {
+  const feed = await validateRssFeedUrl("https://example.com/feed.xml", {
+    fetchImpl: async (input) =>
+      textResponse(
+        `<?xml version="1.0"?><rss><channel><title>Validated Feed</title><item><title>Item</title><link>https://example.com/a</link></item></channel></rss>`,
+        "application/rss+xml",
+        String(input),
+      ),
+  });
+
+  assert(feed.title === "Validated Feed", "Feed validation should read feed title.");
+  assert(feed.itemCount === 1, "Feed validation should count items.");
+
+  await assertRejects(
+    () =>
+      validateRssFeedUrl("fixture://example", {
+        fetchImpl: async () =>
+          textResponse(
+            `<?xml version="1.0"?><rss><channel><title>Bad</title></channel></rss>`,
+            "application/rss+xml",
+            "fixture://example",
+          ),
+      }),
+    "Feed validation should reject non-HTTP URLs.",
+  );
+
+  await assertRejects(
+    () =>
+      validateRssFeedUrl("https://example.com/no-title.xml", {
+        fetchImpl: async (input) =>
+          textResponse(
+            `<?xml version="1.0"?><rss><channel><item><title>Item</title><link>https://example.com/a</link></item></channel></rss>`,
+            "application/rss+xml",
+            String(input),
+          ),
+      }),
+    "Feed validation should require feed title.",
+  );
+}
+
 function assertExternalLinkExtraction(): void {
   const links = extractExternalLinks(
     `<a href="/internal">internal</a><a href="https://source.example/feed">feed</a><img src="https://cdn.example/a.png">`,
@@ -117,4 +159,17 @@ function assert(condition: boolean, message: string): void {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+async function assertRejects(
+  fn: () => Promise<unknown>,
+  message: string,
+): Promise<void> {
+  try {
+    await fn();
+  } catch {
+    return;
+  }
+
+  throw new Error(message);
 }

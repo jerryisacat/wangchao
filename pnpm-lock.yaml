@@ -26,6 +26,9 @@ importers:
       '@wangchao/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@wangchao/sources':
+        specifier: workspace:*
+        version: link:../../packages/sources
       '@wangchao/worker':
         specifier: workspace:*
         version: link:../worker

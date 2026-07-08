@@ -124,6 +124,8 @@ topic:
 
 用户可以确认或修改。
 
+当前 TypeScript 主路径的 V1 落地方式是：新建主题页只要求用户填写主题名称和描述；后端先生成包含 `keywords`、`entities`、`includeScope`、`excludeScope` 和 `importanceRules` 的初始 topic profile，再用内置信源包 `packages/db/seed-sources.json` 匹配候选 RSS/Atom。候选源必须经过真实 HTTP/HTTPS feed 验证并读取 feed title，验证通过后才写入 `Source.status='CANDIDATE'` 和 `SourceObservation.evidence`；没有匹配或验证失败时仍创建主题，并提示用户稍后在信源管理页继续发现。
+
 ### 4.2 每日主题简报
 
 每天系统按主题生成简报：
@@ -652,13 +654,13 @@ preference_memory
 ```text
 用户输入主题
   ↓
-LLM 生成 topic profile 草案
-  ↓
-用户确认/修改
+生成 topic profile 草案
   ↓
 创建 topic
   ↓
-生成初始 seed/candidate source discovery tasks
+匹配内置信源包并验证 RSS/Atom
+  ↓
+写入初始 candidate sources 或提示暂无候选
 ```
 
 ### 7.2 信源发现

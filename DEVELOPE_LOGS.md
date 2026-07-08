@@ -4,6 +4,17 @@
 
 ## 2026-07-08
 
+### Phase 4/5：新建主题自动候选源
+
+- Phase: Cross-phase / Phase 4 (主题与信源) + Phase 5 (自动信源发现)
+- Scope: 新建主题页改为只收集主题名称和描述；Web Server Action 自动生成初始 topic profile，并从内置信源包匹配候选 RSS/Atom；候选源经真实 HTTP/HTTPS feed 验证后写入 `Source.status='CANDIDATE'` 和 `SourceObservation.evidence`；无候选源时主题仍创建成功并给出清晰提示。
+- Alignment: 符合 Issue #2、`SPEC.md` 4.1/7.1、`REFACTOR_PLAN.md` Phase 4/5 和 `AGENTS.md`。候选源保持治理隔离，不进入 worker fetch/briefing；RSS/Atom 和 LLM/外部内容仍按不可信输入处理；新增环境变量已同步 `.env_example` 和 `CODEGUIDE.md`。
+- Missing: 当前 V1 只匹配仓库内 `packages/db/seed-sources.json`，未在新建主题 request lifecycle 中调用 Brave/Web discovery 或 LLM 生成搜索词；后续可把更重的搜索和低频候选抓取交给 worker 周期继续扩展。
+- Bugs: 端到端 smoke 发现 Next production server 下动态读取 `packages/db/seed-sources.json` 会按 `apps/web` cwd 拼错路径，已改为静态 JSON import；发现 RSS validator 会误把 item title 当 feed title，已改为排除 item/entry 后读取 feed/channel title；发现并行 Playwright 项目会让真实 RSS 验证和 Server Action 互相干扰，已改为 smoke 单 worker。
+- Fixes: 新增 `buildTopicProfile()`；新增 `validateRssFeedUrl()` 和 fixture；新增 `createTopicAction()`、内置信源包匹配、并发候选验证与硬超时；新建主题表单移除 RSS/关键词字段；新增 Playwright smoke 用例；同步 README、SPEC、CODEGUIDE、环境变量和本日志。
+- Verification: 已通过 `pnpm db:validate`、临时 Docker Postgres (`127.0.0.1:55438`) 上 `pnpm db:deploy`、`pnpm db:seed`；已通过 `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`git diff --check`；已在沙箱外通过 `DATABASE_URL=... WANGCHAO_TOPIC_CREATE_FEED_TIMEOUT_MS=2000 pnpm smoke:web`，desktop/mobile 新建主题均通过，事件详情用例因临时库无事件按预期 skip；SQL 检查确认最新 smoke 主题写入 profile keywords，候选源为 `CANDIDATE` 且 evidence 包含 feed title/item count/validation URL/matched keywords。
+- Follow-up: 后续可把新建主题后的更深自动发现排入 worker，不阻塞表单提交；可补一组可控本地 RSS fixture 的集成测试，减少公网 RSS 可用性对 smoke 的影响。
+
 ### Phase 5：自动信源发现
 
 - Phase: Phase 5 (自动信源发现)

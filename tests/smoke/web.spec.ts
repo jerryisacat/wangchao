@@ -42,3 +42,21 @@ test("first intelligence card opens a stable detail page", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Markdown" })).toBeVisible();
   await expect(page.getByRole("link", { name: "返回情报流" })).toBeVisible();
 });
+
+test("new topic only needs name and description", async ({ page }, testInfo) => {
+  await page.goto("/topics/new");
+  await expect(page.getByRole("heading", { name: "新建观察主题" })).toBeVisible();
+  await expect(page.getByLabel("RSS URL")).toHaveCount(0);
+  await expect(page.getByLabel("RSS 名称")).toHaveCount(0);
+
+  await page
+    .getByLabel("主题名称")
+    .fill(`AI 基础设施 smoke ${testInfo.project.name} ${Date.now()}`);
+  await page
+    .getByLabel("主题描述")
+    .fill("关注 AI 基础设施、模型供应商、Agent 平台和部署生态。");
+  await page.getByRole("button", { name: "创建主题" }).click();
+
+  await expect(page).toHaveURL(/\/sources/);
+  await expect(page.getByText(/主题已创建/)).toBeVisible();
+});

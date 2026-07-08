@@ -74,6 +74,43 @@ export interface DailyBriefingInput {
   topicName: string;
 }
 
+export interface TopicProfileDraft {
+  entities: string[];
+  excludeScope: string[];
+  importanceRules: string[];
+  includeScope: string[];
+  keywords: string[];
+  source: "topic-profile-generator";
+}
+
+export interface TopicProfileInput {
+  description?: string | null;
+  name: string;
+}
+
+export function buildTopicProfile(input: TopicProfileInput): TopicProfileDraft {
+  const keywords = extractTopicTerms(`${input.name}\n${input.description ?? ""}`);
+  const entities = keywords
+    .filter((keyword) => /[A-Z][A-Za-z0-9-]*/.test(keyword) || keyword.length >= 3)
+    .slice(0, 8);
+
+  return {
+    entities,
+    excludeScope: ["广告软文", "无来源转载", "与主题无关的泛新闻"],
+    importanceRules: [
+      "优先官方公告、一手博客、研究发布和产品更新。",
+      "优先包含明确时间、来源链接、技术细节或影响范围的信息。",
+      "降低纯观点、重复转载和缺少来源的信息权重。",
+    ],
+    includeScope: [
+      input.description?.trim() || input.name.trim(),
+      "公开 RSS/Atom、官方博客、研究团队和工程团队更新。",
+    ],
+    keywords,
+    source: "topic-profile-generator",
+  };
+}
+
 export function evaluateRelevance(item: IntelligenceInputItem): RelevanceDecision {
   const keywords = extractKeywords(item.topicProfile);
   const haystack = `${item.title}\n${item.summary ?? ""}`.toLowerCase();
@@ -335,6 +372,30 @@ export function extractKeywords(topicProfile: unknown): string[] {
     .map((keyword) => keyword.trim())
     .filter(Boolean);
 }
+
+function extractTopicTerms(value: string): string[] {
+  const terms = value
+    .split(/[\s,，、;；:：/|()\[\]{}"'“”‘’<>《》.!?！？\n\r\t]+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2)
+    .filter((term) => !TOPIC_STOP_WORDS.has(term.toLowerCase()));
+  const cjkPhrases = [
+    ...value.matchAll(/[\u4e00-\u9fff]{2,8}/g),
+  ].map((match) => match[0]);
+
+  return Array.from(new Set([...terms, ...cjkPhrases])).slice(0, 16);
+}
+
+const TOPIC_STOP_WORDS = new Set([
+  "and",
+  "for",
+  "the",
+  "with",
+  "关注",
+  "跟踪",
+  "观察",
+  "相关",
+]);
 
 export function preferenceKeysForEvent(input: {
   category?: string | null;

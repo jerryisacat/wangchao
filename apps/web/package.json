@@ -13,6 +13,7 @@
   "dependencies": {
     "@wangchao/core": "workspace:*",
     "@wangchao/db": "workspace:*",
+    "@wangchao/sources": "workspace:*",
     "@wangchao/worker": "workspace:*",
     "lucide-react": "^0.562.0",
     "next": "^16.1.6",

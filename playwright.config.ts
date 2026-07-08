@@ -10,6 +10,7 @@ export default defineConfig({
   reporter: [["list"]],
   testDir: "./tests/smoke",
   timeout: 30_000,
+  workers: 1,
   use: {
     baseURL,
     trace: "retain-on-failure",
