@@ -1,16 +1,21 @@
 import {
   createOpenAiCompatibleAdapter,
+  extractEvent,
   fallbackSourceRecommendation,
   recommendSourceCandidate,
+  type EventExtractionAdapter,
+  type EventExtractionResult,
   type SourceRecommendation,
   type SourceRecommendationAdapter,
 } from "@wangchao/ai";
 import {
-  createIntelligenceEventDraft,
   createContentHash,
+  createIntelligenceEventDraft,
+  createIntelligenceEventDraftFromExtraction,
   evaluateRelevance,
   generatePreferenceDeltas,
   renderDailyBriefingMarkdown,
+  type AiEventExtraction,
 } from "@wangchao/core";
 import {
   completeTaskRun,
@@ -154,7 +159,11 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     });
   }
 
-  const analysisResult = await runAnalysisCycle(prisma, workspace.organizationId);
+  const analysisResult = await runAnalysisCycle(
+    prisma,
+    workspace.organizationId,
+    workspace.userId,
+  );
   result.analyzedItems = analysisResult.analyzedItems;
   result.createdOrUpdatedEvents = analysisResult.createdOrUpdatedEvents;
   result.filteredItems = analysisResult.filteredItems;
@@ -319,29 +328,57 @@ export async function runSourceDiscoveryCycle(
 async function runAnalysisCycle(
   prisma: ReturnType<typeof getPrismaClient>,
   organizationId: string,
+  userId: string,
 ): Promise<Pick<
   WorkerFetchCycleResult,
   "analyzedItems" | "createdOrUpdatedEvents" | "filteredItems"
 >> {
   const items = await listFetchedItemsForAnalysis(prisma, { organizationId });
+  const ai = createAnalysisRuntime();
   const result = {
     analyzedItems: 0,
     createdOrUpdatedEvents: 0,
     filteredItems: 0,
+    llmItems: 0,
+    llmFallbackItems: 0,
   };
 
   for (const item of items) {
-    const decision = evaluateRelevance({
-      fetchedAt: item.fetchedAt,
-      id: item.id,
-      publishedAt: item.publishedAt,
-      summary: item.summary,
-      title: item.title,
-      topicProfile: item.topicProfile,
-      url: item.url,
-    });
-    const draft = createIntelligenceEventDraft(
-      {
+    let draft = null;
+    let rawAiResponse: Record<string, unknown> = {
+      mode: "uninitialized",
+    };
+    let usedLlm = false;
+    let usedFallback = false;
+
+    if (ai) {
+      try {
+        const extractionInput = buildExtractionInput(item, item.topicProfile);
+        const extraction = await extractEvent(extractionInput, {
+          adapter: ai.adapter,
+          model: ai.model,
+        });
+        draft = createIntelligenceEventDraftFromExtraction(
+          {
+            fetchedAt: item.fetchedAt,
+            id: item.id,
+            publishedAt: item.publishedAt,
+            summary: item.summary,
+            title: item.title,
+            topicProfile: item.topicProfile,
+            url: item.url,
+          },
+          extractionToAiEventExtraction(extraction),
+        );
+        rawAiResponse = { mode: "llm", extraction };
+        usedLlm = true;
+      } catch {
+        usedFallback = true;
+      }
+    }
+
+    if (!usedLlm) {
+      const decision = evaluateRelevance({
         fetchedAt: item.fetchedAt,
         id: item.id,
         publishedAt: item.publishedAt,
@@ -349,18 +386,35 @@ async function runAnalysisCycle(
         title: item.title,
         topicProfile: item.topicProfile,
         url: item.url,
-      },
-      decision,
-    );
+      });
+      draft = createIntelligenceEventDraft(
+        {
+          fetchedAt: item.fetchedAt,
+          id: item.id,
+          publishedAt: item.publishedAt,
+          summary: item.summary,
+          title: item.title,
+          topicProfile: item.topicProfile,
+          url: item.url,
+        },
+        decision,
+      );
+      rawAiResponse = {
+        mode: "explainable-rules",
+        relevance: decision,
+        ...(usedFallback ? { llmFallback: true } : {}),
+      };
+    }
 
     result.analyzedItems += 1;
+    if (usedLlm) result.llmItems += 1;
+    if (usedFallback) result.llmFallbackItems += 1;
 
     if (!draft) {
-      await markItemFiltered(
-        prisma,
-        item.id,
-        decision.noiseReason ?? "Item did not pass relevance threshold.",
-      );
+      const noiseReason = usedFallback
+        ? "AI 分析失败且规则判定为噪声。"
+        : "Item did not pass relevance threshold.";
+      await markItemFiltered(prisma, item.id, noiseReason);
       result.filteredItems += 1;
       continue;
     }
@@ -377,12 +431,26 @@ async function runAnalysisCycle(
       eventHash: draft.eventHash,
       explanation: draft.explanation,
       occurredAt: draft.occurredAt,
-      rawAiResponse: {
-        mode: "explainable-rules",
-        relevance: decision,
-      },
+      rawAiResponse,
     });
     result.createdOrUpdatedEvents += 1;
+  }
+
+  if (ai && result.llmItems > 0) {
+    await recordUsageEvent(prisma, {
+      metadata: {
+        filteredItems: result.filteredItems,
+        fallbackItems: result.llmFallbackItems,
+        llmItems: result.llmItems,
+        source: "worker-analysis-cycle",
+      },
+      organizationId,
+      quantity: result.llmItems,
+      subjectType: "analysis-cycle",
+      type: "AI_CALL",
+      unit: "item",
+      userId,
+    });
   }
 
   return result;
@@ -824,6 +892,109 @@ function createSourceRecommendationRuntime(): {
       baseUrl,
     }),
     model: process.env.AI_MODEL_L1 ?? "gpt-4o-mini",
+  };
+}
+
+function createAnalysisRuntime(): {
+  adapter: EventExtractionAdapter;
+  model: string;
+} | null {
+  const apiKey = process.env.AI_API_KEY;
+  const baseUrl = process.env.AI_BASE_URL;
+
+  if (!apiKey || !baseUrl) {
+    return null;
+  }
+
+  return {
+    adapter: createOpenAiCompatibleAdapter({
+      apiKey,
+      baseUrl,
+    }),
+    model: process.env.AI_MODEL_L1 ?? "gpt-4o-mini",
+  };
+}
+
+function buildExtractionInput(
+  item: {
+    id: string;
+    title: string;
+    summary?: string | null;
+    url: string;
+    publishedAt?: Date | null;
+    sourceId?: string | null;
+    sourceName?: string | null;
+  },
+  topicProfile: unknown,
+): {
+  item: {
+    id: string;
+    title: string;
+    summary?: string | null;
+    url: string;
+    publishedAt?: string | null;
+    sourceName?: string | null;
+  };
+  topic: {
+    description?: string | null;
+    entities?: string[];
+    excludeScope?: string[];
+    importanceRules?: string[];
+    includeScope?: string[];
+    keywords: string[];
+    name: string;
+  };
+} {
+  const profile = (topicProfile ?? {}) as Record<string, unknown>;
+  const keywords = Array.isArray(profile.keywords)
+    ? profile.keywords.filter((k): k is string => typeof k === "string")
+    : [];
+  const entities = Array.isArray(profile.entities)
+    ? profile.entities.filter((e): e is string => typeof e === "string")
+    : [];
+  const includeScope = Array.isArray(profile.includeScope)
+    ? profile.includeScope.filter((s): s is string => typeof s === "string")
+    : [];
+  const excludeScope = Array.isArray(profile.excludeScope)
+    ? profile.excludeScope.filter((s): s is string => typeof s === "string")
+    : [];
+  const importanceRules = Array.isArray(profile.importanceRules)
+    ? profile.importanceRules.filter((r): r is string => typeof r === "string")
+    : [];
+
+  return {
+    item: {
+      id: item.id,
+      publishedAt: item.publishedAt?.toISOString() ?? null,
+      sourceName: item.sourceName ?? null,
+      summary: item.summary,
+      title: item.title,
+      url: item.url,
+    },
+    topic: {
+      description: (profile.description as string | null | undefined) ?? null,
+      entities,
+      excludeScope,
+      importanceRules,
+      includeScope,
+      keywords,
+      name: (profile.name as string | undefined) ?? "",
+    },
+  };
+}
+
+function extractionToAiEventExtraction(
+  extraction: EventExtractionResult,
+): AiEventExtraction {
+  return {
+    category: extraction.category,
+    importanceExplanation: extraction.importanceExplanation,
+    isRelevant: extraction.isRelevant,
+    matchedKeywords: extraction.matchedKeywords,
+    noiseReason: extraction.noiseReason,
+    relevanceScore: extraction.relevanceScore,
+    summary: extraction.summary,
+    title: extraction.title,
   };
 }
 

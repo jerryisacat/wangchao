@@ -160,6 +160,47 @@ export function createIntelligenceEventDraft(
   };
 }
 
+export interface AiEventExtraction {
+  category: string;
+  importanceExplanation: string;
+  isRelevant: boolean;
+  matchedKeywords: string[];
+  noiseReason?: string;
+  relevanceScore: number;
+  summary: string;
+  title: string;
+}
+
+export function createIntelligenceEventDraftFromExtraction(
+  item: IntelligenceInputItem,
+  extraction: AiEventExtraction,
+): IntelligenceEventDraft | null {
+  if (!extraction.isRelevant) {
+    return null;
+  }
+
+  const occurredAt = item.publishedAt ?? item.fetchedAt;
+  const eventHash = createEventHash(
+    `${normalizeTitle(extraction.title)}\n${item.url}`,
+  );
+  const gravityScore = calculateGravityScore(
+    extraction.relevanceScore,
+    occurredAt,
+    new Date(),
+  );
+
+  return {
+    category: extraction.category || "general",
+    eventHash,
+    explanation: extraction.importanceExplanation || "未提供评分原因。",
+    gravityScore,
+    occurredAt,
+    score: extraction.relevanceScore,
+    summary: extraction.summary,
+    title: extraction.title,
+  };
+}
+
 export function calculateGravityScore(
   baseScore: number,
   occurredAt: Date,

@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node -e \"await import('./dist/parser.fixtures.js').then((m) => m.runParserFixtures()); await import('./dist/source-recommendation.fixtures.js').then((m) => m.runSourceRecommendationFixtures())\"",
+    "test": "tsc -p tsconfig.json && node -e \"await import('./dist/parser.fixtures.js').then((m) => m.runParserFixtures()); await import('./dist/source-recommendation.fixtures.js').then((m) => m.runSourceRecommendationFixtures()); await import('./dist/event-extraction.fixtures.js').then((m) => m.runEventExtractionFixtures())\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

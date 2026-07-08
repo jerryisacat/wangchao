@@ -29,3 +29,12 @@ export {
   type SourceRecommendationAdapter,
   type SourceRecommendationInput,
 } from "./source-recommendation.js";
+export {
+  buildEventExtractionMessages,
+  extractEvent,
+  fallbackEventExtraction,
+  parseEventExtractionResponse,
+  type EventExtractionAdapter,
+  type EventExtractionInput,
+  type EventExtractionResult,
+} from "./event-extraction.js";
