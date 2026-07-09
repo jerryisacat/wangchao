@@ -9,6 +9,7 @@ export const databaseRuntimeBoundary: DatabaseRuntimeBoundary = {
 };
 
 export { disconnectPrismaClient, getPrismaClient } from "./client.js";
+export { decryptCredential, encryptCredential, maskKeyHint } from "./crypto.js";
 export {
   attachActiveRssSource,
   assertMembershipRole,
@@ -24,7 +25,9 @@ export {
   failTaskRun,
   getBriefingMarkdownForDownload,
   getDashboardEventById,
+  getDecryptedCredentials,
   getEventMarkdownExportRecord,
+  getSubscriptionCredentialView,
   listDashboardEvents,
   listEventsForDailyBriefing,
   listFetchedItemsForAnalysis,
@@ -51,9 +54,11 @@ export {
   markItemFiltered,
   updateDashboardEventState,
   updateSourceGovernanceStatus,
+  upsertAiCredential,
   upsertPreferenceMemory,
   upsertIntelligenceEventFromItem,
   upsertFetchedItems,
+  upsertSearchCredential,
   type AttachRssSourceInput,
   type BriefingEventRecord,
   type CreateCandidateRssSourceInput,
@@ -64,6 +69,9 @@ export {
   type DashboardEventAction,
   type DashboardEventRecord,
   type DashboardBriefingRecord,
+  type DecryptedAiCredential,
+  type DecryptedCredentials,
+  type DecryptedSearchCredential,
   type FeedbackSignalRecord,
   type FetchedSourceRecord,
   type IntelligenceEventWriteInput,
@@ -78,6 +86,7 @@ export {
   type SourceDiscoveryTopicRecord,
   type SourceGovernanceAction,
   type SourceGovernanceRecord,
+  type SubscriptionCredentialView,
   type TenantScope,
   type TopicScope,
   type UsageSummaryRecord,

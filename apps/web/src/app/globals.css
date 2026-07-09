@@ -422,6 +422,27 @@ a:hover {
   margin-bottom: 12px;
 }
 
+.credential-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.credential-hint {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.credential-note {
+  margin-top: 12px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: minmax(0, 0.45fr) minmax(0, 0.55fr);

@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { decryptCredential, encryptCredential, maskKeyHint } from "./crypto.js";
 
 const DEFAULT_ORGANIZATION_SLUG = "default";
 const DEFAULT_OWNER_EMAIL = "admin@wangchao.local";
@@ -1989,6 +1990,14 @@ function readRuntimeEnv(key: string): string | undefined {
   return runtime.process?.env?.[key];
 }
 
+function readRequiredRuntimeEnv(key: string): string {
+  const value = readRuntimeEnv(key);
+  if (!value) {
+    throw new Error(`${key} is required but not set.`);
+  }
+  return value;
+}
+
 function toInputJson(
   value: Record<string, unknown> | undefined,
 ): Prisma.InputJsonValue | undefined {
@@ -2080,4 +2089,189 @@ function extractPreferenceWeight(value: unknown): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+export interface SubscriptionCredentialView {
+  ai: {
+    hasKey: boolean;
+    keyHint: string | null;
+    baseUrl: string | null;
+    provider: string | null;
+    model: string | null;
+  };
+  search: {
+    hasKey: boolean;
+    keyHint: string | null;
+    provider: string | null;
+  };
+  updatedAt: Date;
+}
+
+export interface DecryptedAiCredential {
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+}
+
+export interface DecryptedSearchCredential {
+  apiKey: string;
+  provider: string;
+}
+
+export interface DecryptedCredentials {
+  ai: DecryptedAiCredential | null;
+  search: DecryptedSearchCredential | null;
+}
+
+export async function getSubscriptionCredentialView(
+  prisma: PrismaClient,
+  scope: TenantScope,
+): Promise<SubscriptionCredentialView | null> {
+  const subscription = await prisma.subscription.findUnique({
+    where: { organizationId: scope.organizationId },
+    select: {
+      aiEncryptedKey: true,
+      aiKeyHint: true,
+      aiBaseUrl: true,
+      aiProvider: true,
+      aiModel: true,
+      searchEncryptedKey: true,
+      searchKeyHint: true,
+      searchProvider: true,
+      updatedAt: true,
+    },
+  });
+
+  if (!subscription) {
+    return null;
+  }
+
+  return {
+    ai: {
+      hasKey: Boolean(subscription.aiEncryptedKey),
+      keyHint: subscription.aiKeyHint,
+      baseUrl: subscription.aiBaseUrl,
+      provider: subscription.aiProvider,
+      model: subscription.aiModel,
+    },
+    search: {
+      hasKey: Boolean(subscription.searchEncryptedKey),
+      keyHint: subscription.searchKeyHint,
+      provider: subscription.searchProvider,
+    },
+    updatedAt: subscription.updatedAt,
+  };
+}
+
+export async function upsertAiCredential(
+  prisma: PrismaClient,
+  scope: TenantScope,
+  input: {
+    apiKey: string;
+    baseUrl?: string;
+    provider?: string;
+    model?: string;
+  },
+): Promise<void> {
+  const encryptionKey = readRequiredRuntimeEnv("ENCRYPTION_KEY");
+  const encryptedKey = encryptCredential(input.apiKey, encryptionKey);
+  const keyHint = maskKeyHint(input.apiKey);
+
+  await prisma.subscription.upsert({
+    where: { organizationId: scope.organizationId },
+    update: {
+      aiEncryptedKey: encryptedKey,
+      aiKeyHint: keyHint,
+      aiBaseUrl: input.baseUrl ?? null,
+      aiProvider: input.provider ?? null,
+      aiModel: input.model ?? null,
+    },
+    create: {
+      organizationId: scope.organizationId,
+      aiEncryptedKey: encryptedKey,
+      aiKeyHint: keyHint,
+      aiBaseUrl: input.baseUrl ?? null,
+      aiProvider: input.provider ?? null,
+      aiModel: input.model ?? null,
+    },
+  });
+}
+
+export async function upsertSearchCredential(
+  prisma: PrismaClient,
+  scope: TenantScope,
+  input: {
+    apiKey: string;
+    provider?: string;
+  },
+): Promise<void> {
+  const encryptionKey = readRequiredRuntimeEnv("ENCRYPTION_KEY");
+  const encryptedKey = encryptCredential(input.apiKey, encryptionKey);
+  const keyHint = maskKeyHint(input.apiKey);
+
+  await prisma.subscription.upsert({
+    where: { organizationId: scope.organizationId },
+    update: {
+      searchEncryptedKey: encryptedKey,
+      searchKeyHint: keyHint,
+      searchProvider: input.provider ?? null,
+    },
+    create: {
+      organizationId: scope.organizationId,
+      searchEncryptedKey: encryptedKey,
+      searchKeyHint: keyHint,
+      searchProvider: input.provider ?? null,
+    },
+  });
+}
+
+export async function getDecryptedCredentials(
+  prisma: PrismaClient,
+  scope: TenantScope,
+): Promise<DecryptedCredentials | null> {
+  const subscription = await prisma.subscription.findUnique({
+    where: { organizationId: scope.organizationId },
+    select: {
+      aiEncryptedKey: true,
+      aiBaseUrl: true,
+      aiModel: true,
+      searchEncryptedKey: true,
+      searchProvider: true,
+    },
+  });
+
+  if (!subscription) {
+    return { ai: null, search: null };
+  }
+
+  const encryptionKey = readRuntimeEnv("ENCRYPTION_KEY");
+
+  let ai: DecryptedAiCredential | null = null;
+  if (subscription.aiEncryptedKey && subscription.aiBaseUrl && encryptionKey) {
+    try {
+      const apiKey = decryptCredential(subscription.aiEncryptedKey, encryptionKey);
+      ai = {
+        apiKey,
+        baseUrl: subscription.aiBaseUrl,
+        model: subscription.aiModel ?? "gpt-4o-mini",
+      };
+    } catch {
+      // Decryption failure -> treat as no credential
+    }
+  }
+
+  let search: DecryptedSearchCredential | null = null;
+  if (subscription.searchEncryptedKey && encryptionKey) {
+    try {
+      const apiKey = decryptCredential(subscription.searchEncryptedKey, encryptionKey);
+      search = {
+        apiKey,
+        provider: subscription.searchProvider ?? "brave",
+      };
+    } catch {
+      // Decryption failure -> treat as no credential
+    }
+  }
+
+  return { ai, search };
 }

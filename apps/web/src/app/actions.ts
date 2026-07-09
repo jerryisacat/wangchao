@@ -764,3 +764,124 @@ function readSourceGovernanceAction(
 
   throw new Error(`${key} must be approve, mute, reject, or observe.`);
 }
+
+export async function upsertAiCredentialAction(formData: FormData): Promise<void> {
+  let message = "AI 凭证已更新。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to configure credentials.");
+    }
+
+    const apiKey = readRequiredField(formData, "aiApiKey");
+    const baseUrl = readOptionalField(formData, "aiBaseUrl");
+    const provider = readOptionalField(formData, "aiProvider");
+    const model = readOptionalField(formData, "aiModel");
+
+    if (baseUrl) {
+      const parsed = new URL(baseUrl);
+      if (!["http:", "https:"].includes(parsed.protocol)) {
+        throw new Error("AI Base URL must be an HTTP or HTTPS URL.");
+      }
+    }
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      recordUsageEvent,
+      upsertAiCredential,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    await upsertAiCredential(prisma, { organizationId: workspace.organizationId }, {
+      apiKey,
+      baseUrl: baseUrl || undefined,
+      provider: provider || undefined,
+      model: model || undefined,
+    });
+
+    await recordUsageEvent(prisma, {
+      metadata: { source: "admin-settings" },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectType: "subscription",
+      type: "WEB_ACTION",
+      unit: "credential-update",
+      userId: workspace.userId,
+    });
+  } catch (error) {
+    logActionError("upsertAiCredentialAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/admin/settings");
+  redirect(actionRedirectHref("/admin/settings", type, message));
+}
+
+export async function upsertSearchCredentialAction(formData: FormData): Promise<void> {
+  let message = "搜索凭证已更新。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to configure credentials.");
+    }
+
+    const apiKey = readRequiredField(formData, "searchApiKey");
+    const provider = readOptionalField(formData, "searchProvider");
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      recordUsageEvent,
+      upsertSearchCredential,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    await upsertSearchCredential(prisma, { organizationId: workspace.organizationId }, {
+      apiKey,
+      provider: provider || "brave",
+    });
+
+    await recordUsageEvent(prisma, {
+      metadata: { source: "admin-settings" },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectType: "subscription",
+      type: "WEB_ACTION",
+      unit: "credential-update",
+      userId: workspace.userId,
+    });
+  } catch (error) {
+    logActionError("upsertSearchCredentialAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/admin/settings");
+  redirect(actionRedirectHref("/admin/settings", type, message));
+}

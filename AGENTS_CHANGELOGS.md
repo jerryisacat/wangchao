@@ -1,5 +1,21 @@
 ## 2026-07-10
 
+### 扩充系统默认信源包
+
+- Cause: 用户确认新增一批系统默认信源，用于扩大新建主题时内置信源包匹配范围。
+- Changed: 将 `packages/db/seed-sources.json` 从 1 个 AI 主题扩展到 8 个主题、34 个 RSS/Atom 源，覆盖 AI 基础设施、云平台与 DevOps、开源与软件工程、网络安全、算力与半导体、科技商业、标准与政策、中文科技；对初始候选清单中不可用的 RSS 地址做稳定替换（DeepMind、PostgreSQL、MSRC、a16z），机器之心当前未找到可验证官方 RSS，未写入默认包。
+- Files: `packages/db/seed-sources.json`, `AGENTS_CHANGELOGS.md`。
+- Verification: 已通过 JSON parse 与重复 URL 检查（8 topics / 34 sources / 0 duplicate URLs）；已联网验证 34 个写入后的 feed 均返回 HTTP 200 且包含 RSS/Atom 根节点；`CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`git diff --check` 均通过。
+- Notes / Risk: 本次只改默认信源数据和审计日志，不改变 seed schema、数据库 schema 或治理状态机。已有部署 re-seed 仍遵守 create-only 逻辑，不会重置用户在 UI 中治理过的 source status。
+
+### Admin 后台 API Key 配置（Subscription 凭证管理）
+
+- Cause: 用户要求不通过环境变量配置 API Key，而是在 Admin 后台配置；Admin 后台不显示完整 Key，只可新增或覆盖；AGENTS.md 需同步更新凭证管理规则。
+- Changed: 新增 `Subscription` Prisma 模型（`organizationId` 1:1，含 AI 凭证和搜索凭证字段，AES-256-GCM 加密存储）和 migration `0006_subscription_credentials`；新增 `packages/db/src/crypto.ts` 加密工具（`encryptCredential`/`decryptCredential`/`maskKeyHint`）；新增 DB repository 函数 `getSubscriptionCredentialView`、`upsertAiCredential`、`upsertSearchCredential`、`getDecryptedCredentials`；Worker 三个工厂函数 `createSearchProvider`/`createSourceRecommendationRuntime`/`createAnalysisRuntime` 改为 async 并接收 `(prisma, organizationId)`，DB 优先读取凭证、env var fallback；新增 `/admin/settings` 页面（展示脱敏 hint、不显示完整 Key、表单可新增/覆盖 Key）和 Server Actions `upsertAiCredentialAction`/`upsertSearchCredentialAction`（OWNER/ADMIN 权限）；TopNav 新增齿轮图标入口；`.env_example` 新增 `ENCRYPTION_KEY`；AGENTS.md 新增 §5.2 凭证管理规则和 §12 安全规则；同步 `docs/L2-domain.md`、`docs/L3-modules.md`、`docs/L4-operations.md`、`docs/business-model.md`。
+- Files: `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/0006_subscription_credentials/migration.sql`, `packages/db/src/crypto.ts`, `packages/db/src/repositories.ts`, `packages/db/src/index.ts`, `apps/worker/src/index.ts`, `apps/web/src/app/actions.ts`, `apps/web/src/app/admin/settings/page.tsx`, `apps/web/src/components/layout/top-nav.tsx`, `apps/web/src/app/globals.css`, `.env_example`, `AGENTS.md`, `docs/L2-domain.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `docs/business-model.md`, `AGENTS_CHANGELOGS.md`。
+- Verification: `pnpm --filter @wangchao/db exec tsc --noEmit` 通过；`pnpm --filter @wangchao/worker exec tsc --noEmit` 通过；`pnpm --filter @wangchao/web exec tsc --noEmit` 通过；待跑完整 `pnpm typecheck && pnpm lint && pnpm test && pnpm build`。
+- Notes / Risk: 此实现是 Phase 15 BYOK/Subscription 模型的前置基础，字段名用 `ai*`/`search*` 而非 `byok*`，Phase 15 可在同表扩展 Plan/Stripe 字段。`ENCRYPTION_KEY` 为必填环境变量（当使用 Admin 配置时）。Migration `0006` 会通过 Railway Web predeploy 自动执行（`pnpm db:deploy`）。Worker 读取 Key 时若 DB 无配置或 `ENCRYPTION_KEY` 未设置，会 fallback 到 env var，保持向后兼容。
+
 ### 修复 Railway Web predeploy 数据库冷启动失败
 
 - Cause: 最近一次 Railway Web deployment 在 build 成功后，于 predeploy 执行 `prisma migrate deploy` 时遇到 `P1001: Can't reach database server at postgres.railway.internal:5432`；Railway Postgres 日志显示数据库稍后才 ready，属于睡眠/冷启动窗口内没有等待数据库可达。

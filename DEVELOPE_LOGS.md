@@ -2,6 +2,19 @@
 
 本文件记录分阶段开发审计和延期功能追踪，辅助 `AGENTS_CHANGELOGS.md` 使用。它不是传统 release changelog；重点是记录每个阶段是否达成 `REFACTOR_PLAN.md` 和 `AGENTS.md` 目标、缺失功能、已知问题、修复情况和后续追踪项。
 
+## 2026-07-10
+
+### Phase 12 前置：Admin 后台 API Key 凭证管理
+
+- Phase: Phase 12 (商业化基础) 前置 - 凭证管理基础设施
+- Scope: 新增 `Subscription` 模型和 migration `0006_subscription_credentials`；新增 AES-256-GCM 加密工具 `packages/db/src/crypto.ts`；新增 DB repository 函数（`getSubscriptionCredentialView`/`upsertAiCredential`/`upsertSearchCredential`/`getDecryptedCredentials`）；Worker 三个工厂函数改为 async + DB 优先 + env fallback；新增 `/admin/settings` 页面和 Server Actions（OWNER/ADMIN 权限，脱敏展示，不可查看完整 Key）；TopNav 加齿轮入口；`.env_example` 新增 `ENCRYPTION_KEY`；AGENTS.md 新增 §5.2 凭证管理规则。
+- Alignment: 符合 AGENTS.md §5.2（API Key 通过 Admin 后台配置）和 `docs/business-model.md` Step 1（Schema + Migration + AES 加密工具）。
+- Missing: Plan/SubscriptionStatus 枚举和 Stripe/ccayment 字段未实现（Phase 15）；BYOK override 端点未实现；Key 验证端点未实现；无端到端测试覆盖（仅 typecheck 通过）。
+- Bugs: 无已知 bug。注意：`ENCRYPTION_KEY` 未设置时 `upsertAiCredential`/`upsertSearchCredential` 会抛错；`getDecryptedCredentials` 在 `ENCRYPTION_KEY` 缺失时静默返回 null（fallback 到 env var），这是设计行为。
+- Fixes: 无。
+- Verification: `pnpm --filter @wangchao/db/worker/web exec tsc --noEmit` 全部通过；待跑完整 `pnpm typecheck && pnpm lint && pnpm test && pnpm build`。
+- Follow-up: Phase 15 在同表扩展 Plan/Stripe/配额字段和 BYOK `byok*` 字段；补 Playwright smoke test 覆盖 `/admin/settings` 页面；考虑在 `ensureDefaultWorkspace` 时自动创建空 `Subscription` 行。
+
 ## 2026-07-08
 
 ### Phase 4/5：新建主题自动候选源

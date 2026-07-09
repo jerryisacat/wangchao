@@ -166,6 +166,13 @@ model Subscription {
 }
 ```
 
+> **当前实现状态（截至 Phase 12）：** `Subscription` 表已通过 migration `0006_subscription_credentials` 创建，但仅包含凭证字段，尚未实现 `Plan`/`SubscriptionStatus` 枚举及 Stripe 相关字段。
+> 实际字段名与上述设计的 `byok*` 命名不同：
+> - 当前使用 `aiEncryptedKey`/`aiBaseUrl`/`aiProvider`/`aiKeyHint` 和 `searchEncryptedKey`/`searchBaseUrl`/`searchProvider`/`searchKeyHint`，对应系统级 Admin 配置的 AI provider 和搜索 provider 凭证。
+> - 这是 Admin 后台配置（见 `AGENTS.md` §5.2），不是 per-user BYOK。
+> - `Plan`/`SubscriptionStatus` 枚举、`byok*` 字段、Stripe/ccpayment 字段、`isSelfHosted` 开关均推迟至 Phase 15 实现。
+> - Phase 15 应在现有表上扩展 `byok*` 字段或重命名以对齐本节设计。
+
 ## 6. 配额检查点
 
 所有配额检查采用**硬截断**策略，返回明确提示。
@@ -275,10 +282,19 @@ ccpayment Webhook → POST /api/billing/webhook/ccpayment
 
 | 步骤 | 内容 |
 |------|------|
-| Step 1 | Schema + Migration：Plan/SubscriptionStatus 枚举、Subscription 表、AES 加密工具 |
+| Step 1 | Schema + Migration：Plan/SubscriptionStatus 枚举、Subscription 表、AES 加密工具 **（部分完成，详见下方说明）** |
 | Step 2 | 配额引擎：配额常量、检查函数、接入 Server Actions / Worker / Export Routes |
 | Step 3 | AI Adapter BYOK 改造：支持 overrideApiKey/overrideBaseUrl、Key 验证端点 |
 | Step 4 | Stripe 集成：checkout route、webhook route、环境变量 |
 | Step 5 | ccpayment 集成：create-invoice route、webhook route |
 | Step 6 | 前端页面：/pricing、/usage、/settings、TopNav 计划标签、超额提示 Banner |
 | Step 7 | 验证：typecheck/lint/test/build + Stripe test mode + ccpayment sandbox |
+
+### 13.1 Step 1 实现状态
+
+| 子项 | 状态 | 说明 |
+|------|------|------|
+| Schema + Migration | 部分完成 | `Subscription` 表已通过 migration `0006_subscription_credentials` 创建，但仅含凭证字段，未包含 `Plan`/`SubscriptionStatus` 枚举 |
+| AES 加密工具 | 完成 | `packages/db/src/crypto.ts`，提供 `encryptCredential` / `decryptCredential` / `maskKeyHint` |
+
+> **字段名差异说明：** 当前实现使用 `aiEncryptedKey` / `searchEncryptedKey` 而非设计中的 `byokEncryptedKey`，因为当前是系统级 Admin 配置（见 `AGENTS.md` §5.2），不是 per-user BYOK。Phase 15 应新增 `byok*` 字段或重命名以对齐 §5.2 设计。

@@ -127,8 +127,30 @@ model Organization {
   sourceObservations SourceObservation[]
   taskRuns           TaskRun[]
   usageEvents        UsageEvent[]
+  subscription       Subscription?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
+}
+
+model Subscription {
+  id                   String   @id @default(cuid())
+  organizationId       String   @unique
+
+  // AI 凭证（OpenAI-compatible）
+  aiEncryptedKey       String?  // AES-256-GCM 密文
+  aiBaseUrl            String?  // endpoint URL
+  aiProvider           String?  // openai / custom 等
+  aiKeyHint            String?  // 脱敏显示，如 "sk-...xyz"
+  aiModel              String?  // 模型名
+
+  // 搜索凭证（Brave Search 等）
+  searchEncryptedKey   String?  // AES-256-GCM 密文
+  searchProvider       String?  // brave 等
+  searchKeyHint        String?  // 脱敏显示
+
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 model Membership {

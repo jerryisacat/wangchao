@@ -92,13 +92,27 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - `WANGCHAO_DB_WAIT_TIMEOUT_MS` 可选，控制 `pnpm db:wait` 最长等待时间，默认 `180000`。
 - `WANGCHAO_DB_WAIT_INTERVAL_MS` 可选，控制 `pnpm db:wait` 重试间隔，默认 `2000`。
 
+### 凭证加密
+
+- `ENCRYPTION_KEY` Required when API keys are configured via Admin backend. Must be 32 bytes as UTF-8 string or 64 hex characters. Generate with `openssl rand -hex 32`。
+- `ENCRYPTION_KEY` 用于 Admin 后台配置的 API Key 加密存储，算法为 AES-256-GCM；Worker 运行时从 DB 读取并解密 Key -> 注入 adapter -> 调用完成后丢弃明文，不写入日志。
+- `ENCRYPTION_KEY` 未设置时 Admin 后台无法保存 API Key，系统只能使用环境变量 fallback。
+
+### Admin 后台 API Key 配置
+
+- API Key（AI provider、搜索 provider）通过 Admin 后台 `/admin/settings` 配置（需要 OWNER/ADMIN 权限），不直接通过环境变量管理。
+- 环境变量（`AI_API_KEY`、`BRAVE_SEARCH_API_KEY` 等）仅作为 DB 未配置时的 fallback，不应作为主配置方式。
+- API Key 在数据库中使用 AES-256-GCM 加密存储，加密密钥来自 `ENCRYPTION_KEY` 环境变量。
+- Admin 后台不显示完整 API Key，仅展示脱敏 hint（如 `sk-...xyz`）；可新增或覆盖 Key，但不可查看。
+- Worker 运行时优先从 DB 读取并解密 Key，DB 未配置时 fallback 到环境变量。
+
 ### AI
 
-- `AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL_L1`、`AI_MODEL_L2` 用于 OpenAI-compatible AI 调用；source recommendation 当前使用 `AI_MODEL_L1`，未配置时走 deterministic fallback。
+- `AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL_L1`、`AI_MODEL_L2` 用于 OpenAI-compatible AI 调用；当前作为 Admin 后台 `/admin/settings` 未配置时的 fallback。source recommendation 当前使用 `AI_MODEL_L1`，未配置时走 deterministic fallback。
 
 ### Source Discovery
 
-- `BRAVE_SEARCH_API_KEY` 是 Brave Search API BYOK；为空时 source discovery 跳过 `keyword-search` 渠道。
+- `BRAVE_SEARCH_API_KEY` 是 Brave Search API BYOK；当前作为 Admin 后台 `/admin/settings` 未配置时的 fallback。为空时 source discovery 跳过 `keyword-search` 渠道。
 - `WANGCHAO_SEARCH_PROVIDER` 当前支持 `brave`，默认 `brave`，后续可接 Tavily/Serper/SearXNG。
 - `WANGCHAO_DISCOVERY_HIGHSCORE_THRESHOLD` 控制高分事件反查阈值，默认 `0.7`。
 - `WANGCHAO_DISCOVERY_LOOKBACK_DAYS` 控制高分事件反查时间窗，默认 `14`。
@@ -137,7 +151,7 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - `pnpm approve-builds --all` 已用于批准当前依赖链中的 `esbuild`、`sharp`、`prisma` 和 `@prisma/engines` 构建脚本，结果写入 `pnpm-workspace.yaml`。
 - Next.js web app 不使用 `next/font/google`，避免构建期访问外部字体网络。
 - 外部客户端、数据库、Redis 或 SDK 后续必须 lazy init，避免 `next build` 在缺少 runtime env 时失败。
-- 2026-07-06 已修复首版 migration 与 Prisma schema 的 `_BriefingEvents` 漂移；干净库已通过根命令 `pnpm db:migrate`，并生成 `_prisma_migrations` 记录。
+- 2026-07-06 已修复首版 migration 与 Prisma schema 的 `_BriefingEvents` 漂移；干净库已通过根命令 `pnpm db:migrate`，并生成 `_prisma_migrations` 记录。当前共 6 个 migration，最新为 `0006_subscription_credentials`（引入 Subscription credentials 表用于 Admin 后台加密存储 API Key）。
 - 2026-07-06 本地 Docker Postgres 已通过 `db:validate`、`db:generate`、`db:migrate`、`db:seed`、数据库写入 smoke test、Web `/api/health` 和 `worker:health`；浏览器创建主题 + RSS Server Action 已验证写入 Postgres。
 - 当前环境曾出现公网 RSS 抓取 `https://hnrss.org/newest?points=100` 失败并记录 `TaskRun(FAILED)`；后续个人使用前需要用真实可访问 RSS 复测，或手动使用离线 fixture source 验证 worker 闭环。
 - 2026-07-06 生产发现 `apps/web/src/app/page.tsx` 被 Next.js 静态预渲染，导致 Railway 上 `/api/health` database `ok` 但首页仍显示预览 fallback；已通过 `export const dynamic = "force-dynamic"` 修复，后续首页会读取运行时工作区数据。

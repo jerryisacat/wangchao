@@ -104,6 +104,15 @@
 - 涉及数据库 migration、部署脚本、Railway 配置、GitHub Actions、环境变量或 worker 调度的提交，必须视为可触发生产影响的高风险变更，提交前至少完成 `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`git diff --check`，并按变更类型补充 DB/worker/smoke 验证。
 - 如果只是为了保存中间状态，应优先使用本地未提交改动或临时分支，不要推送到会触发自动部署的默认分支。
 
+### 5.2 API Key 与凭证管理
+
+- API Key（AI provider、搜索 provider）通过 Admin 后台 `/admin/settings` 配置，不直接通过环境变量管理。
+- 环境变量（`AI_API_KEY`、`BRAVE_SEARCH_API_KEY` 等）仅作为 DB 未配置时的 fallback，不应作为主配置方式。
+- API Key 在数据库中使用 AES-256-GCM 加密存储，加密密钥来自 `ENCRYPTION_KEY` 环境变量。
+- Admin 后台不显示完整 API Key，仅展示脱敏 hint（如 `sk-...xyz`）；可新增或覆盖 Key，但不可查看。
+- Worker 运行时从 DB 读取并解密 Key -> 注入 adapter -> 调用完成后丢弃明文，不写入日志。
+- 此设计是 `docs/business-model.md` Subscription/BYOK 模型的前置实现，Phase 15 在同一 `Subscription` 表上扩展 Plan/Stripe/配额字段。
+
 ## 6. CommitLog 规则
 
 Commit message 使用中文格式：
@@ -281,6 +290,7 @@ AI Agent 进入仓库工作时应按以下顺序阅读文档。
 - 导出内容必须保留来源链接和生成时间。
 - 商业化阶段必须补 tenant isolation、权限测试、usage audit。
 - 日志不得输出密钥、认证 URL、敏感 headers。
+- API Key 凭证管理遵循 §5.2，加密存储、脱敏展示、DB 优先读取。
 
 ## 13. 测试、验证和发布规则
 

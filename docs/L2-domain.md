@@ -13,6 +13,7 @@
 | `User` | 人类账户。当前个人版使用默认用户，不要求真实注册登录。 |
 | `Organization` | 租户和计费边界。当前个人版使用默认组织。 |
 | `Membership` | User-to-Organization 角色映射（OWNER/ADMIN/MEMBER）。 |
+| `Subscription` | Organization 的 1:1 凭证与订阅配置。存储 AES-256-GCM 加密的 AI/搜索 API Key，仅保留脱敏 `keyHint`，不存明文。是 Phase 15 BYOK/订阅模型的前置实体，后续扩展 Plan/Stripe 字段。 |
 | `Topic` | 用户创建的情报主题，包含 topic profile、状态和 owner。 |
 | `Source` | RSS/Web 信源注册条目，带 candidate/active/muted/rejected 状态和质量分。 |
 | `Item` | worker 抓取并规范化后的原始条目。 |
@@ -91,6 +92,33 @@ FAILED ──retry───> RUNNING
 
 ### FeedbackKind 枚举
 
+### Subscription 凭证模型
+
+`Subscription` 与 `Organization` 是 1:1 关系（`organizationId @unique`），集中存储该组织下所有 AI 和搜索 provider 的凭证。
+
+字段职责：
+
+| 字段 | 职责 |
+|------|------|
+| `organizationId` | 关联 `Organization`，唯一约束，每个组织仅一条 `Subscription`。 |
+| `aiEncryptedKey` | AI provider API Key 的 AES-256-GCM 密文。 |
+| `aiBaseUrl` | OpenAI-compatible base URL。 |
+| `aiProvider` | provider 标识（如 `openai`、`deepseek`），用于 adapter 路由。 |
+| `aiKeyHint` | 脱敏 hint（如 `sk-...xyz`），仅用于 Admin 展示，不可反推明文。 |
+| `aiModel` | 默认 AI 模型名。 |
+| `searchEncryptedKey` | 搜索 provider API Key 的 AES-256-GCM 密文。 |
+| `searchProvider` | 搜索 provider 标识（如 `brave`）。 |
+| `searchKeyHint` | 搜索 Key 脱敏 hint。 |
+
+规则：
+- 加解密依赖 `ENCRYPTION_KEY` 环境变量，缺失时凭证相关 worker 任务必须 fail-fast，不得静默降级到明文。
+- Admin 后台只展示 `aiKeyHint`/`searchKeyHint`，可新增或覆盖 Key，但不可查看明文。
+- Worker 运行时从 DB 读取并解密 Key → 注入 adapter → 调用完成后丢弃明文，不写入日志。
+- 环境变量（`AI_API_KEY`、`BRAVE_SEARCH_API_KEY` 等）仅作为 DB 未配置时的 fallback，不是主配置方式。
+- 当前 `Subscription` 只承载凭证；Phase 15 将在同一张表上扩展 Plan/Stripe/配额字段，演进为完整 BYOK + 订阅模型。
+
+
+
 | Kind | 含义 | 对偏好影响 |
 |------|------|-----------|
 | `READ` | 用户已读 | 轻微提升相关 category/source 权重 |
@@ -124,6 +152,7 @@ FAILED ──retry───> RUNNING
 ```text
 Organization
   ├── Membership ── User
+  ├── Subscription (1:1, 凭证与订阅配置)
   ├── Topic
   │     ├── Source
   │     │     └── SourceObservation
@@ -150,4 +179,5 @@ Organization
 - `IntelligenceEvent`: `(topicId, eventHash)` 唯一。
 - `UserItemState`: `(userId, eventId)` 唯一。
 - `Membership`: `(organizationId, userId)` 唯一。
+- `Subscription`: `organizationId` 唯一（1:1 with Organization）。
 - `PreferenceMemory`: `(topicId, userId, key)` 唯一。

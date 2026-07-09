@@ -29,6 +29,7 @@ import {
   createSourceFetchTaskRun,
   ensureDefaultWorkspace,
   failTaskRun,
+  getDecryptedCredentials,
   getPrismaClient,
   listActiveRssSourcesForFetch,
   listActiveTopics,
@@ -268,8 +269,8 @@ export async function runSourceDiscoveryCycle(
       organizationId: workspace.organizationId,
     });
     result.topicsScanned = topics.length;
-    const searchProvider = createSearchProvider();
-    const ai = createSourceRecommendationRuntime();
+    const searchProvider = await createSearchProvider(prisma, workspace.organizationId);
+    const ai = await createSourceRecommendationRuntime(prisma, workspace.organizationId);
     const candidates: DiscoveryCandidate[] = [];
 
     if (searchProvider) {
@@ -357,7 +358,7 @@ async function runAnalysisCycle(
   "analyzedItems" | "createdOrUpdatedEvents" | "filteredItems"
 >> {
   const items = await listFetchedItemsForAnalysis(prisma, { organizationId });
-  const ai = createAnalysisRuntime();
+  const ai = await createAnalysisRuntime(prisma, organizationId);
   const result = {
     analyzedItems: 0,
     createdOrUpdatedEvents: 0,
@@ -489,7 +490,7 @@ async function runSemanticDedupCycle(
 ): Promise<{ merged: number; llmCalls: number }> {
   const result = { merged: 0, llmCalls: 0 };
 
-  const ai = createAnalysisRuntime();
+  const ai = await createAnalysisRuntime(prisma, organizationId);
   if (!ai) return result;
 
   const since = new Date();
@@ -1003,32 +1004,56 @@ async function getSourceRecommendation(
   }
 }
 
-function createSearchProvider(): SearchProvider | null {
-  const provider = process.env.WANGCHAO_SEARCH_PROVIDER ?? "brave";
-
-  if (provider !== "brave") {
-    return null;
+async function createSearchProvider(
+  prisma: ReturnType<typeof getPrismaClient>,
+  organizationId: string,
+): Promise<SearchProvider | null> {
+  // 1. Try DB-stored credential
+  const creds = await getDecryptedCredentials(prisma, { organizationId });
+  if (creds?.search?.apiKey) {
+    const provider = creds.search.provider ?? "brave";
+    if (provider === "brave") {
+      return new BraveSearchProvider({ apiKey: creds.search.apiKey });
+    }
   }
 
+  // 2. Fallback to env var
+  const envProvider = process.env.WANGCHAO_SEARCH_PROVIDER ?? "brave";
+  if (envProvider !== "brave") {
+    return null;
+  }
   const apiKey = process.env.BRAVE_SEARCH_API_KEY;
   if (!apiKey) {
     return null;
   }
-
   return new BraveSearchProvider({ apiKey });
 }
 
-function createSourceRecommendationRuntime(): {
+async function createSourceRecommendationRuntime(
+  prisma: ReturnType<typeof getPrismaClient>,
+  organizationId: string,
+): Promise<{
   adapter: SourceRecommendationAdapter;
   model: string;
-} | null {
+} | null> {
+  // 1. Try DB-stored credential
+  const creds = await getDecryptedCredentials(prisma, { organizationId });
+  if (creds?.ai?.apiKey && creds.ai.baseUrl) {
+    return {
+      adapter: createOpenAiCompatibleAdapter({
+        apiKey: creds.ai.apiKey,
+        baseUrl: creds.ai.baseUrl,
+      }),
+      model: creds.ai.model,
+    };
+  }
+
+  // 2. Fallback to env var
   const apiKey = process.env.AI_API_KEY;
   const baseUrl = process.env.AI_BASE_URL;
-
   if (!apiKey || !baseUrl) {
     return null;
   }
-
   return {
     adapter: createOpenAiCompatibleAdapter({
       apiKey,
@@ -1038,17 +1063,31 @@ function createSourceRecommendationRuntime(): {
   };
 }
 
-function createAnalysisRuntime(): {
+async function createAnalysisRuntime(
+  prisma: ReturnType<typeof getPrismaClient>,
+  organizationId: string,
+): Promise<{
   adapter: EventExtractionAdapter;
   model: string;
-} | null {
+} | null> {
+  // 1. Try DB-stored credential
+  const creds = await getDecryptedCredentials(prisma, { organizationId });
+  if (creds?.ai?.apiKey && creds.ai.baseUrl) {
+    return {
+      adapter: createOpenAiCompatibleAdapter({
+        apiKey: creds.ai.apiKey,
+        baseUrl: creds.ai.baseUrl,
+      }),
+      model: creds.ai.model,
+    };
+  }
+
+  // 2. Fallback to env var
   const apiKey = process.env.AI_API_KEY;
   const baseUrl = process.env.AI_BASE_URL;
-
   if (!apiKey || !baseUrl) {
     return null;
   }
-
   return {
     adapter: createOpenAiCompatibleAdapter({
       apiKey,
