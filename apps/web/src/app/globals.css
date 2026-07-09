@@ -1479,6 +1479,7 @@ a:hover {
 
   .top-nav-action {
     width: 100%;
+    justify-content: center;
   }
 
   .top-nav-action > a {

@@ -3,7 +3,7 @@
 ### 修复移动端真实渲染与 RSS/HTML 摘要泄露
 
 - Cause: 用户截图反馈移动端仍存在真实渲染问题：顶部宽度不一致、搜索区域过窄、卡片内直接展示 `<p>Article URL...` HTML 源码和长 URL，导致手机阅读不可用。
-- Changed: 新增 `apps/web/src/lib/event-display.ts`，在工作台列表和详情页返回前清洗展示字段：RSS/HTML 摘要转为用户文案、提取 Article URL 作为真正原文链接、解释文案本地化；补强移动端 CSS，搜索框使用全宽自适应列、页面头部允许全宽、卡片来源/摘要/解释长文本断行、底部增加 Safari 工具栏避让空间；同步更新 `docs/L3-modules.md`。
+- Changed: 新增 `apps/web/src/lib/event-display.ts`，在工作台列表和详情页返回前清洗展示字段：RSS/HTML 摘要转为用户文案、提取 Article URL 作为真正原文链接、解释文案本地化；补强移动端 CSS，搜索框使用全宽自适应列、页面头部允许全宽、卡片来源/摘要/解释长文本断行、顶部 CTA 在窄屏等宽居中、底部增加 Safari 工具栏避让空间；同步更新 `docs/L3-modules.md`。
 - Files: `apps/web/src/lib/event-display.ts`, `apps/web/src/lib/topic-source-data.ts`, `apps/web/src/app/globals.css`, `docs/L3-modules.md`。
 - Verification: 已运行 `CI=true npx --yes pnpm@11.7.0 lint`、`typecheck`、`test` 全部通过；首次完整链路在 `build` 阶段被工具 600s 超时截断，随后单独重跑 `CI=true npx --yes pnpm@11.7.0 build` 通过；`git diff --check` 通过；展示清洗源码断言（提取 Article URL、移除裸 URL、本地化 matched keywords、fallback 原文文案）全部 PASS。
 - Notes / Risk: 这是对已部署移动端适配不足的修复；push 到默认分支会再次触发 Railway 自动部署，部署后必须用真实手机宽度截图复验。
