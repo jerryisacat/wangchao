@@ -76,6 +76,7 @@
 - 新增环境变量必须同步 `.env_example` 和 `docs/L4-operations.md`。
 - 修改目录、命令、数据流、数据库、worker、API、输出契约，必须按第 8 节"文档分层归属规则"同步对应文档层。
 - LLM 输出一律视为不可信输入，后端 sanitize，前端安全渲染。
+- 前端必须原生支持移动端：任何新增或修改的用户路径都要按 mobile-first 设计，320px/375px/414px 宽度下不得依赖桌面 hover、不得横向滚动，主要导航、筛选、表单和情报动作必须可单手触达且点击区不小于 44px。
 - 抓取、AI、简报、导出等长任务必须放在 worker，不放进 request lifecycle。
 
 ### 5.1 GitHub / Railway 自动部署与 commit 治理
@@ -200,6 +201,7 @@ AI Agent 进入仓库工作时应按以下顺序阅读文档。
 | 新增/修改命令、环境变量、部署 | L4 操作运维 | `docs/L4-operations.md` + `.env_example` |
 | 安全/边界/不可信输入规则 | L1 对应小节 | `CODEGUIDE.md` §L1 |
 | 前端视觉/交互规则 | `FRONTEND.md` + L3 §apps/web | `FRONTEND.md` + `docs/L3-modules.md` |
+| 移动端体验、响应式布局、导航/卡片触达 | `FRONTEND.md` + L3 §apps/web | `FRONTEND.md` + `docs/L3-modules.md` |
 | 产品目标/数据模型方向 | `SPEC.md` | `SPEC.md` |
 | AI Agent 协作流程/审计规则 | `AGENTS.md` | `AGENTS.md` |
 

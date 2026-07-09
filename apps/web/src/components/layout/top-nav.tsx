@@ -1,5 +1,8 @@
+"use client";
+
 import { Plus, Rss, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +17,8 @@ interface TopNavProps {
 }
 
 export function TopNav({ className }: TopNavProps) {
+  const pathname = usePathname();
+
   return (
     <header className={cn("top-nav", className)}>
       <div className="top-nav-inner">
@@ -21,29 +26,39 @@ export function TopNav({ className }: TopNavProps) {
           <span className="top-nav-brand-mark">
             <Sparkles aria-hidden="true" size={18} />
           </span>
-          <span className="top-nav-brand-name">望潮</span>
-          <span className="top-nav-brand-meta">Wangchao</span>
+          <span className="top-nav-brand-copy">
+            <span className="top-nav-brand-name">望潮</span>
+            <span className="top-nav-brand-meta">Wangchao</span>
+          </span>
         </Link>
 
         <nav aria-label="主导航" className="top-nav-links">
-          {mainLinks.map((link) => (
-            <Link className="top-nav-link" href={link.href} key={link.href}>
-              {link.label}
-            </Link>
-          ))}
+          {mainLinks.map((link) => {
+            const isActive = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+            return (
+              <Link
+                aria-current={isActive ? "page" : undefined}
+                className="top-nav-link"
+                href={link.href}
+                key={link.href}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
         </nav>
 
         <div className="top-nav-actions">
-          <Button asChild size="sm" variant="primary">
+          <Button asChild className="top-nav-action" size="sm" variant="primary">
             <Link href="/topics/new">
               <Plus aria-hidden="true" size={14} />
-              新增主题
+              <span>新增主题</span>
             </Link>
           </Button>
-          <Button asChild size="sm" variant="secondary">
+          <Button asChild className="top-nav-action" size="sm" variant="secondary">
             <Link href="/sources">
               <Rss aria-hidden="true" size={14} />
-              信源管理
+              <span>信源管理</span>
             </Link>
           </Button>
         </div>

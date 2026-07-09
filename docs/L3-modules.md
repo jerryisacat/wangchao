@@ -249,7 +249,7 @@ apps/web/src/
 | `apps/web/src/lib/topic-source-data.ts` | 读取工作台数据和单条情报详情；`DATABASE_URL` 未配置时抛出错误，不再静默降级为预览模式。 |
 | `apps/web/src/app/exports/briefings/[briefingId]/route.ts` | 简报 Markdown 下载 route。 |
 | `apps/web/src/app/exports/events/[eventId]/route.ts` | 单条情报 Markdown 下载 route。 |
-| `apps/web/src/app/globals.css` | 全局 token、布局、组件样式、motion/reduced-motion、焦点状态和响应式规则；按 `FRONTEND.md` 语义 token 定义。 |
+| `apps/web/src/app/globals.css` | 全局 token、布局、组件样式、motion/reduced-motion、焦点状态、safe-area padding、触摸导航和响应式规则；按 `FRONTEND.md` 语义 token 定义。 |
 | `FRONTEND.md` | `apps/web` 前端设计规范，定义 Kinetic Intelligence 风格、token、组件变体、页面组合、动效、响应式和可访问性边界。 |
 
 ### 前端维护规则
@@ -258,7 +258,8 @@ apps/web/src/
 - 前端视觉和交互以 `FRONTEND.md` 为准；工作流页面使用密集、稳定、低干扰布局，品牌/空状态/新建主题模块才使用更强 kinetic typography。
 - 情报正文、摘要、解释和来源名称不得全大写；来源和原文链接必须使用真实 `<a>`，外链补 `target="_blank"` 和 `rel="noreferrer"`。
 - 页面和 Markdown 导出只允许把 HTTP/HTTPS URL 渲染为外链。
-- 所有按钮和表单控件应保留明显 `focus-visible`，点击目标最小 44px；图标按钮必须保留 `aria-label`。
+- 所有按钮和表单控件应保留明显 `focus-visible`，点击目标最小 44px；图标按钮必须保留 `aria-label`，移动端高频动作应显示文字标签或同等可理解提示。
+- 移动端是原生支持目标，不是事后兼容：320px/375px/414px 下必须单列、无横向滚动，顶部导航可触摸横向滚动，主要 CTA 和情报动作需要适配 safe area 与拇指触达。
 - 动效必须作为状态信号而不是装饰；新增动画时必须同步 `prefers-reduced-motion`。
 - 不使用 `next/font/google`，避免构建期外部网络依赖。
 - 首页搜索使用 `q` URL 参数，情报视图使用 `view=all|high|saved` URL 参数；新增筛选入口必须可点击、可刷新、可分享，不得只放静态按钮。

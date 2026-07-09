@@ -88,6 +88,7 @@ export function IntelligenceCard({
             value="read"
           >
             <Check aria-hidden="true" size={14} />
+            <span>已读</span>
           </button>
         </form>
         <form action={eventStateAction}>
@@ -102,6 +103,7 @@ export function IntelligenceCard({
             value="save"
           >
             <Bookmark aria-hidden="true" size={14} />
+            <span>收藏</span>
           </button>
         </form>
         <form action={eventStateAction}>
@@ -116,6 +118,7 @@ export function IntelligenceCard({
             value="dismiss"
           >
             <ThumbsDown aria-hidden="true" size={14} />
+            <span>减少</span>
           </button>
         </form>
         {linkUrl ? (
@@ -128,6 +131,7 @@ export function IntelligenceCard({
             title="查看原文"
           >
             <ExternalLink aria-hidden="true" size={14} />
+            <span>原文</span>
           </a>
         ) : null}
       </div>

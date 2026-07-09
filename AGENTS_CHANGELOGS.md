@@ -1,3 +1,13 @@
+## 2026-07-09
+
+### 明确移动端原生支持并优化前端触达
+
+- Cause: 用户要求在 AGENTS.md 中明确必须对移动端做原生支持，并进行前端优化。
+- Changed: 在 `AGENTS.md` 增加 mobile-first 硬性协作规则；优化顶部导航 active 状态、触摸横向滚动与窄屏 CTA；将情报卡片动作改为带文字标签的触摸按钮；补充 safe-area、搜索/筛选 44px 触达与窄屏两列动作布局；同步更新 `FRONTEND.md` 和 `docs/L3-modules.md`。
+- Files: `AGENTS.md`, `apps/web/src/components/layout/top-nav.tsx`, `apps/web/src/components/intelligence/intelligence-card.tsx`, `apps/web/src/app/globals.css`, `FRONTEND.md`, `docs/L3-modules.md`。
+- Verification: 已运行 `npx --yes pnpm@11.7.0 db:generate`；`CI=true npx --yes pnpm@11.7.0 lint`、`typecheck`、`test`、`build` 全部通过；`git diff --check` 通过；移动端源码断言（AGENTS mobile-first、TopNav active/touch scroll、safe-area、44px、卡片动作文字/两列）全部 PASS。
+- Notes / Risk: 纯前端与协作规范更新；push 到默认分支可能触发 Railway 自动部署。
+
 # AGENTS_CHANGELOGS.md
 
 本文件是 AI Agent 工作审计日志，替代已废弃的 `CHANGELOG.md`。每条记录说明修改的原因、实际变更、涉及文件、验证方式和风险。
