@@ -30,6 +30,8 @@ wangchao/
 │       ├── web.railway.json
 │       ├── worker-cron.railway.json
 │       └── source-discovery-cron.railway.json
+├── scripts/
+│   └── wait-for-database.mjs          # Railway predeploy 数据库 TCP readiness 等待脚本
 ├── railway.json                      # CLI 本地上传部署 Railway root config
 ├── package.json                      # pnpm workspace 根 package
 ├── playwright.config.ts              # Web smoke test 配置

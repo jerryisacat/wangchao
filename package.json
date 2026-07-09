@@ -5,6 +5,7 @@
   "packageManager": "pnpm@11.7.0",
   "scripts": {
     "build": "turbo run build",
+    "db:wait": "node scripts/wait-for-database.mjs",
     "db:deploy": "pnpm --filter @wangchao/db exec prisma migrate deploy --schema prisma/schema.prisma",
     "db:format": "pnpm --filter @wangchao/db db:format",
     "db:generate": "pnpm --filter @wangchao/db db:generate",
@@ -15,7 +16,7 @@
     "railway:web:build": "pnpm db:generate && pnpm --filter @wangchao/web build",
     "railway:web:start": "pnpm --filter @wangchao/web start",
     "railway:build": "pnpm db:generate && pnpm build",
-    "railway:predeploy": "if [ \"$WANGCHAO_RAILWAY_ROLE\" = \"web\" ]; then pnpm db:deploy && pnpm db:seed; else echo \"Skipping predeploy for $WANGCHAO_RAILWAY_ROLE\"; fi",
+    "railway:predeploy": "if [ \"$WANGCHAO_RAILWAY_ROLE\" = \"web\" ]; then pnpm db:wait && pnpm db:deploy && pnpm db:seed; else echo \"Skipping predeploy for $WANGCHAO_RAILWAY_ROLE\"; fi",
     "railway:start": "if [ \"$WANGCHAO_RAILWAY_ROLE\" = \"worker\" ]; then pnpm railway:worker:start; else pnpm railway:web:start; fi",
     "railway:worker:build": "pnpm db:generate && pnpm --filter @wangchao/worker build",
     "railway:worker:start": "pnpm --filter @wangchao/worker start",

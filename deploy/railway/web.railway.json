@@ -5,7 +5,7 @@
     "buildCommand": "pnpm railway:build"
   },
   "deploy": {
-    "preDeployCommand": "pnpm db:deploy && pnpm db:seed",
+    "preDeployCommand": "pnpm db:wait && pnpm db:deploy && pnpm db:seed",
     "startCommand": "pnpm railway:web:start",
     "healthcheckPath": "/api/health",
     "healthcheckTimeout": 300,

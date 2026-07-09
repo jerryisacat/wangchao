@@ -1,3 +1,13 @@
+## 2026-07-10
+
+### 修复 Railway Web predeploy 数据库冷启动失败
+
+- Cause: 最近一次 Railway Web deployment 在 build 成功后，于 predeploy 执行 `prisma migrate deploy` 时遇到 `P1001: Can't reach database server at postgres.railway.internal:5432`；Railway Postgres 日志显示数据库稍后才 ready，属于睡眠/冷启动窗口内没有等待数据库可达。
+- Changed: 新增 `scripts/wait-for-database.mjs`，从 `DATABASE_URL` 解析 host/port 并做不泄露连接串的 TCP readiness 重试；新增根脚本 `pnpm db:wait`；将 `railway:predeploy` 和 `deploy/railway/web.railway.json` 的 predeploy 改为 `pnpm db:wait && pnpm db:deploy && pnpm db:seed`；同步 `.env_example`、`CODEGUIDE.md`、`docs/L3-modules.md`、`docs/L4-operations.md` 和 `docs/deployment.md`。
+- Files: `scripts/wait-for-database.mjs`, `package.json`, `deploy/railway/web.railway.json`, `.env_example`, `CODEGUIDE.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `docs/deployment.md`, `AGENTS_CHANGELOGS.md`。
+- Verification: 已通过 `pnpm db:wait` failure-path smoke（10ms timeout，未输出完整连接串）、`pnpm db:validate`、`CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`git diff --check`；`CI=true pnpm build` 在沙箱内因 Turbopack 创建进程/绑定端口被拒绝失败，非沙箱重跑同一命令通过（7/7 packages）。
+- Notes / Risk: 本次改动会影响 Railway Web predeploy；提交或部署到默认分支会触发 Railway 自动部署，部署后仍需查 Web deployment 日志和 `/api/health`。脚本只输出 host/port 和错误码，不输出数据库用户名、密码或完整 URL。
+
 ## 2026-07-09
 
 ### 修复移动端真实渲染与 RSS/HTML 摘要泄露

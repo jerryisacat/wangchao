@@ -237,7 +237,7 @@ pnpm worker:health
 pnpm worker:source-discovery
 
 # Prisma
-pnpm db:validate && pnpm db:generate && pnpm db:migrate && pnpm db:deploy && pnpm db:seed
+pnpm db:validate && pnpm db:generate && pnpm db:migrate && pnpm db:wait && pnpm db:deploy && pnpm db:seed
 
 # Smoke
 pnpm smoke:web

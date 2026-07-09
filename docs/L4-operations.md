@@ -38,16 +38,18 @@ pnpm railway:start
 pnpm railway:worker:build
 pnpm railway:worker:start
 pnpm worker:source-discovery
+pnpm db:wait
 pnpm db:deploy
 ```
 
 说明：
 
-- `deploy/railway/web.railway.json` 使用 `pnpm railway:build` 执行完整 monorepo 构建，避免 Railway/Railpack 在 Web-only 构建时裁掉 `@wangchao/*` workspace 包；在 pre-deploy 阶段运行 `pnpm db:deploy && pnpm db:seed`，启动命令为 `pnpm railway:web:start`，健康检查路径为 `/api/health`。
+- `deploy/railway/web.railway.json` 使用 `pnpm railway:build` 执行完整 monorepo 构建，避免 Railway/Railpack 在 Web-only 构建时裁掉 `@wangchao/*` workspace 包；在 pre-deploy 阶段运行 `pnpm db:wait && pnpm db:deploy && pnpm db:seed`，先等待 Railway Postgres 私网端口可达，再执行 migration/seed，启动命令为 `pnpm railway:web:start`，健康检查路径为 `/api/health`。
 - `deploy/railway/worker-cron.railway.json` 使用 `pnpm railway:build` 执行完整 monorepo 构建，避免 worker runtime 缺少 `@wangchao/*/dist`；按 `0 * * * *` UTC 每小时执行一次 `pnpm railway:worker:start`。
 - `deploy/railway/source-discovery-cron.railway.json` 使用 `pnpm railway:build` 执行完整 monorepo 构建，避免 source discovery runtime 缺少 `@wangchao/*/dist`；按 `0 2 * * 1` UTC 每周执行一次 `pnpm --filter @wangchao/worker source-discovery`。
 - `railway.json` 是当前 CLI 本地上传部署入口。由于当前仓库有大量未提交绿地重构改动，生产部署使用 `railway up --service ...` 上传本地目录；两个服务通过 `WANGCHAO_RAILWAY_ROLE` 分发启动行为：`web` 跑 migration/seed 并启动 Next.js，`worker` 跳过 predeploy 并执行一轮 Node worker。
 - Railway Web、Worker Cron 与 Source Discovery Cron 应连接同一个 Railway Postgres，并共享 `DATABASE_URL`、默认 workspace、AI 和 discovery 环境变量。
+- `pnpm db:wait` 由 `scripts/wait-for-database.mjs` 提供，只从 `DATABASE_URL` 解析 host/port 并做 TCP 探测，不输出完整连接串。默认最多等待 180 秒，每 2 秒重试；可通过 `WANGCHAO_DB_WAIT_TIMEOUT_MS` 和 `WANGCHAO_DB_WAIT_INTERVAL_MS` 覆盖。
 - 2026-07-06 已创建 Railway project `wangchao`，添加 `Postgres`、`wangchao-web` 和 `wangchao-worker` 服务；Web、Worker、Postgres 已迁移到 `southeast-asia`，实际 region ID 为 `asia-southeast1-eqsg3a`。Worker 当前是部署后执行一轮并停止，尚未通过 CLI 配置成定时 Cron。
 
 ## Prisma / Postgres 命令
@@ -84,6 +86,11 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 ## 环境变量
 
 `DATABASE_URL` 由 `.env_example` 提供占位模板，真实值不得提交。
+
+### DB wait
+
+- `WANGCHAO_DB_WAIT_TIMEOUT_MS` 可选，控制 `pnpm db:wait` 最长等待时间，默认 `180000`。
+- `WANGCHAO_DB_WAIT_INTERVAL_MS` 可选，控制 `pnpm db:wait` 重试间隔，默认 `2000`。
 
 ### AI
 
