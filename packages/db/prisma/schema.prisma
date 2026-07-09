@@ -221,6 +221,7 @@ model Item {
   topic              Topic               @relation(fields: [topicId], references: [id], onDelete: Cascade)
   source             Source              @relation(fields: [sourceId], references: [id], onDelete: Cascade)
   intelligenceEvents IntelligenceEvent[]  @relation("PrimaryItem")
+  eventItems         EventItem[]
   feedbackEvents     FeedbackEvent[]
   taskRuns           TaskRun[]
   createdAt          DateTime            @default(now())
@@ -234,35 +235,58 @@ model Item {
 }
 
 model IntelligenceEvent {
-  id             String          @id @default(cuid())
-  organizationId String
-  topicId        String
-  primaryItemId  String?
-  status         EventStatus     @default(UNREAD)
-  title          String
-  summary        String
-  category       String?
-  score          Float           @default(0)
-  gravityScore   Float           @default(0)
-  eventHash      String?
-  explanation    String?
-  occurredAt     DateTime?
-  rawAiResponse  Json?
-  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  topic          Topic           @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  primaryItem    Item?           @relation("PrimaryItem", fields: [primaryItemId], references: [id], onDelete: SetNull)
-  userStates     UserItemState[]
-  feedbackEvents FeedbackEvent[]
-  briefings      Briefing[]      @relation("BriefingEvents")
-  exportEvents   ExportEvent[]
-  taskRuns       TaskRun[]
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  id                String          @id @default(cuid())
+  organizationId    String
+  topicId           String
+  primaryItemId     String?
+  secondaryItemIds  String[]        @default([])
+  status            EventStatus     @default(UNREAD)
+  title             String
+  summary           String
+  category          String?
+  score             Float           @default(0)
+  gravityScore      Float           @default(0)
+  eventHash         String?
+  titleHash         String?
+  explanation       String?
+  entities          String[]        @default([])
+  followUpSuggestion String?
+  mergeReason       String?
+  occurredAt        DateTime?
+  rawAiResponse     Json?
+  organization      Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic             Topic           @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  primaryItem       Item?           @relation("PrimaryItem", fields: [primaryItemId], references: [id], onDelete: SetNull)
+  eventItems        EventItem[]
+  userStates        UserItemState[]
+  feedbackEvents    FeedbackEvent[]
+  briefings         Briefing[]      @relation("BriefingEvents")
+  exportEvents      ExportEvent[]
+  taskRuns          TaskRun[]
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   @@unique([topicId, eventHash])
   @@index([organizationId, status])
   @@index([topicId, status, gravityScore])
   @@index([primaryItemId])
+  @@index([topicId, titleHash, occurredAt])
+}
+
+model EventItem {
+  id          String           @id @default(cuid())
+  eventId     String
+  itemId      String
+  role        String           @default("SECONDARY")
+  mergedAt    DateTime         @default(now())
+  mergeReason String?
+
+  event       IntelligenceEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  item        Item              @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, itemId])
+  @@index([eventId])
+  @@index([itemId])
 }
 
 model UserItemState {

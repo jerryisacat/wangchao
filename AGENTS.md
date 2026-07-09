@@ -46,6 +46,7 @@
 | Worker | Node.js worker |
 | AI | OpenAI-compatible adapter |
 | Export | Markdown 优先，PDF 后置 |
+| Deployment | GitHub 自动同步到 Railway：Web、Worker Cron、Source Discovery Cron、Railway Postgres |
 
 ## 4. 推荐开发阶段
 
@@ -64,7 +65,7 @@
 | 10 | 简报导出 | daily briefing、Markdown export | 可导出 Obsidian-friendly Markdown | Phase 8/9 |
 | 11 | 信源治理 | candidate/active/muted/rejected、质量报告 | 可审核候选源 | Phase 7 |
 | 12 | 商业化基础 | auth、organization、membership、usage events | tenant scope 有测试 | Phase 8+ |
-| 13 | 部署运维 | env docs、health check、worker deploy、日志 | web/worker 可部署 | Phase 8+ |
+| 13 | GitHub → Railway 部署运维 | env docs、health check、Railway Web/Worker Cron/Source Discovery Cron、日志、备份和回滚 | GitHub 自动同步可触发 Railway Web、Worker Cron 和 Source Discovery Cron 部署，并完成生产验证 | Phase 8+ |
 | 14 | Legacy cleanup | 归档/删除旧 Python 原型 | 主路径 TypeScript-only | 新栈稳定后 |
 | 15 | 订阅制商业化 | Free/Plus/Pro 三层订阅、BYOK、Stripe/ccayment 支付、配额引擎、用量仪表板 | 用户可订阅、升级、管理 BYOK | Phase 12 |
 
@@ -81,7 +82,19 @@
 
 ### 5.1 GitHub / Railway 自动部署与 commit 治理
 
-本仓库计划采用 Railway 连接 GitHub 的自动部署方式。完成连接后，默认分支上的 commit / push 可能直接触发 Railway Web、Worker 或 Cron 服务重新部署。
+本仓库部署目标是 **GitHub 自动同步到 Railway**。当前 GitHub integration 已连接，默认生产形态为同一个 Railway project 中的 Web service、Worker Cron service、Source Discovery Cron service 和 Railway managed Postgres。后续开发应优先利用 Railway 的 GitHub 自动部署、Config as Code、Cron Jobs、managed Postgres、healthcheck、rollback、backup/PITR 和日志能力来简化运维，而不是把这些能力重新做进应用层。
+
+每个 Railway service 应使用对应的 Config as Code 文件：
+
+| Railway service | Config file | 目标 |
+|---|---|---|
+| Web | `deploy/railway/web.railway.json` | Next.js App Router、Server Actions、export routes、`/api/health` |
+| Worker Cron | `deploy/railway/worker-cron.railway.json` | 定时执行 RSS fetch、analysis、briefing、source observation |
+| Source Discovery Cron | `deploy/railway/source-discovery-cron.railway.json` | 周期执行候选信源发现 |
+
+默认分支上的 commit / push 可能通过 GitHub 自动同步直接触发 Railway Web、Worker Cron 或 Source Discovery Cron 服务重新部署。
+
+除非用户明确要求调研、迁移或补充社区部署方式，AI Agent 不应把 Vercel、Fly.io、VPS 或其他平台作为当前实现的一等部署目标；相关内容只能作为历史说明、对比信息或外部贡献者自选方案，不能反向约束当前 GitHub → Railway 主路径。
 
 因此 AI Agent 必须遵守：
 
@@ -290,7 +303,7 @@ AI parser fixture test
 Playwright single-topic smoke test
 ```
 
-当前没有正式发布流程。新增部署后必须补充环境变量、worker health、日志、回滚策略和 `docs/L4-operations.md`。
+正式发布流程以 GitHub 自动同步到 Railway 为目标：Web、Worker Cron、Source Discovery Cron 和 Railway Postgres 必须有清晰的环境变量、health check、日志、备份、回滚和 smoke 验证说明，并同步 `docs/L4-operations.md` / `docs/deployment.md`。新增部署相关能力时，默认服务于 GitHub → Railway 主路径，并优先复用 Railway 平台能力；除非用户明确要求，不新增其他平台的一等部署说明。
 
 ## 14. 每轮任务结束前必须检查
 

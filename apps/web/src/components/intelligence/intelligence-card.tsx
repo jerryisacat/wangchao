@@ -54,6 +54,11 @@ export function IntelligenceCard({
           ) : (
             event.sourceName
           )}
+          {event.mergedSourceCount > 1 ? (
+            <span className="intelligence-card-merged">
+              · 另有 {event.mergedSourceCount - 1} 个来源报道
+            </span>
+          ) : null}
           <span className="intelligence-card-time">
             {" "}
             · {formatDateTime(event.occurredAt)}

@@ -83,6 +83,13 @@ export default async function EventDetailPage({
         <CardHeader>
           <div className="event-detail-kicker">
             <Badge variant="default">{event.category}</Badge>
+            {event.entities && event.entities.length > 0
+              ? event.entities.map((entity) => (
+                  <Badge key={entity} variant="outline">
+                    {entity}
+                  </Badge>
+                ))
+              : null}
             {event.userSaved ? <Badge variant="accent">已收藏</Badge> : null}
             <span>重要度 {event.score}</span>
           </div>
@@ -97,6 +104,19 @@ export default async function EventDetailPage({
                 <Sparkles aria-hidden="true" size={14} />
                 <span>{event.explanation}</span>
               </div>
+            ) : null}
+
+            {event.followUpSuggestion ? (
+              <div className="event-detail-reason">
+                <Sparkles aria-hidden="true" size={14} />
+                <span>后续跟踪：{event.followUpSuggestion}</span>
+              </div>
+            ) : null}
+
+            {event.mergeReason ? (
+              <p className="text-xs text-muted-foreground mt-2">
+                合并原因：{event.mergeReason}
+              </p>
             ) : null}
 
             <dl className="event-detail-grid">

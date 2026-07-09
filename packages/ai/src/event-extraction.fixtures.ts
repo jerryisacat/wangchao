@@ -10,6 +10,7 @@ export async function runEventExtractionFixtures(): Promise<void> {
   await fixtureNoKeyFallsBack();
   fixtureValidRelevantResponse();
   fixtureValidNoiseResponse();
+  fixtureEntitiesArrayParsing();
   fixtureMissingTitleThrows();
   fixtureThinkingTagsSanitized();
   fixtureTypeEnumMismatchThrows();
@@ -90,6 +91,8 @@ function fixtureValidRelevantResponse(): void {
     title: "Clean Title",
     summary: "This is a concise summary.",
     category: "release",
+    entities: ["OpenAI", "GPT-5"],
+    followUpSuggestion: "继续观察产品发布节奏。",
     importanceExplanation: "Matters because of X.",
     matchedKeywords: ["ai", "agent"],
   });
@@ -106,6 +109,8 @@ function fixtureValidRelevantResponse(): void {
   assert(result.category === "release", "Category should match.");
   assert(result.importanceExplanation === "Matters because of X.", "Explanation should match.");
   assert(result.matchedKeywords.length === 2, "Keywords should be parsed.");
+  assert(result.entities.length === 2, "Entities should be parsed.");
+  assert(result.followUpSuggestion === "继续观察产品发布节奏。", "Follow-up suggestion should match.");
 }
 
 function fixtureValidNoiseResponse(): void {
@@ -121,6 +126,25 @@ function fixtureValidNoiseResponse(): void {
   assert(result.relevanceScore === 0, "Score should be 0 for noise.");
   assert(result.title === "", "Title should be empty for noise.");
   assert(result.summary === "", "Summary should be empty for noise.");
+}
+
+function fixtureEntitiesArrayParsing(): void {
+  assertThrows(
+    () =>
+      parseEventExtractionResponse(
+        JSON.stringify({
+          isRelevant: true,
+          relevanceScore: 80,
+          title: "Test Title",
+          summary: "Test summary.",
+          category: "general",
+          entities: "not-an-array",
+          importanceExplanation: "Test.",
+          matchedKeywords: ["test"],
+        }),
+      ),
+    "Non-array entities should fail schema validation.",
+  );
 }
 
 function fixtureMissingTitleThrows(): void {

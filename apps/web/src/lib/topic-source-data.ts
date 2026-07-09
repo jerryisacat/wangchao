@@ -41,9 +41,13 @@ export interface TopicSummary {
 
 export interface DashboardEventSummary {
   category: string;
+  entities: string[];
   eventId: string;
   explanation: string;
+  followUpSuggestion: string;
   gravityScore: number;
+  mergeReason: string | null;
+  mergedSourceCount: number;
   occurredAt: string;
   primaryItemUrl: string;
   score: number;
@@ -239,9 +243,13 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
 
         return {
           category: event.category ?? "general",
+          entities: event.entities ?? [],
           eventId: event.eventId,
           explanation: display.explanation,
+          followUpSuggestion: event.followUpSuggestion ?? "",
           gravityScore: preferenceScore,
+          mergeReason: event.mergeReason ?? null,
+          mergedSourceCount: event.mergedSourceCount,
           occurredAt:
             event.occurredAt?.toISOString() ?? event.updatedAt.toISOString(),
           primaryItemUrl: display.primaryItemUrl,
@@ -353,9 +361,13 @@ export async function getDashboardEventDetail(
 
     return {
       category: event.category ?? "general",
+      entities: event.entities ?? [],
       eventId: event.eventId,
       explanation: display.explanation,
+      followUpSuggestion: event.followUpSuggestion ?? "",
       gravityScore: event.gravityScore,
+      mergeReason: event.mergeReason ?? null,
+      mergedSourceCount: event.mergedSourceCount,
       occurredAt:
         event.occurredAt?.toISOString() ?? event.updatedAt.toISOString(),
       primaryItemUrl: display.primaryItemUrl,

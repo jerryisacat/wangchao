@@ -38,3 +38,11 @@ export {
   type EventExtractionInput,
   type EventExtractionResult,
 } from "./event-extraction.js";
+export {
+  dedupEvent,
+  parseSemanticDedupResponse,
+  type SemanticDedupAdapter,
+  type SemanticDedupCandidate,
+  type SemanticDedupInput,
+  type SemanticDedupResult,
+} from "./semantic-dedup.js";

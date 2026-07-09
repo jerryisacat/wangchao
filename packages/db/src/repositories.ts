@@ -90,22 +90,30 @@ export interface PendingAnalysisItem {
 
 export interface IntelligenceEventWriteInput extends TopicScope {
   category?: string;
+  entities?: string[];
   eventHash: string;
   explanation?: string;
+  followUpSuggestion?: string;
   gravityScore: number;
+  mergeReason?: string;
   occurredAt?: Date;
   primaryItemId: string;
   rawAiResponse?: Record<string, unknown>;
   score: number;
   summary: string;
   title: string;
+  titleHash: string;
 }
 
 export interface DashboardEventRecord {
   category: string | null;
+  entities: string[];
   eventId: string;
   explanation: string | null;
+  followUpSuggestion: string | null;
   gravityScore: number;
+  mergeReason: string | null;
+  mergedSourceCount: number;
   occurredAt: Date | null;
   primaryItemUrl: string | null;
   score: number;
@@ -128,18 +136,21 @@ type DashboardEventQueryResult = Prisma.IntelligenceEventGetPayload<{
       select: {
         source: {
           select: {
-            name: true;
-            url: true;
+            name: true,
+            url: true,
           };
         };
         sourceId: true;
-        url: true;
+        url: true,
       };
     };
     topic: {
       select: {
-        name: true;
+        name: true,
       };
+    };
+    eventItems: {
+      select: { itemId: true; role: true };
     };
     userStates: true;
   };
@@ -166,8 +177,11 @@ export interface PreferenceMemoryRecord {
 
 export interface BriefingEventRecord {
   category: string | null;
+  entities: string[];
   eventId: string;
   explanation: string | null;
+  followUpSuggestion: string | null;
+  mergeReason: string | null;
   occurredAt: Date | null;
   score: number;
   sourceName: string | null;
@@ -177,6 +191,10 @@ export interface BriefingEventRecord {
   topicId: string;
   topicName: string;
   url: string | null;
+  secondarySources: Array<{
+    sourceName: string;
+    url: string | null;
+  }>;
 }
 
 export interface DashboardBriefingRecord {
@@ -1122,44 +1140,121 @@ export async function upsertIntelligenceEventFromItem(
   prisma: PrismaClient,
   input: IntelligenceEventWriteInput,
 ) {
-  const event = await prisma.intelligenceEvent.upsert({
+  let existing = await prisma.intelligenceEvent.findUnique({
     where: {
       topicId_eventHash: {
         eventHash: input.eventHash,
         topicId: input.topicId,
       },
     },
-    update: {
-      category: input.category,
-      explanation: input.explanation,
-      gravityScore: input.gravityScore,
-      occurredAt: input.occurredAt,
-      primaryItemId: input.primaryItemId,
-      rawAiResponse: toInputJson(input.rawAiResponse),
-      score: input.score,
-      summary: input.summary,
-      title: input.title,
-    },
-    create: {
-      organizationId: input.organizationId,
-      topicId: input.topicId,
-      primaryItemId: input.primaryItemId,
-      status: "UNREAD",
-      title: input.title,
-      summary: input.summary,
-      category: input.category,
-      score: input.score,
-      gravityScore: input.gravityScore,
-      eventHash: input.eventHash,
-      explanation: input.explanation,
-      occurredAt: input.occurredAt,
-      rawAiResponse: toInputJson(input.rawAiResponse),
-    },
+    select: { id: true, primaryItemId: true },
   });
 
-  await prisma.item.update({
-    where: { id: input.primaryItemId },
-    data: { status: "ANALYZED" },
+  if (!existing && input.titleHash) {
+    const fuzzyWindowStart = new Date(input.occurredAt ?? Date.now());
+    fuzzyWindowStart.setHours(fuzzyWindowStart.getHours() - 24);
+    const fuzzyWindowEnd = new Date(input.occurredAt ?? Date.now());
+    fuzzyWindowEnd.setHours(fuzzyWindowEnd.getHours() + 24);
+
+    const existingByTitle = await prisma.intelligenceEvent.findFirst({
+      where: {
+        topicId: input.topicId,
+        titleHash: input.titleHash,
+        occurredAt: {
+          gte: fuzzyWindowStart,
+          lte: fuzzyWindowEnd,
+        },
+      },
+      select: { id: true, primaryItemId: true },
+    });
+
+    if (existingByTitle) {
+      input.mergeReason = "标题归一化匹配：来自不同 URL 的同一事件报道";
+      existing = existingByTitle;
+    }
+  }
+
+  const event = await prisma.$transaction(async (tx) => {
+    const upserted = await tx.intelligenceEvent.upsert({
+      where: {
+        topicId_eventHash: {
+          eventHash: input.eventHash,
+          topicId: input.topicId,
+        },
+      },
+      update: {
+        category: input.category,
+        entities: input.entities ?? [],
+        explanation: input.explanation,
+        followUpSuggestion: input.followUpSuggestion,
+        gravityScore: input.gravityScore,
+        mergeReason: input.mergeReason,
+        occurredAt: input.occurredAt,
+        primaryItemId: input.primaryItemId,
+        rawAiResponse: toInputJson(input.rawAiResponse),
+        score: input.score,
+        summary: input.summary,
+        title: input.title,
+        titleHash: input.titleHash,
+      },
+      create: {
+        organizationId: input.organizationId,
+        topicId: input.topicId,
+        primaryItemId: input.primaryItemId,
+        secondaryItemIds: [],
+        status: "UNREAD",
+        title: input.title,
+        summary: input.summary,
+        category: input.category,
+        entities: input.entities ?? [],
+        score: input.score,
+        gravityScore: input.gravityScore,
+        eventHash: input.eventHash,
+        titleHash: input.titleHash,
+        explanation: input.explanation,
+        followUpSuggestion: input.followUpSuggestion,
+        mergeReason: input.mergeReason,
+        occurredAt: input.occurredAt,
+        rawAiResponse: toInputJson(input.rawAiResponse),
+        eventItems: {
+          create: {
+            itemId: input.primaryItemId,
+            role: "PRIMARY",
+          },
+        },
+      },
+    });
+
+    if (
+      existing?.primaryItemId &&
+      existing.primaryItemId !== input.primaryItemId
+    ) {
+      const alreadyLinked = await tx.eventItem.findUnique({
+        where: {
+          eventId_itemId: {
+            eventId: existing.id,
+            itemId: existing.primaryItemId,
+          },
+        },
+      });
+      if (!alreadyLinked) {
+        await tx.eventItem.create({
+          data: {
+            eventId: existing.id,
+            itemId: existing.primaryItemId,
+            role: "SECONDARY",
+            mergeReason: input.mergeReason ?? "精确 hash 匹配：多来源聚合",
+          },
+        });
+      }
+    }
+
+    await tx.item.update({
+      where: { id: input.primaryItemId },
+      data: { status: "ANALYZED" },
+    });
+
+    return upserted;
   });
 
   return event;
@@ -1194,6 +1289,9 @@ export async function listDashboardEvents(
             },
           },
         },
+      },
+      eventItems: {
+        select: { itemId: true, role: true },
       },
       userStates: {
         where: {
@@ -1236,6 +1334,9 @@ export async function getDashboardEventById(
           },
         },
       },
+      eventItems: {
+        select: { itemId: true, role: true },
+      },
       userStates: {
         where: {
           userId: scope.userId,
@@ -1255,9 +1356,13 @@ function mapDashboardEventRecord(
 
   return {
     category: event.category,
+    entities: event.entities ?? [],
     eventId: event.id,
     explanation: event.explanation,
+    followUpSuggestion: event.followUpSuggestion,
     gravityScore: event.gravityScore,
+    mergeReason: event.mergeReason,
+    mergedSourceCount: event.eventItems?.length ?? (event.primaryItemId ? 1 : 0),
     occurredAt: event.occurredAt,
     primaryItemUrl: event.primaryItem?.url ?? null,
     score: event.score,
@@ -1404,6 +1509,9 @@ export async function listEventsForDailyBriefing(
           name: true,
         },
       },
+      eventItems: {
+        select: { itemId: true, role: true },
+      },
       primaryItem: {
         select: {
           url: true,
@@ -1420,20 +1528,51 @@ export async function listEventsForDailyBriefing(
     take: limit,
   });
 
-  return events.map((event) => ({
-    category: event.category,
-    eventId: event.id,
-    explanation: event.explanation,
-    occurredAt: event.occurredAt,
-    score: event.score,
-    sourceName: event.primaryItem?.source.name ?? null,
-    sourceUrl: event.primaryItem?.source.url ?? null,
-    summary: event.summary,
-    title: event.title,
-    topicId: event.topicId,
-    topicName: event.topic.name,
-    url: event.primaryItem?.url ?? null,
-  }));
+  const allSecondaryIds = events.flatMap(
+    (e) => (e.eventItems ?? []).filter((ei) => ei.role === "SECONDARY").map((ei) => ei.itemId),
+  );
+  const secondaryItems = allSecondaryIds.length > 0
+    ? await prisma.item.findMany({
+        where: { id: { in: allSecondaryIds } },
+        select: {
+          id: true,
+          source: { select: { name: true, url: true } },
+        },
+      })
+    : [];
+  const secondarySourceMap = new Map(
+    secondaryItems.map((item) => [
+      item.id,
+      { sourceName: item.source.name, url: item.source.url },
+    ]),
+  );
+
+  return events.map((event) => {
+    const secondarySources: Array<{ sourceName: string; url: string | null }> = [];
+    for (const ei of (event.eventItems ?? []).filter((ei) => ei.role === "SECONDARY")) {
+      const info = secondarySourceMap.get(ei.itemId);
+      if (info) secondarySources.push(info);
+    }
+
+    return {
+      category: event.category,
+      entities: event.entities ?? [],
+      eventId: event.id,
+      explanation: event.explanation,
+      followUpSuggestion: event.followUpSuggestion,
+      mergeReason: event.mergeReason,
+      occurredAt: event.occurredAt,
+      score: event.score,
+      secondarySources,
+      sourceName: event.primaryItem?.source.name ?? null,
+      sourceUrl: event.primaryItem?.source.url ?? null,
+      summary: event.summary,
+      title: event.title,
+      topicId: event.topicId,
+      topicName: event.topic.name,
+      url: event.primaryItem?.url ?? null,
+    };
+  });
 }
 
 export async function createDailyBriefing(
@@ -1540,10 +1679,14 @@ export async function getEventMarkdownExportRecord(
 
   return {
     category: event.category,
+    entities: event.entities ?? [],
     eventId: event.id,
     explanation: event.explanation,
+    followUpSuggestion: event.followUpSuggestion,
+    mergeReason: event.mergeReason,
     occurredAt: event.occurredAt,
     score: event.score,
+    secondarySources: [],
     sourceName: event.primaryItem?.source.name ?? null,
     sourceUrl: event.primaryItem?.source.url ?? null,
     summary: event.summary,
@@ -1854,6 +1997,77 @@ function toInputJson(
 
 function toRequiredInputJson(value: Record<string, unknown>): Prisma.InputJsonValue {
   return value as Prisma.InputJsonValue;
+}
+
+export async function mergeSemanticEvents(
+  prisma: PrismaClient,
+  input: {
+    keepEventId: string;
+    mergeEventIds: string[];
+    reason: string;
+  },
+) {
+  return prisma.$transaction(async (tx) => {
+    const keepEvent = await tx.intelligenceEvent.findUnique({
+      where: { id: input.keepEventId },
+      include: { eventItems: true },
+    });
+
+    if (!keepEvent) {
+      throw new Error(`Keep event ${input.keepEventId} not found.`);
+    }
+
+    for (const mergeEventId of input.mergeEventIds) {
+      const mergeEvent = await tx.intelligenceEvent.findUnique({
+        where: { id: mergeEventId },
+        include: { eventItems: true },
+      });
+
+      if (!mergeEvent) continue;
+
+      for (const eventItem of mergeEvent.eventItems) {
+        const alreadyLinked = keepEvent.eventItems.some(
+          (ei) => ei.itemId === eventItem.itemId,
+        );
+        if (!alreadyLinked) {
+          await tx.eventItem.create({
+            data: {
+              eventId: keepEvent.id,
+              itemId: eventItem.itemId,
+              role: "SECONDARY",
+              mergeReason: input.reason,
+            },
+          });
+        }
+      }
+
+      if (mergeEvent.primaryItemId) {
+        const alreadyLinked = keepEvent.eventItems.some(
+          (ei) => ei.itemId === mergeEvent.primaryItemId,
+        );
+        if (!alreadyLinked) {
+          await tx.eventItem.create({
+            data: {
+              eventId: keepEvent.id,
+              itemId: mergeEvent.primaryItemId,
+              role: "SECONDARY",
+              mergeReason: input.reason,
+            },
+          });
+        }
+      }
+
+      await tx.intelligenceEvent.update({
+        where: { id: mergeEventId },
+        data: {
+          status: "ARCHIVED",
+          mergeReason: `语义聚类合并到 ${input.keepEventId}: ${input.reason}`,
+        },
+      });
+    }
+
+    return keepEvent;
+  });
 }
 
 function extractPreferenceWeight(value: unknown): number {

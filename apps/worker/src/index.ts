@@ -1,10 +1,14 @@
 import {
   createOpenAiCompatibleAdapter,
+  dedupEvent,
   extractEvent,
   fallbackSourceRecommendation,
   recommendSourceCandidate,
   type EventExtractionAdapter,
   type EventExtractionResult,
+  type SemanticDedupCandidate,
+  type SemanticDedupInput,
+  type SemanticDedupResult,
   type SourceRecommendation,
   type SourceRecommendationAdapter,
 } from "@wangchao/ai";
@@ -37,6 +41,7 @@ import {
   listSourceGovernanceReport,
   listTopicsForSourceDiscovery,
   markItemFiltered,
+  mergeSemanticEvents,
   recordUsageEvent,
   recordSourceFetchSuccess,
   recordSourceQualityObservation,
@@ -167,6 +172,24 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
   result.analyzedItems = analysisResult.analyzedItems;
   result.createdOrUpdatedEvents = analysisResult.createdOrUpdatedEvents;
   result.filteredItems = analysisResult.filteredItems;
+  const semanticDedupResult = await runSemanticDedupCycle(
+    prisma,
+    workspace.organizationId,
+  );
+  if (semanticDedupResult.llmCalls > 0) {
+    await recordUsageEvent(prisma, {
+      metadata: {
+        merged: semanticDedupResult.merged,
+        source: "worker-semantic-dedup-cycle",
+      },
+      organizationId: workspace.organizationId,
+      quantity: semanticDedupResult.llmCalls,
+      subjectType: "semantic-dedup-cycle",
+      type: "AI_CALL",
+      unit: "call",
+      userId: workspace.userId,
+    });
+  }
   result.updatedPreferenceMemories = await runPreferenceLearningCycle(
     prisma,
     workspace.organizationId,
@@ -426,10 +449,14 @@ async function runAnalysisCycle(
       title: draft.title,
       summary: draft.summary,
       category: draft.category,
+      entities: draft.entities,
       score: draft.score,
       gravityScore: draft.gravityScore,
       eventHash: draft.eventHash,
+      titleHash: draft.titleHash,
       explanation: draft.explanation,
+      followUpSuggestion: draft.followUpSuggestion,
+      mergeReason: draft.mergeReason,
       occurredAt: draft.occurredAt,
       rawAiResponse,
     });
@@ -451,6 +478,122 @@ async function runAnalysisCycle(
       unit: "item",
       userId,
     });
+  }
+
+  return result;
+}
+
+async function runSemanticDedupCycle(
+  prisma: ReturnType<typeof getPrismaClient>,
+  organizationId: string,
+): Promise<{ merged: number; llmCalls: number }> {
+  const result = { merged: 0, llmCalls: 0 };
+
+  const ai = createAnalysisRuntime();
+  if (!ai) return result;
+
+  const since = new Date();
+  since.setHours(since.getHours() - 48);
+
+  const recentEvents = await prisma.intelligenceEvent.findMany({
+    where: {
+      organizationId,
+      status: "UNREAD",
+      createdAt: { gte: since },
+    },
+    include: {
+      eventItems: {
+        include: {
+          item: {
+            select: {
+              sourceId: true,
+              source: { select: { name: true } },
+            },
+          },
+        },
+      },
+      primaryItem: {
+        select: {
+          sourceId: true,
+          source: { select: { name: true } },
+        },
+      },
+      topic: {
+        select: { name: true, description: true },
+      },
+    },
+    orderBy: [{ createdAt: "asc" }],
+  });
+
+  if (recentEvents.length < 2) return result;
+
+  const eventsByTopic = new Map<string, typeof recentEvents>();
+  for (const event of recentEvents) {
+    const list = eventsByTopic.get(event.topicId) ?? [];
+    list.push(event);
+    eventsByTopic.set(event.topicId, list);
+  }
+
+  for (const [, topicEvents] of eventsByTopic) {
+    if (topicEvents.length < 2) continue;
+
+    for (let i = 1; i < topicEvents.length; i += 1) {
+      const newEvent = topicEvents[i];
+
+      const currentEvent = topicEvents[i]!;
+      const candidates = topicEvents.slice(0, i).filter((candidate) => {
+        const newSourceId = currentEvent.primaryItem?.sourceId;
+        const candSourceId = candidate.primaryItem?.sourceId;
+        if (newSourceId && candSourceId && newSourceId === candSourceId) {
+          return false;
+        }
+        const shareEntity = currentEvent.entities.some((e) =>
+          candidate.entities.includes(e),
+        );
+        return shareEntity || candidate.entities.length === 0;
+      });
+
+      if (candidates.length === 0) continue;
+
+      try {
+        const dedupResult = await dedupEvent(
+          {
+            newEvent: {
+              eventId: currentEvent.id,
+              title: currentEvent.title,
+              summary: currentEvent.summary,
+              sourceName: currentEvent.primaryItem?.source.name ?? null,
+              occurredAt: currentEvent.occurredAt?.toISOString() ?? null,
+            },
+            candidateEvents: candidates.map((c) => ({
+              eventId: c.id,
+              title: c.title,
+              summary: c.summary,
+              sourceName: c.primaryItem?.source.name ?? null,
+              occurredAt: c.occurredAt?.toISOString() ?? null,
+            })),
+            topicName: currentEvent.topic?.name ?? "",
+          },
+          {
+            adapter: ai.adapter,
+            model: ai.model,
+          },
+        );
+
+        result.llmCalls += 1;
+
+        if (dedupResult.duplicateEventId && dedupResult.confidence >= 0.7) {
+          await mergeSemanticEvents(prisma, {
+            keepEventId: dedupResult.duplicateEventId,
+            mergeEventIds: [currentEvent.id],
+            reason: `LLM语义聚类 (置信度 ${dedupResult.confidence.toFixed(2)}): ${dedupResult.reason}`,
+          });
+          result.merged += 1;
+        }
+      } catch {
+        // LLM call failed, skip this pair
+      }
+    }
   }
 
   return result;
@@ -988,6 +1131,8 @@ function extractionToAiEventExtraction(
 ): AiEventExtraction {
   return {
     category: extraction.category,
+    entities: extraction.entities ?? [],
+    followUpSuggestion: extraction.followUpSuggestion ?? "",
     importanceExplanation: extraction.importanceExplanation,
     isRelevant: extraction.isRelevant,
     matchedKeywords: extraction.matchedKeywords,

@@ -42,7 +42,9 @@ export async function GET(_request: Request, context: EventRouteContext) {
   const markdown = renderEventMarkdown(
     {
       category: event.category,
+      entities: event.entities ?? undefined,
       explanation: event.explanation,
+      followUpSuggestion: event.followUpSuggestion ?? undefined,
       occurredAt: event.occurredAt,
       score: event.score,
       sourceName: event.sourceName,

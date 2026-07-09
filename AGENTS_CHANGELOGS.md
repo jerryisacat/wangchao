@@ -20,6 +20,44 @@
 
 本文件是 AI Agent 工作审计日志，替代已废弃的 `CHANGELOG.md`。每条记录说明修改的原因、实际变更、涉及文件、验证方式和风险。
 
+## 2026-07-09
+
+### Step B 迭代：Dashboard/Briefing 多来源展示 + 标题归一化 + EventItem 联结表 + 语义聚类
+
+- Cause: Step A 落地了多来源合并的基础设施和字段扩展，但用户侧无法感知多来源价值（Dashboard/Briefing 只展示主源），且去重仍局限于精确 hash 匹配。
+- Changed:
+  - B2: Dashboard 卡片 header 行增加 `mergedSourceCount > 1` 时展示"另有 N 个来源报道"
+  - B3: Briefing Markdown 渲染时在 Source 行后列出 "Also reported by: xxx"；`listEventsForDailyBriefing` 批量查询 secondary source 信息
+  - B4: 新增 `semantic-dedup.ts` — 独立 LLM prompt 做事件对语义比较；worker 新增 `runSemanticDedupCycle`（48h 窗口、按 topic 分组、实体预过滤、LLM 判断、置信度≥0.7 触发合并）
+  - B5: 新增 `EventItem` 联结表替代 `secondaryItemIds` 数组，携带 role/mergedAt/mergeReason 元数据；`mergeSemanticEvents` 事务函数；保留 `secondaryItemIds` 为 deprecated
+  - B1: `normalizeTitleForFuzzyMatch()` 去除站点后缀；`createTitleHash()` 生成标题 hash；`upsertIntelligenceEventFromItem` 精确 hash 未命中时做标题 hash + ±24h 模糊匹配
+- Files: `apps/web/src/components/intelligence/intelligence-card.tsx`, `apps/web/src/lib/topic-source-data.ts`, `packages/db/src/repositories.ts`, `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/0004_title_hash/migration.sql`, `packages/db/prisma/migrations/0005_event_item/migration.sql`, `packages/core/src/index.ts`, `packages/ai/src/semantic-dedup.ts`, `packages/ai/src/semantic-dedup.fixtures.ts`, `packages/ai/src/index.ts`, `packages/ai/package.json`, `packages/db/src/index.ts`, `apps/worker/src/index.ts`, `AGENTS_CHANGELOGS.md`
+- Verification: 已通过 `pnpm typecheck`（7/7）、`pnpm lint`（7/7）、`pnpm test`（7/7）、`pnpm build`（7/7）、`pnpm db:validate`、`git diff --check`
+- Notes / Risk: `secondaryItemIds` 保留 deprecated 确保已有数据兼容；语义聚类 LLM 调用有 API 成本，通过实体预过滤和置信度阈值控制；Step A 的 migration 0003 + 本次 0004/0005 共 3 个新 migration，未部署到生产库前无风险。
+
+### 情报事件多来源合并、实体抽取和后续跟踪（Issue #6 Step A）
+
+- Cause: Issue #6 指出现阶段 IntelligenceEvent 仅支持单来源（primaryItem），缺少 entities、followUpSuggestion 字段，且 hash 冲突时旧来源被覆盖丢失。SPEC.md §5.4 明确要求这三个字段作为情报输出。DEVELOPE_LOGS.md Phase 8 follow-up 已标记为后续扩展项。
+- Changed:
+  - DB: `IntelligenceEvent` 新增 `entities String[]`、`followUpSuggestion String?`、`mergeReason String?`、`secondaryItemIds String[]` 字段；migration `0003_event_merge`
+  - Repository: `upsertIntelligenceEventFromItem` 改为 hash 冲突时旧 primaryItemId 推入 secondaryItemIds（不再覆盖丢失来源），写入 mergeReason
+  - AI Extraction: prompt schema 增加 entities 和 followUpSuggestion 输出要求；parser 解析新字段；fallback 返回空默认值
+  - Core: `AiEventExtraction`、`IntelligenceEventDraft`、`MarkdownEventInput` 增加新字段；`renderEventMarkdown` 展示 entities 和 followUpSuggestion
+  - Worker: `extractionToAiEventExtraction` 传递新字段；`runAnalysisCycle` 调用 upsert 时传入
+  - Web: 详情页展示实体 Badge 列表、后续跟踪建议、合并原因；导出 route 传递新字段
+  - 文档: L2-domain.md 更新 IntelligenceEvent 描述和多来源合并规则；L3-modules.md 补充 event-extraction.ts 和 createIntelligenceEventDraftFromExtraction
+- Files: `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/0003_event_merge/migration.sql`, `packages/db/src/repositories.ts`, `packages/ai/src/event-extraction.ts`, `packages/ai/src/event-extraction.fixtures.ts`, `packages/core/src/index.ts`, `apps/worker/src/index.ts`, `apps/web/src/lib/topic-source-data.ts`, `apps/web/src/app/events/[eventId]/page.tsx`, `apps/web/src/app/exports/events/[eventId]/route.ts`, `docs/L2-domain.md`, `docs/L3-modules.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 待 Phase 8 执行 `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`pnpm db:validate`
+- Notes / Risk: 新字段均为 nullable 或带默认值，不影响已有事件数据；旧 AI 输出不含新字段时通过 `?? []` / `?? ""` 兜底；secondaryItemIds 数组通过 includes 去重防止重复推入；Step B（语义聚类、独立 EventItem 联结表）留作后续迭代。
+
+### 明确 GitHub 自动同步到 Railway 的部署目标
+
+- Cause: 用户指出部署目标应是 GitHub 自动同步到 Railway，GitHub integration 已连接；要求未来开发注意利用 Railway 的平台优势，并同步 `README.md` 和 `AGENTS.md`。
+- Changed: 在 `AGENTS.md` 技术栈中明确 Deployment 为 GitHub 自动同步到 Railway；将 Phase 13 调整为 GitHub → Railway 部署运维；重写 GitHub / Railway 自动部署治理段，明确当前 GitHub integration 已连接、默认生产形态为 Railway Web、Worker Cron、Source Discovery Cron 和 Railway managed Postgres，并要求后续开发优先复用 Railway 的 Config as Code、Cron、managed Postgres、healthcheck、rollback、backup/PITR 和 logs。更新 `README.md` 当前阶段、部署方式、目录说明、个人版边界和参考文档，明确 GitHub → Railway 是主部署路径。
+- Files: `AGENTS.md`, `README.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 已检查 `AGENTS.md` 相关章节、`README.md` 部署相关段落、`CODEGUIDE.md` L0/L1 和 `docs/L4-operations.md` Railway 部署说明；本次仅修改文档和审计日志，未改运行时代码、部署配置或环境变量。
+- Notes / Risk: 本次不会立即触发 Railway 配置变化；如果这些文档变更 commit 到默认分支，仍可能因 GitHub 自动同步触发 Railway 文档-only 部署。
+
 ## 2026-07-08
 
 ### 前端组件链迁移到 shadcn/Radix/Tailwind v4
@@ -144,7 +182,7 @@
 ### 生产环境清理：移除开发/测试内容
 
 - Cause: 代码中存在大量开发阶段残留内容（预览模式降级、硬编码凭据、fixture 协议、console.* 日志、测试 harness 文件），需要清理后才能安全部署到生产环境。
-- Changed: 
+- Changed:
   - **CRITICAL**: 移除 `topic-source-data.ts` 的预览模式降级，`DATABASE_URL` 未配置时直接抛出错误。
   - **CRITICAL**: 移除 `prisma.config.ts` 的硬编码 `127.0.0.1:5432` Postgres URL 和 `wangchao:wangchao` 凭据。
   - **CRITICAL**: 移除 `packages/sources` 的 `fixture:` 协议支持、`buildFixtureRssFeed()`、`fixtureItemsFor()` 和所有硬编码 fixture 数据。

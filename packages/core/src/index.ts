@@ -10,13 +10,17 @@ export interface IntelligenceInputItem {
 
 export interface IntelligenceEventDraft {
   category: string;
+  entities: string[];
   eventHash: string;
   explanation: string;
+  followUpSuggestion?: string;
   gravityScore: number;
+  mergeReason?: string;
   occurredAt: Date;
   score: number;
   summary: string;
   title: string;
+  titleHash: string;
 }
 
 export interface RelevanceDecision {
@@ -53,7 +57,9 @@ export interface PreferenceWeight {
 
 export interface MarkdownEventInput {
   category?: string | null;
+  entities?: string[];
   explanation?: string | null;
+  followUpSuggestion?: string;
   occurredAt?: Date | null;
   score: number;
   sourceName?: string | null;
@@ -61,6 +67,10 @@ export interface MarkdownEventInput {
   summary: string;
   title: string;
   url?: string | null;
+  secondarySources?: Array<{
+    sourceName: string;
+    url: string | null;
+  }>;
 }
 
 export interface DailyBriefingInput {
@@ -143,25 +153,32 @@ export function createIntelligenceEventDraft(
       ? `keyword:${decision.matchedKeywords[0]}`
       : "general";
   const eventHash = createEventHash(`${normalizeTitle(item.title)}\n${item.url}`);
+  const titleHash = createTitleHash(item.title);
   const gravityScore = calculateGravityScore(decision.score, occurredAt, new Date());
 
   return {
     category,
+    entities: [],
     eventHash,
     explanation:
       decision.matchedKeywords.length > 0
         ? `Matched topic keywords: ${decision.matchedKeywords.join(", ")}.`
         : "Matched default relevance threshold.",
+    followUpSuggestion: undefined,
     gravityScore,
+    mergeReason: undefined,
     occurredAt,
     score: decision.score,
     summary,
     title: item.title.trim(),
+    titleHash,
   };
 }
 
 export interface AiEventExtraction {
   category: string;
+  entities: string[];
+  followUpSuggestion: string;
   importanceExplanation: string;
   isRelevant: boolean;
   matchedKeywords: string[];
@@ -183,6 +200,7 @@ export function createIntelligenceEventDraftFromExtraction(
   const eventHash = createEventHash(
     `${normalizeTitle(extraction.title)}\n${item.url}`,
   );
+  const titleHash = createTitleHash(extraction.title);
   const gravityScore = calculateGravityScore(
     extraction.relevanceScore,
     occurredAt,
@@ -191,13 +209,17 @@ export function createIntelligenceEventDraftFromExtraction(
 
   return {
     category: extraction.category || "general",
+    entities: extraction.entities ?? [],
     eventHash,
     explanation: extraction.importanceExplanation || "未提供评分原因。",
+    followUpSuggestion: extraction.followUpSuggestion || undefined,
     gravityScore,
+    mergeReason: undefined,
     occurredAt,
     score: extraction.relevanceScore,
     summary: extraction.summary,
     title: extraction.title,
+    titleHash,
   };
 }
 
@@ -323,11 +345,13 @@ export function renderEventMarkdown(
     `- Source: ${event.sourceName ?? "Unknown source"}`,
     sourceFeedUrl ? `- Source feed: ${sourceFeedUrl}` : undefined,
     originalUrl ? `- Original: ${originalUrl}` : undefined,
+    event.entities && event.entities.length > 0
+      ? `- Entities: ${event.entities.join(", ")}`
+      : undefined,
     "",
     "## Follow Up",
     "",
-    "- [ ] Review source context",
-    "- [ ] Decide whether to keep tracking this thread",
+    event.followUpSuggestion || "- [ ] Review source context\n- [ ] Decide whether to keep tracking this thread",
   ].filter((line): line is string => line !== undefined);
 
   return `${lines.join("\n")}\n`;
@@ -372,6 +396,11 @@ export function renderDailyBriefingMarkdown(input: DailyBriefingInput): string {
       `- Score: ${Math.round(event.score)}`,
       `- Category: ${event.category ?? "general"}`,
       `- Source: ${event.sourceName ?? "Unknown source"}`,
+      ...(event.secondarySources && event.secondarySources.length > 0
+        ? event.secondarySources.map(
+            (s) => `- Also reported by: ${s.sourceName}`,
+          )
+        : []),
       event.url ? `- Original: ${event.url}` : undefined,
       event.explanation ? `- Why it matters: ${event.explanation}` : undefined,
       "",
@@ -500,6 +529,18 @@ function escapeYaml(value: string): string {
 
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function normalizeTitleForFuzzyMatch(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[「」【】｜\|\-:：].*$/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function createTitleHash(title: string): string {
+  return `title:${createEventHash(normalizeTitleForFuzzyMatch(title)).replace("event:", "")}`;
 }
 
 function createEventHash(value: string): string {

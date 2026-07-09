@@ -23,6 +23,8 @@ export interface EventExtractionInput {
 
 export interface EventExtractionResult {
   category: string;
+  entities: string[];
+  followUpSuggestion: string;
   importanceExplanation: string;
   isRelevant: boolean;
   matchedKeywords: string[];
@@ -47,6 +49,8 @@ const EVENT_EXTRACTION_SCHEMA: JsonSchema = {
   required: ["isRelevant"],
   properties: {
     category: { type: "string" },
+    entities: { type: "array" },
+    followUpSuggestion: { type: "string" },
     importanceExplanation: { type: "string" },
     isRelevant: { type: "boolean" },
     matchedKeywords: { type: "array" },
@@ -78,6 +82,8 @@ export function buildEventExtractionMessages(
           title: "string, cleaned title",
           summary: "string, concise Chinese summary",
           category: "string, short category label",
+          entities: "array of relevant entity names (people, organizations, products) mentioned. max 10 items.",
+          followUpSuggestion: "string, one sentence in Chinese suggesting whether/how to track this topic further, or empty string if not applicable",
           importanceExplanation: "string, one sentence",
           matchedKeywords: "array of matched topic keywords",
         },
@@ -145,6 +151,8 @@ export function parseEventExtractionResponse(
   if (!isRelevant) {
     return {
       category: "noise",
+      entities: [],
+      followUpSuggestion: "",
       importanceExplanation: "",
       isRelevant: false,
       matchedKeywords: Array.isArray(parsed.matchedKeywords)
@@ -164,6 +172,13 @@ export function parseEventExtractionResponse(
   const matchedKeywords = Array.isArray(parsed.matchedKeywords)
     ? parsed.matchedKeywords.filter((v): v is string => typeof v === "string")
     : [];
+  const entities = Array.isArray(parsed.entities)
+    ? parsed.entities.filter((v): v is string => typeof v === "string").slice(0, 10)
+    : [];
+  const followUpSuggestion =
+    typeof parsed.followUpSuggestion === "string"
+      ? parsed.followUpSuggestion.replace(/\s+/g, " ").trim().slice(0, 200)
+      : "";
 
   const title = sanitizeTextField(parsed.title, fallback?.itemTitle ?? "");
   const summary = sanitizeTextField(parsed.summary, fallback?.itemSummary ?? "");
@@ -181,6 +196,8 @@ export function parseEventExtractionResponse(
 
   return {
     category,
+    entities,
+    followUpSuggestion,
     importanceExplanation,
     isRelevant: true,
     matchedKeywords,
@@ -196,6 +213,8 @@ export function fallbackEventExtraction(
 ): EventExtractionResult {
   return {
     category: "general",
+    entities: [],
+    followUpSuggestion: "",
     importanceExplanation: "基于主题关键词匹配的候选事件，建议人工确认。",
     isRelevant: true,
     matchedKeywords: [],

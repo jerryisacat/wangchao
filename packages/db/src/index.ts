@@ -43,6 +43,7 @@ export {
   listTopicSourceOverview,
   listUsageSummary,
   listUnreadEvents,
+  mergeSemanticEvents,
   recordUsageEvent,
   recordSourceQualityObservation,
   recordSourceFetchSuccess,

@@ -16,7 +16,7 @@
 | `Topic` | 用户创建的情报主题，包含 topic profile、状态和 owner。 |
 | `Source` | RSS/Web 信源注册条目，带 candidate/active/muted/rejected 状态和质量分。 |
 | `Item` | worker 抓取并规范化后的原始条目。 |
-| `IntelligenceEvent` | AI 抽取、去重、评分后的情报单元。 |
+| `IntelligenceEvent` | AI 抽取、去重、评分后的情报单元。支持多来源合并（primaryItem + secondaryItems），携带实体和后续跟踪建议。 |
 | `UserItemState` | 用户对某条情报的阅读/收藏/忽略状态。 |
 | `FeedbackEvent` | 原始行为和显式反馈记录，为偏好学习保留信号。 |
 | `PreferenceMemory` | 可解释的、按主题学到的用户偏好记忆。 |
@@ -59,6 +59,7 @@ ANALYZED ──duplicate──────> DUPLICATE
 规则：
 - `markItemFiltered()` 必须保留原有 `rawMetadata`，只追加过滤原因，避免丢失 RSS 原始追溯信息。
 - 当前分析管线用 topic profile keywords 做 relevance/noise，用标题和 URL 生成 `eventHash`，用 `topicId + eventHash` 幂等 upsert 事件。
+- 多来源合并：当 hash 冲突时，旧 `primaryItemId` 推入 `secondaryItemIds`，新 item 成为 primaryItem，并写入 `mergeReason` 说明聚合原因。
 
 ### IntelligenceEvent 状态机
 
