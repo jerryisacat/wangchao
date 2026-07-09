@@ -1290,6 +1290,17 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       process.stderr.write(
         `worker error: ${error instanceof Error ? error.message : String(error)}\n`,
       );
+      if (error instanceof Error && error.stack) {
+        process.stderr.write(`${error.stack}\n`);
+      }
+      if (error !== null && typeof error === "object" && "code" in error) {
+        const code = (error as { code: unknown }).code;
+        const meta = "meta" in error ? (error as { meta: unknown }).meta : undefined;
+        process.stderr.write(`prisma code: ${String(code)}\n`);
+        if (meta !== undefined) {
+          process.stderr.write(`prisma meta: ${JSON.stringify(meta)}\n`);
+        }
+      }
       process.exitCode = 1;
     });
 }

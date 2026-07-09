@@ -130,15 +130,16 @@ railway up --service wangchao-worker --detach
 
 Worker 服务的部署流程（由 `deploy/railway/worker-cron.railway.json` 定义）：
 
-1. **Build**: `pnpm railway:worker:build`（生成 Prisma client + 构建 worker）
-2. **Start**: `pnpm railway:worker:start`（执行一轮 fetch cycle 并退出）
-3. **Cron schedule**: `0 * * * *`（每小时 UTC 整点执行）
+1. **Build**: `pnpm railway:build`（生成 Prisma client + 完整 monorepo 构建）
+2. **Pre-deploy**: `pnpm railway:worker:predeploy`（`pnpm db:wait && pnpm db:deploy`，等待数据库可达并应用 migration）
+3. **Start**: `pnpm railway:worker:start`（执行一轮 fetch cycle 并退出）
+4. **Cron schedule**: `0 * * * *`（每小时 UTC 整点执行）
 
 Worker 是一次性任务：执行完一轮抓取→分析→简报后退出。Railway Cron 会按 schedule 自动重新启动。
 
 ### 5.3 部署顺序
 
-首次部署时，先部署 Web（它会执行 migration 和 seed），再部署 Worker。
+三个服务（Web、Worker Cron、Source Discovery Cron）的 predeploy 都会运行 `db:wait && db:deploy`（Prisma `migrate deploy` 是幂等的，已应用的 migration 不会重复执行），因此并行部署不会冲突。首次部署时先部署 Web 可确保 seed 数据先写入。
 
 ## 6. 验证
 

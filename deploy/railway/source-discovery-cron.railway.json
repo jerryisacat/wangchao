@@ -5,6 +5,7 @@
     "buildCommand": "pnpm railway:build"
   },
   "deploy": {
+    "preDeployCommand": "pnpm railway:worker:predeploy",
     "startCommand": "pnpm --filter @wangchao/worker source-discovery",
     "cronSchedule": "0 2 * * 1",
     "restartPolicyType": "ON_FAILURE",

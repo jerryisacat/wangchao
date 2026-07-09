@@ -1,5 +1,16 @@
 ## 2026-07-10
 
+### fix:修复 Worker Cron 部署后 prisma.organization.upsert() crash
+
+- Cause: commit `dc0cbb5`（Admin 后台 API Key 配置）在 `Organization` model 新增了 `subscription Subscription?` relation 和 migration `0006`，但 Railway 的 worker 和 source-discovery cron 服务没有 predeploy 步骤。当 GitHub 自动同步同时触发 web 和 worker 部署时，worker 在 web 的 migration 完成前就启动并调用 `prisma.organization.upsert()`，Prisma 7.x WASM query compiler 因数据库 schema 与 client schema 不匹配而抛出 `Invalid invocation`（错误信息被截断），导致 worker crash。此外 worker 的 catch 块仅输出 `error.message`，Prisma 7.x driver adapter 模式下错误信息不完整，增加了排查难度。
+- Changed:
+  - `deploy/railway/worker-cron.railway.json` 和 `deploy/railway/source-discovery-cron.railway.json` 新增 `preDeployCommand`，在启动前运行 `pnpm railway:worker:predeploy`（即 `pnpm db:wait && pnpm db:deploy`），确保数据库可达且 migration 已应用。
+  - `package.json` 新增 `railway:worker:predeploy` 脚本。
+  - `apps/worker/src/index.ts` 的 catch 块增加 `error.stack`、Prisma `code` 和 `meta` 输出，避免 Prisma 7.x driver adapter 模式下错误信息被截断。
+- Files: `deploy/railway/worker-cron.railway.json`, `deploy/railway/source-discovery-cron.railway.json`, `package.json`, `apps/worker/src/index.ts`, `AGENTS_CHANGELOGS.md`, `docs/L4-operations.md`, `docs/railway-deployment.md`.
+- Verification: `pnpm typecheck` ✓, `pnpm lint` ✓, `pnpm build` ✓, `git diff --check` ✓.
+- Notes / Risk: 三个 Railway 服务（web、worker cron、source-discovery cron）的 predeploy 都会运行 `db:wait && db:deploy`。Prisma `migrate deploy` 是幂等的，已应用的 migration 不会重复执行，因此多服务并行 predeploy 不会冲突。predeploy 会使 cron 服务的部署时间增加约 3-5 秒（db:wait 探测 + migrate deploy 检查），但不影响 cron 执行时间窗口。
+
 ### fix #25 + feat #9: 情报卡片摘要修复 + 主题管理补齐
 
 - Cause: GitHub issue #25（HN RSS 卡片显示"原文链接已收录"UI 导航提示而非 LLM 摘要）和 #9（Topic 编辑/暂停/归档/删除生命周期管理缺失）。

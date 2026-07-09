@@ -5,6 +5,7 @@
     "buildCommand": "pnpm railway:build"
   },
   "deploy": {
+    "preDeployCommand": "pnpm railway:worker:predeploy",
     "startCommand": "pnpm railway:worker:start",
     "cronSchedule": "0 * * * *",
     "restartPolicyType": "ON_FAILURE",
