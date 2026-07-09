@@ -266,9 +266,10 @@ a:hover {
 
 .command-search {
   display: grid;
-  grid-template-columns: 18px minmax(160px, 260px);
+  grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
+  width: min(360px, 100%);
   min-height: 44px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1027,8 +1028,13 @@ a:hover {
   border-bottom: 1px solid var(--border);
 }
 
+.page-header-main {
+  min-width: 0;
+}
+
 .page-header-main h1 {
   margin: 4px 0 0;
+  overflow-wrap: anywhere;
   font-size: clamp(1.75rem, 4vw, 3rem);
   line-height: 0.95;
 }
@@ -1141,9 +1147,11 @@ a:hover {
 }
 
 .intelligence-card-source {
+  min-width: min(100%, 12rem);
   color: var(--muted-foreground);
   font-size: 12px;
   flex: 1;
+  overflow-wrap: anywhere;
 }
 
 .intelligence-card-source a {
@@ -1180,16 +1188,18 @@ a:hover {
   display: -webkit-box;
   margin: 0 0 14px;
   overflow: hidden;
+  overflow-wrap: anywhere;
   color: var(--foreground);
   font-size: 14px;
   line-height: 1.65;
+  word-break: break-word;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
 }
 
 .intelligence-card-reason {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
+  align-items: flex-start;
   max-width: 100%;
   gap: 6px;
   margin-bottom: 14px;
@@ -1199,7 +1209,13 @@ a:hover {
   color: var(--muted-foreground);
   font-size: 12px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
   padding: 7px 12px;
+}
+
+.intelligence-card-reason svg {
+  margin-top: 2px;
+  flex-shrink: 0;
 }
 
 .intelligence-card-actions {
@@ -1361,7 +1377,7 @@ a:hover {
   }
 
   .app-main {
-    padding: 16px max(16px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    padding: 16px max(16px, env(safe-area-inset-right)) calc(72px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
 
   .top-nav-inner {

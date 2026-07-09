@@ -228,6 +228,7 @@ apps/web/src/
 │       ├── label.tsx                 # Label 基于 Radix
 │       └── textarea.tsx              # Textarea
 └── lib/
+    ├── event-display.ts              # 前端展示清洗：HTML/RSS 摘要转用户文案、原文链接提取、解释文案本地化
     ├── utils.ts                      # cn() = twMerge(clsx(...)) 标准 shadcn helper
     └── topic-source-data.ts          # 工作台数据读取；DATABASE_URL 未配置时抛错
 ```
@@ -246,7 +247,8 @@ apps/web/src/
 | `apps/web/src/app/saved/page.tsx` | 已收藏情报页。 |
 | `apps/web/src/app/preferences/page.tsx` | 偏好记忆页：权重、置信度、解释。 |
 | `apps/web/src/app/actions.ts` | Server Action 入口；创建主题并自动匹配候选源、更新事件状态、创建候选源、手动 source discovery、信源治理。失败通过 stderr 记录，成功/失败通过 redirect URL 参数反馈。 |
-| `apps/web/src/lib/topic-source-data.ts` | 读取工作台数据和单条情报详情；`DATABASE_URL` 未配置时抛出错误，不再静默降级为预览模式。 |
+| `apps/web/src/lib/event-display.ts` | 前端展示清洗 helper：把 RSS/HTML 摘要转成用户文案，提取 Article URL 作为原文链接，并本地化解释文案。 |
+| `apps/web/src/lib/topic-source-data.ts` | 读取工作台数据和单条情报详情；`DATABASE_URL` 未配置时抛出错误，不再静默降级为预览模式；返回前调用 `event-display.ts` 清洗展示字段。 |
 | `apps/web/src/app/exports/briefings/[briefingId]/route.ts` | 简报 Markdown 下载 route。 |
 | `apps/web/src/app/exports/events/[eventId]/route.ts` | 单条情报 Markdown 下载 route。 |
 | `apps/web/src/app/globals.css` | 全局 token、布局、组件样式、motion/reduced-motion、焦点状态、safe-area padding、触摸导航和响应式规则；按 `FRONTEND.md` 语义 token 定义。 |

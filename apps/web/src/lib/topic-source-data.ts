@@ -1,3 +1,5 @@
+import { buildEventDisplayFields } from "@/lib/event-display";
+
 export type DataMode = "database" | "error";
 
 export interface SourceSummary {
@@ -228,26 +230,34 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
         title: briefing.title,
         topicName: briefing.topicName,
       })),
-      events: weightedEvents.map(({ event, preferenceScore }) => ({
-        category: event.category ?? "general",
-        eventId: event.eventId,
-        explanation: event.explanation ?? "",
-        gravityScore: preferenceScore,
-        occurredAt:
-          event.occurredAt?.toISOString() ?? event.updatedAt.toISOString(),
-        primaryItemUrl: event.primaryItemUrl ?? "",
-        score: event.score,
-        sourceId: event.sourceId ?? "",
-        sourceName: event.sourceName ?? "Unknown source",
-        sourceUrl: event.sourceUrl ?? "",
-        status: event.userStatus ?? event.status,
-        summary: event.summary,
-        title: event.title,
-        topicId: event.topicId,
-        topicName: event.topicName,
-        updatedAt: event.updatedAt.toISOString(),
-        userSaved: event.userSaved,
-      })),
+      events: weightedEvents.map(({ event, preferenceScore }) => {
+        const display = buildEventDisplayFields({
+          explanation: event.explanation,
+          primaryItemUrl: event.primaryItemUrl,
+          summary: event.summary,
+        });
+
+        return {
+          category: event.category ?? "general",
+          eventId: event.eventId,
+          explanation: display.explanation,
+          gravityScore: preferenceScore,
+          occurredAt:
+            event.occurredAt?.toISOString() ?? event.updatedAt.toISOString(),
+          primaryItemUrl: display.primaryItemUrl,
+          score: event.score,
+          sourceId: event.sourceId ?? "",
+          sourceName: event.sourceName ?? "Unknown source",
+          sourceUrl: event.sourceUrl ?? "",
+          status: event.userStatus ?? event.status,
+          summary: display.summary,
+          title: event.title,
+          topicId: event.topicId,
+          topicName: event.topicName,
+          updatedAt: event.updatedAt.toISOString(),
+          userSaved: event.userSaved,
+        };
+      }),
       memberships,
       mode: "database",
       message: "工作区已连接，情报排序会结合重要度和你的反馈偏好。",
@@ -335,20 +345,26 @@ export async function getDashboardEventDetail(
       return null;
     }
 
+    const display = buildEventDisplayFields({
+      explanation: event.explanation,
+      primaryItemUrl: event.primaryItemUrl,
+      summary: event.summary,
+    });
+
     return {
       category: event.category ?? "general",
       eventId: event.eventId,
-      explanation: event.explanation ?? "",
+      explanation: display.explanation,
       gravityScore: event.gravityScore,
       occurredAt:
         event.occurredAt?.toISOString() ?? event.updatedAt.toISOString(),
-      primaryItemUrl: event.primaryItemUrl ?? "",
+      primaryItemUrl: display.primaryItemUrl,
       score: event.score,
       sourceId: event.sourceId ?? "",
       sourceName: event.sourceName ?? "Unknown source",
       sourceUrl: event.sourceUrl ?? "",
       status: event.userStatus ?? event.status,
-      summary: event.summary,
+      summary: display.summary,
       title: event.title,
       topicId: event.topicId,
       topicName: event.topicName,
