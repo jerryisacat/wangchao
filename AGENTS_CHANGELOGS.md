@@ -1,5 +1,15 @@
 ## 2026-07-10
 
+### fix #25 + feat #9: 情报卡片摘要修复 + 主题管理补齐
+
+- Cause: GitHub issue #25（HN RSS 卡片显示"原文链接已收录"UI 导航提示而非 LLM 摘要）和 #9（Topic 编辑/暂停/归档/删除生命周期管理缺失）。
+- Changed:
+  - #25: `createIntelligenceEventDraft()` 规则回退路径不再使用原始 RSS summary（含 `Article URL:`/`Points:`/`# Comments:` 等元数据），改为 `buildRuleFallbackSummary()` 清洗后使用 title 作为 fallback；`formatEventSummary()` 不再返回"原文链接已收录..."提示文案，改为清洗 RSS 元数据标记后用 title 作正文；worker LLM 失败时记录结构化 stderr 日志；导出 route 也使用 `buildEventDisplayFields()` 清洗 summary。
+  - #9: 新增 `getTopicById()`/`listAllTopics()`/`updateTopic()`/`updateTopicStatus()`/`deleteTopic()` repository 函数；新增 `updateTopicAction`/`updateTopicStatusAction`/`deleteTopicAction` Server Actions（OWNER/ADMIN 守卫）；新增 `/topics` 列表页、`/topics/[topicId]` 详情页、`/topics/[topicId]/edit` 编辑页、`DeleteTopicButton` 客户端组件（二次确认）；TopNav 增加主题管理入口；`TopicSummary` 增加 `status` 字段。
+- Files: `packages/core/src/index.ts`, `packages/core/src/index.fixtures.ts`, `packages/core/package.json`, `apps/web/src/lib/event-display.ts`, `apps/web/src/lib/topic-source-data.ts`, `apps/web/src/app/actions.ts`, `apps/web/src/app/topics/page.tsx`, `apps/web/src/app/topics/[topicId]/page.tsx`, `apps/web/src/app/topics/[topicId]/edit/page.tsx`, `apps/web/src/components/topics/delete-topic-button.tsx`, `apps/web/src/components/layout/top-nav.tsx`, `apps/web/src/app/exports/events/[eventId]/route.ts`, `apps/worker/src/index.ts`, `packages/db/src/repositories.ts`, `packages/db/src/index.ts`, `tests/smoke/web.spec.ts`, `docs/L2-domain.md`, `docs/L3-modules.md`.
+- Verification: `pnpm lint` ✓, `pnpm typecheck` ✓, `pnpm test` ✓ (含新增 `runCoreFixtures()` 测试), `pnpm build` ✓, `git diff --check` ✓.
+- Notes / Risk: Topic 删除为硬删除+级联，UI 有二次确认保护。Worker 不需要改动（已通过 repository `status: "ACTIVE"` 过滤自动跳过 PAUSED/ARCHIVED 主题）。`event-display.ts` 新增 `title` 参数，调用方 `topic-source-data.ts` 和 export route 已同步更新。现有数据库中已写入的旧 RSS 元数据 summary 会在下次展示/导出时被清洗，但 DB 中的原始值不变。
+
 ### 扩充系统默认信源包
 
 - Cause: 用户确认新增一批系统默认信源，用于扩大新建主题时内置信源包匹配范围。

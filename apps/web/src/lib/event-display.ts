@@ -15,43 +15,49 @@ export function buildEventDisplayFields(input: {
   explanation?: string | null;
   primaryItemUrl?: string | null;
   summary: string;
+  title?: string | null;
 }): EventDisplayFields {
   const extracted = extractRssSummary(input.summary);
 
   return {
     explanation: formatEventExplanation(input.explanation ?? ""),
     primaryItemUrl: extracted?.articleUrl ?? input.primaryItemUrl ?? "",
-    summary: formatEventSummary(input.summary, extracted),
+    summary: formatEventSummary(input.summary, extracted, input.title ?? ""),
   };
 }
 
 function formatEventSummary(
   rawSummary: string,
   extracted: ExtractedRssSummary | null,
+  title: string,
 ): string {
   if (extracted) {
-    const parts = ["原文链接已收录，可点击卡片底部“原文”打开。"];
+    const cleaned = stripHtml(rawSummary)
+      .replace(/Article URL:\s*[^\n]+/gi, " ")
+      .replace(/Comments URL:\s*[^\n]+/gi, " ")
+      .replace(/Points:\s*[^\n]+/gi, " ")
+      .replace(/#\s*Comments:\s*[^\n]+/gi, " ")
+      .replace(/https?:\/\/\S+/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
 
-    if (extracted.points) {
-      parts.push(`Hacker News ${extracted.points} points`);
-    }
-    if (extracted.commentsCount) {
-      parts.push(`${extracted.commentsCount} 条评论`);
+    if (cleaned) {
+      return truncateText(cleaned, 220);
     }
 
-    return `${parts.join(" · ")}。`;
+    return title.trim() || "AI 摘要待生成，可点击“原文”查看完整内容。";
   }
 
   const plainText = stripHtml(rawSummary);
   const withoutBareUrls = plainText
-    .replace(/Article URL:\s*https?:\/\/\S+/gi, "原文链接已收录")
-    .replace(/Comments URL:\s*https?:\/\/\S+/gi, "讨论链接已收录")
-    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/Article URL:\s*https?:\/\/\S+/gi, " ")
+    .replace(/Comments URL:\s*https?:\/\/\S+/gi, " ")
+    .replace(/https?:\/\/\S+/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 
   if (!withoutBareUrls) {
-    return "原文链接已收录，可点击卡片底部“原文”打开。";
+    return title.trim() || "AI 摘要待生成，可点击“原文”查看完整内容。";
   }
 
   return truncateText(withoutBareUrls, 220);

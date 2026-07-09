@@ -765,6 +765,236 @@ function readSourceGovernanceAction(
   throw new Error(`${key} must be approve, mute, reject, or observe.`);
 }
 
+export async function updateTopicAction(formData: FormData): Promise<void> {
+  let message = "主题已更新。";
+  let type: ActionRedirectType = "notice";
+  const topicId = readRequiredField(formData, "topicId");
+  const returnTo = readSafeReturnPath(formData, "returnTo") ?? `/topics/${topicId}`;
+
+  try {
+    await updateTopicFromForm(formData);
+  } catch (error) {
+    logActionError("updateTopicAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/topics");
+  revalidatePath(`/topics/${topicId}`);
+  revalidatePath("/");
+  redirect(actionRedirectHref(returnTo, type, message));
+}
+
+async function updateTopicFromForm(formData: FormData) {
+  const topicId = readRequiredField(formData, "topicId");
+  const name = readOptionalField(formData, "topicName");
+  const description = readOptionalField(formData, "topicDescription");
+
+  if (!process.env.DATABASE_URL) {
+    throw new Error("Database connection is required to update topics.");
+  }
+
+  const {
+    assertMembershipRole,
+    ensureDefaultWorkspace,
+    getPrismaClient,
+    recordUsageEvent,
+    updateTopic,
+  } = await import("@wangchao/db");
+  const prisma = getPrismaClient();
+  const workspace = await ensureDefaultWorkspace(prisma);
+
+  await assertMembershipRole(
+    prisma,
+    {
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
+    },
+    ["OWNER", "ADMIN"],
+  );
+
+  await updateTopic(
+    prisma,
+    {
+      organizationId: workspace.organizationId,
+      topicId,
+    },
+    {
+      ...(name ? { name } : {}),
+      ...(description !== "" ? { description } : {}),
+    },
+  );
+
+  await recordUsageEvent(prisma, {
+    metadata: {
+      action: "update-topic",
+      topicId,
+    },
+    organizationId: workspace.organizationId,
+    quantity: 1,
+    subjectId: topicId,
+    subjectType: "topic",
+    type: "WEB_ACTION",
+    unit: "action",
+    userId: workspace.userId,
+  });
+}
+
+export async function updateTopicStatusAction(
+  formData: FormData,
+): Promise<void> {
+  const topicId = readRequiredField(formData, "topicId");
+  const action = readRequiredField(formData, "statusAction");
+  let message = "主题状态已更新。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    await updateTopicStatusFromForm(formData);
+  } catch (error) {
+    logActionError("updateTopicStatusAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/topics");
+  revalidatePath(`/topics/${topicId}`);
+  revalidatePath("/");
+  redirect(actionRedirectHref(`/topics/${topicId}`, type, message));
+}
+
+async function updateTopicStatusFromForm(formData: FormData) {
+  const topicId = readRequiredField(formData, "topicId");
+  const action = readRequiredField(formData, "statusAction");
+
+  const validActions = ["pause", "resume", "archive", "restore"] as const;
+  if (!validActions.includes(action as (typeof validActions)[number])) {
+    throw new Error("statusAction must be pause, resume, archive, or restore.");
+  }
+
+  const statusActionMap: Record<string, "ACTIVE" | "PAUSED" | "ARCHIVED"> = {
+    pause: "PAUSED",
+    resume: "ACTIVE",
+    archive: "ARCHIVED",
+    restore: "ACTIVE",
+  };
+
+  const targetStatus = statusActionMap[action];
+  if (!targetStatus) {
+    throw new Error(`Invalid status action: ${action}`);
+  }
+
+  if (!process.env.DATABASE_URL) {
+    throw new Error("Database connection is required to update topic status.");
+  }
+
+  const {
+    assertMembershipRole,
+    ensureDefaultWorkspace,
+    getPrismaClient,
+    recordUsageEvent,
+    updateTopicStatus,
+  } = await import("@wangchao/db");
+  const prisma = getPrismaClient();
+  const workspace = await ensureDefaultWorkspace(prisma);
+
+  await assertMembershipRole(
+    prisma,
+    {
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
+    },
+    ["OWNER", "ADMIN"],
+  );
+
+  await updateTopicStatus(
+    prisma,
+    {
+      organizationId: workspace.organizationId,
+      topicId,
+    },
+    targetStatus,
+  );
+
+  await recordUsageEvent(prisma, {
+    metadata: {
+      action: `topic-${action}`,
+      topicId,
+    },
+    organizationId: workspace.organizationId,
+    quantity: 1,
+    subjectId: topicId,
+    subjectType: "topic",
+    type: "WEB_ACTION",
+    unit: "action",
+    userId: workspace.userId,
+  });
+}
+
+export async function deleteTopicAction(formData: FormData): Promise<void> {
+  let message = "主题已删除。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    await deleteTopicFromForm(formData);
+  } catch (error) {
+    logActionError("deleteTopicAction", error);
+    message = toUserActionError(error);
+    type = "error";
+    redirect(actionRedirectHref("/topics", type, message));
+    return;
+  }
+
+  revalidatePath("/topics");
+  revalidatePath("/");
+  redirect(actionRedirectHref("/topics", type, message));
+}
+
+async function deleteTopicFromForm(formData: FormData) {
+  const topicId = readRequiredField(formData, "topicId");
+
+  if (!process.env.DATABASE_URL) {
+    throw new Error("Database connection is required to delete topics.");
+  }
+
+  const {
+    assertMembershipRole,
+    deleteTopic,
+    ensureDefaultWorkspace,
+    getPrismaClient,
+    recordUsageEvent,
+  } = await import("@wangchao/db");
+  const prisma = getPrismaClient();
+  const workspace = await ensureDefaultWorkspace(prisma);
+
+  await assertMembershipRole(
+    prisma,
+    {
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
+    },
+    ["OWNER", "ADMIN"],
+  );
+
+  await deleteTopic(prisma, {
+    organizationId: workspace.organizationId,
+    topicId,
+  });
+
+  await recordUsageEvent(prisma, {
+    metadata: {
+      action: "delete-topic",
+      topicId,
+    },
+    organizationId: workspace.organizationId,
+    quantity: 1,
+    subjectId: topicId,
+    subjectType: "topic",
+    type: "WEB_ACTION",
+    unit: "action",
+    userId: workspace.userId,
+  });
+}
+
 export async function upsertAiCredentialAction(formData: FormData): Promise<void> {
   let message = "AI 凭证已更新。";
   let type: ActionRedirectType = "notice";

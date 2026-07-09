@@ -29,6 +29,22 @@
 
 ## 关键状态机
 
+### Topic 状态机
+
+```text
+ACTIVE ──pause───-> PAUSED
+PAUSED ──resume──-> ACTIVE
+ACTIVE ──archive──> ARCHIVED
+PAUSED ──archive──> ARCHIVED
+ARCHIVED ──restore> ACTIVE
+*       ──delete──> (硬删除，级联删除关联数据)
+```
+
+规则：
+- worker fetch、analysis、daily briefing 和 source discovery 只处理 `ACTIVE` 主题；`PAUSED` 和 `ARCHIVED` 主题被 repository 查询层自动过滤。
+- `PAUSED` 表达"临时暂停、可恢复"，`ARCHIVED` 表达"不再关注但保留历史"。
+- 删除为硬删除，级联删除 Source/Item/IntelligenceEvent/Briefing/FeedbackEvent/PreferenceMemory 等关联数据，需二次确认。
+
 ### Source 状态机
 
 ```text

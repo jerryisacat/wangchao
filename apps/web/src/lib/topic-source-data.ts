@@ -36,6 +36,7 @@ export interface TopicSummary {
   eventCount: number;
   sourceCount: number;
   sources: SourceSummary[];
+  status: "ACTIVE" | "PAUSED" | "ARCHIVED";
   updatedAt: string;
 }
 
@@ -239,6 +240,7 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
           explanation: event.explanation,
           primaryItemUrl: event.primaryItemUrl,
           summary: event.summary,
+          title: event.title,
         });
 
         return {
@@ -308,6 +310,7 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
         description: topic.description ?? "",
         eventCount: topic._count.intelligenceEvents,
         sourceCount: topic._count.sources,
+        status: topic.status,
         updatedAt: topic.updatedAt.toISOString(),
         sources: topic.sources.map((source) => ({
           id: source.id,

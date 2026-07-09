@@ -396,8 +396,11 @@ async function runAnalysisCycle(
         );
         rawAiResponse = { mode: "llm", extraction };
         usedLlm = true;
-      } catch {
+      } catch (error) {
         usedFallback = true;
+        process.stderr.write(
+          `[analysis-cycle] LLM extraction failed for item ${item.id} (topic ${item.topicId}): ${error instanceof Error ? error.message : String(error)}\n`,
+        );
       }
     }
 

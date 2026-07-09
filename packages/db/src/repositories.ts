@@ -387,6 +387,38 @@ export async function ensureDefaultWorkspace(
   };
 }
 
+export interface UpdateTopicInput {
+  description?: string;
+  name?: string;
+  profile?: Record<string, unknown>;
+}
+
+export interface TopicDetailRecord {
+  createdAt: Date;
+  description: string | null;
+  id: string;
+  name: string;
+  organizationId: string;
+  ownerUserId: string | null;
+  profile: unknown;
+  status: "ACTIVE" | "PAUSED" | "ARCHIVED";
+  updatedAt: Date;
+  eventCount: number;
+  sourceCount: number;
+  briefingCount: number;
+}
+
+export interface TopicListItem {
+  createdAt: Date;
+  description: string | null;
+  id: string;
+  name: string;
+  status: "ACTIVE" | "PAUSED" | "ARCHIVED";
+  updatedAt: Date;
+  eventCount: number;
+  sourceCount: number;
+}
+
 export async function createTopic(
   prisma: PrismaClient,
   scope: TenantScope,
@@ -683,6 +715,125 @@ export async function listActiveSources(prisma: PrismaClient, scope: TopicScope)
       status: "ACTIVE",
     },
     orderBy: { updatedAt: "desc" },
+  });
+}
+
+export async function getTopicById(
+  prisma: PrismaClient,
+  scope: TenantScope & { topicId: string },
+): Promise<TopicDetailRecord | null> {
+  const topic = await prisma.topic.findFirst({
+    where: {
+      id: scope.topicId,
+      organizationId: scope.organizationId,
+    },
+    include: {
+      _count: {
+        select: {
+          intelligenceEvents: true,
+          sources: true,
+          briefings: true,
+        },
+      },
+    },
+  });
+
+  if (!topic) {
+    return null;
+  }
+
+  return {
+    briefingCount: topic._count.briefings,
+    createdAt: topic.createdAt,
+    description: topic.description,
+    eventCount: topic._count.intelligenceEvents,
+    id: topic.id,
+    name: topic.name,
+    organizationId: topic.organizationId,
+    ownerUserId: topic.ownerUserId,
+    profile: topic.profile,
+    sourceCount: topic._count.sources,
+    status: topic.status,
+    updatedAt: topic.updatedAt,
+  };
+}
+
+export async function listAllTopics(
+  prisma: PrismaClient,
+  scope: TenantScope,
+): Promise<TopicListItem[]> {
+  const topics = await prisma.topic.findMany({
+    where: {
+      organizationId: scope.organizationId,
+    },
+    include: {
+      _count: {
+        select: {
+          intelligenceEvents: true,
+          sources: true,
+        },
+      },
+    },
+    orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
+  });
+
+  return topics.map((topic) => ({
+    createdAt: topic.createdAt,
+    description: topic.description,
+    eventCount: topic._count.intelligenceEvents,
+    id: topic.id,
+    name: topic.name,
+    sourceCount: topic._count.sources,
+    status: topic.status,
+    updatedAt: topic.updatedAt,
+  }));
+}
+
+export async function updateTopic(
+  prisma: PrismaClient,
+  scope: TenantScope & { topicId: string },
+  input: UpdateTopicInput,
+) {
+  const data: Prisma.TopicUpdateInput = {};
+  if (input.name !== undefined) {
+    data.name = input.name;
+  }
+  if (input.description !== undefined) {
+    data.description = input.description;
+  }
+  if (input.profile !== undefined) {
+    data.profile = toInputJson(input.profile);
+  }
+
+  return prisma.topic.update({
+    where: { id: scope.topicId },
+    data,
+  });
+}
+
+export async function updateTopicStatus(
+  prisma: PrismaClient,
+  scope: TenantScope & { topicId: string },
+  status: "ACTIVE" | "PAUSED" | "ARCHIVED",
+) {
+  return prisma.topic.update({
+    where: {
+      id: scope.topicId,
+      organizationId: scope.organizationId,
+    },
+    data: { status },
+  });
+}
+
+export async function deleteTopic(
+  prisma: PrismaClient,
+  scope: TenantScope & { topicId: string },
+) {
+  return prisma.topic.delete({
+    where: {
+      id: scope.topicId,
+      organizationId: scope.organizationId,
+    },
   });
 }
 

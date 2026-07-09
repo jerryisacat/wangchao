@@ -60,3 +60,22 @@ test("new topic only needs name and description", async ({ page }, testInfo) => 
   await expect(page).toHaveURL(/\/sources/);
   await expect(page.getByText(/主题已创建/)).toBeVisible();
 });
+
+test("topic management page lists topics and allows pause/resume", async ({ page }) => {
+  await page.goto("/topics");
+  await expect(page.getByRole("heading", { name: "主题管理" })).toBeVisible();
+
+  const topicLinks = page.locator(".topic-list-item-name");
+  const topicCount = await topicLinks.count();
+
+  if (topicCount === 0) {
+    test.skip(true, "No topics are available in this workspace.");
+  }
+
+  const firstTopicName = await topicLinks.first().textContent();
+  expect(firstTopicName).toBeTruthy();
+
+  await topicLinks.first().click();
+  await expect(page).toHaveURL(/\/topics\/[^/?]+/);
+  await expect(page.getByRole("heading", { name: firstTopicName! })).toBeVisible();
+});

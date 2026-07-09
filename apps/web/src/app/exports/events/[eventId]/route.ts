@@ -5,6 +5,7 @@ interface EventRouteContext {
 export async function GET(_request: Request, context: EventRouteContext) {
   const { eventId } = await Promise.resolve(context.params);
   const { createContentHash, renderEventMarkdown } = await import("@wangchao/core");
+  const { buildEventDisplayFields } = await import("@/lib/event-display");
   const generatedAt = new Date();
 
   if (!process.env.DATABASE_URL) {
@@ -39,6 +40,13 @@ export async function GET(_request: Request, context: EventRouteContext) {
     return new Response("Event not found.", { status: 404 });
   }
 
+  const display = buildEventDisplayFields({
+    explanation: event.explanation,
+    primaryItemUrl: event.url,
+    summary: event.summary,
+    title: event.title,
+  });
+
   const markdown = renderEventMarkdown(
     {
       category: event.category,
@@ -49,7 +57,7 @@ export async function GET(_request: Request, context: EventRouteContext) {
       score: event.score,
       sourceName: event.sourceName,
       sourceUrl: event.sourceUrl,
-      summary: event.summary,
+      summary: display.summary,
       title: event.title,
       url: event.url,
     },

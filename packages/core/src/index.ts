@@ -138,6 +138,32 @@ export function evaluateRelevance(item: IntelligenceInputItem): RelevanceDecisio
   };
 }
 
+const RSS_METADATA_PATTERN = /Article URL:|Comments URL:|Points:|#\s*Comments:/i;
+
+export function buildRuleFallbackSummary(
+  rawSummary: string | null | undefined,
+  title: string,
+): string {
+  if (rawSummary && rawSummary.trim()) {
+    if (!RSS_METADATA_PATTERN.test(rawSummary)) {
+      return rawSummary.trim();
+    }
+    const cleaned = rawSummary
+      .replace(/Article URL:\s*[^\n<]+/gi, " ")
+      .replace(/Comments URL:\s*[^\n<]+/gi, " ")
+      .replace(/Points:\s*[^\n<]+/gi, " ")
+      .replace(/#\s*Comments:\s*[^\n<]+/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/https?:\/\/\S+/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (cleaned) {
+      return cleaned;
+    }
+  }
+  return title.trim() || "待 AI 生成摘要。";
+}
+
 export function createIntelligenceEventDraft(
   item: IntelligenceInputItem,
   decision = evaluateRelevance(item),
@@ -147,7 +173,7 @@ export function createIntelligenceEventDraft(
   }
 
   const occurredAt = item.publishedAt ?? item.fetchedAt;
-  const summary = item.summary?.trim() || item.title;
+  const summary = buildRuleFallbackSummary(item.summary, item.title);
   const category =
     decision.matchedKeywords[0] !== undefined
       ? `keyword:${decision.matchedKeywords[0]}`

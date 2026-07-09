@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Rss, Settings, Sparkles } from "lucide-react";
+import { Plus, Rss, Settings, Sparkles, List } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -59,6 +59,11 @@ export function TopNav({ className }: TopNavProps) {
             <Link href="/sources">
               <Rss aria-hidden="true" size={14} />
               <span>信源管理</span>
+            </Link>
+          </Button>
+          <Button asChild className="top-nav-action" size="sm" variant="ghost" aria-label="主题管理">
+            <Link href="/topics">
+              <List aria-hidden="true" size={14} />
             </Link>
           </Button>
           <Button asChild className="top-nav-action" size="sm" variant="ghost" aria-label="管理设置">
