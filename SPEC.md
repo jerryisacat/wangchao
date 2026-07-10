@@ -151,6 +151,8 @@ topic:
 - 航旅营销 8 条
 ```
 
+当前 TypeScript 主路径以 UTC 自然日作为 daily briefing 的稳定时间窗口：只聚合该窗口内新建、来自 `ACTIVE` source 且未被忽略/归档的正式情报；已读不会让同日重要事件从简报消失。`Briefing` 使用 `topicId + period + rangeStart` 唯一键 upsert，同一主题同一天重复运行 Worker 只刷新同一份简报及其事件集合，不新增重复记录；Web 简报中心分页提供完整历史和 Markdown 下载。可配置业务时区、周报/月报与主题时间线仍由后续能力扩展。
+
 ### 4.3 用户反馈
 
 每条情报支持用户反馈：

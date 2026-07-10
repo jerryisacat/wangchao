@@ -80,8 +80,19 @@ export interface PreferenceMemorySummary {
 export interface BriefingSummary {
   briefingId: string;
   generatedAt: string;
+  period: "DAILY" | "WEEKLY" | "MONTHLY";
+  rangeEnd: string;
+  rangeStart: string;
   title: string;
   topicName: string;
+}
+
+export interface BriefingsPage {
+  briefings: BriefingSummary[];
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  total: number;
 }
 
 export interface SavedEventsPage {
@@ -121,7 +132,6 @@ export interface UsageSummary {
 }
 
 export interface TopicSourceWorkspace {
-  briefings: BriefingSummary[];
   events: DashboardEventSummary[];
   memberships: MembershipSummary[];
   mode: DataMode;
@@ -135,7 +145,6 @@ export interface TopicSourceWorkspace {
 
 function emptyWorkspace(errorMessage: string): TopicSourceWorkspace {
   return {
-    briefings: [],
     events: [],
     memberships: [],
     mode: "error",
@@ -169,7 +178,6 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
       getPrismaClient,
       listDashboardEvents,
       listPreferenceMemoryForDashboard,
-      listLatestBriefingsForDashboard,
       listOrganizationMemberships,
       listTopicSourceOverview,
       listSourceGovernanceReport,
@@ -183,7 +191,6 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
       topics,
       events,
       preferences,
-      briefings,
       sourceGovernance,
       memberships,
       usageSummary,
@@ -198,9 +205,6 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
       listPreferenceMemoryForDashboard(prisma, {
         organizationId: workspace.organizationId,
         userId: workspace.userId,
-      }),
-      listLatestBriefingsForDashboard(prisma, {
-        organizationId: workspace.organizationId,
       }),
       listSourceGovernanceReport(prisma, {
         organizationId: workspace.organizationId,
@@ -241,12 +245,6 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
       );
 
     return {
-      briefings: briefings.map((briefing) => ({
-        briefingId: briefing.briefingId,
-        generatedAt: briefing.generatedAt.toISOString(),
-        title: briefing.title,
-        topicName: briefing.topicName,
-      })),
       events: weightedEvents.map(({ event, preferenceScore }) =>
         toDashboardEventSummary(event, preferenceScore),
       ),
@@ -312,6 +310,44 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
 
     return emptyWorkspace(message);
   }
+}
+
+export async function getBriefingsPage(
+  requestedPage: number,
+  pageSize = 20,
+): Promise<BriefingsPage> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not configured. Set DATABASE_URL to connect to Postgres.",
+    );
+  }
+
+  const { ensureDefaultWorkspace, getPrismaClient, listBriefingsPage } =
+    await import("@wangchao/db");
+  const prisma = getPrismaClient();
+  const workspace = await ensureDefaultWorkspace(prisma);
+  const result = await listBriefingsPage(
+    prisma,
+    { organizationId: workspace.organizationId },
+    requestedPage,
+    pageSize,
+  );
+
+  return {
+    briefings: result.briefings.map((briefing) => ({
+      briefingId: briefing.briefingId,
+      generatedAt: briefing.generatedAt.toISOString(),
+      period: briefing.period,
+      rangeEnd: briefing.rangeEnd.toISOString(),
+      rangeStart: briefing.rangeStart.toISOString(),
+      title: briefing.title,
+      topicName: briefing.topicName,
+    })),
+    page: result.page,
+    pageCount: result.pageCount,
+    pageSize: result.pageSize,
+    total: result.total,
+  };
 }
 
 export async function getSavedEventsPage(

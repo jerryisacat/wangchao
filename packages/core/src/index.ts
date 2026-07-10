@@ -84,6 +84,11 @@ export interface DailyBriefingInput {
   topicName: string;
 }
 
+export interface DateRange {
+  rangeEnd: Date;
+  rangeStart: Date;
+}
+
 export interface TopicProfileDraft {
   entities: string[];
   excludeScope: string[];
@@ -96,6 +101,16 @@ export interface TopicProfileDraft {
 export interface TopicProfileInput {
   description?: string | null;
   name: string;
+}
+
+export function createUtcDayRange(value: Date): DateRange {
+  const rangeStart = new Date(
+    Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()),
+  );
+  const rangeEnd = new Date(rangeStart);
+  rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
+
+  return { rangeEnd, rangeStart };
 }
 
 export function buildTopicProfile(input: TopicProfileInput): TopicProfileDraft {

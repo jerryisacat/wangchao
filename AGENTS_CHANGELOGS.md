@@ -1,5 +1,13 @@
 ## 2026-07-11
 
+### fix:第三轮 SPEC/README 实现审计 — 简报日期幂等与完整历史
+
+- Cause: `SPEC.md` 5.9 和 `README.md` 将每日简报描述为按主题、按时间范围生成且可回看，但 Worker 原实现每轮读取全部未读/收藏事件后直接 `Briefing.create()`，没有日期窗口或唯一性约束；同一天重复运行会生成重复简报，旧事件也会反复进入后续日期。`/briefings` 同时复用 Dashboard 的 5 条预览查询，更早历史不可达。
+- Changed: 新增 UTC 日窗口 helper；Worker 按主题查询 `[rangeStart, rangeEnd)` 内、非忽略/归档且正式信源产生的事件，并以 `topicId + period + rangeStart` upsert 每日简报。Prisma 新增组合唯一约束和 `0008_briefing_idempotency` migration；迁移保留每组最新简报、合并事件关联、重定向既有导出记录后再建立唯一索引。简报页改用独立 repository/loader 分页读取完整历史，展示周期、覆盖日期、更新时间和总数；新增 core/db fixtures 与 Playwright 历史分页契约。同步 SPEC、双语 README、L2-L4、FRONTEND 和 CODEGUIDE。
+- Files: `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/0008_briefing_idempotency/migration.sql`（新）, `packages/db/src/repositories.ts`, `packages/db/src/repositories.fixtures.ts`, `packages/db/src/index.ts`, `packages/core/src/index.ts`, `packages/core/src/index.fixtures.ts`, `apps/worker/src/index.ts`, `apps/web/src/lib/topic-source-data.ts`, `apps/web/src/app/briefings/page.tsx`, `apps/web/src/app/globals.css`, `tests/smoke/web.spec.ts`, `SPEC.md`, `README.md`, `README-en.md`, `FRONTEND.md`, `CODEGUIDE.md`, `docs/L2-domain.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification: `pnpm db:format` ✓，`pnpm db:generate` ✓，`pnpm db:validate` ✓，`pnpm --filter @wangchao/db test` ✓，`pnpm --filter @wangchao/core test` ✓，`pnpm typecheck` ✓（7/7），`pnpm lint` ✓（7/7），`pnpm test` ✓（7/7），`pnpm build` ✓（7/7），`pnpm exec playwright test --list` ✓（16 tests 可发现/编译）。临时 Postgres 16 实际依次执行 migration 0001-0008：重复简报由 2 条收敛为最新 1 条，两个事件关联均保留，旧 ExportEvent 指向新简报，唯一索引存在且重复插入按预期失败。`git diff --check` ✓。
+- Notes / Risk: 日窗口当前固定为 UTC；用户可配置时区、周报/月报仍是后续能力。完全缺失项未重复建 Issue：导出与简报去重由既有 #8 覆盖，周报/月报由 #28 覆盖。Playwright 新断言本轮完成发现/编译，但未启动带 fixture 的 Web 浏览器写入场景；DB 行为由实际 Postgres migration test 和 repository fixture 覆盖。
+
 ### fix:第二轮 SPEC/README 实现审计 — 补齐完整收藏集合
 
 - Cause: `SPEC.md` 5.5/5.7 和 `README.md` 将收藏描述为可持续管理的用户集合，但 `/saved` 实际复用首页 `listDashboardEvents(limit=30)` 后再过滤；第 31 条及更早的收藏无法出现。继续反查状态动作时发现，收藏页“标记已读”还会把 `saved` 清零，形成隐式取消收藏，与独立“取消收藏”动作冲突。

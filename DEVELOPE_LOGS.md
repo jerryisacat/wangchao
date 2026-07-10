@@ -4,6 +4,17 @@
 
 ## 2026-07-11
 
+### SPEC/README 实现一致性审计 Round 3：简报日期幂等与完整历史
+
+- Phase: Cross-phase / Phase 10 (简报导出) + Phase 8 (Dashboard MVP)
+- Scope: 验证 Daily Briefing 是否按主题和日期范围选取事件、Worker 重跑是否幂等、已有重复数据能否安全迁移，以及 `/briefings` 是否能访问完整历史而非仅展示 Dashboard 预览上限。
+- Alignment: Worker 现在以 UTC `[rangeStart, rangeEnd)` 作为每日窗口，正式信源、非忽略/归档事件才进入简报；`topicId + period + rangeStart` 同时由 Prisma 唯一约束和 repository upsert 保证幂等，符合 `SPEC.md` 5.9 的时间范围、来源可追溯和重复运行不应制造重复实体原则。独立分页历史符合 README 的可回看承诺。
+- Missing: 用户/组织时区尚未建模，当前日界线固定 UTC；WEEKLY/MONTHLY 生成仍未实现，由既有 Issue #28 追踪。浏览器 smoke 新增了分页契约，但本轮没有启动带 41 条简报 fixture 的 Next 测试实例。
+- Bugs: `runDailyBriefingCycle()` 原来读取所有未读/收藏事件且每次 `create()`，导致旧事件跨日重复、同日重跑重复；`/briefings` 复用 `listLatestBriefingsForDashboard(limit=5)`，第 6 条以后不可达。
+- Fixes: 新增 UTC 日窗口 helper；repository 增加范围过滤和简报 upsert；新增组合唯一约束与可合并旧重复数据/关联/导出的 migration；简报页改为完整分页 loader；补 core boundary fixture、DB 查询/upsert/41 条分页 fixture 和 Playwright 页面契约；同步产品、入口、领域、模块、运维和前端文档。
+- Verification: DB/Core fixtures、Prisma format/generate/validate、全仓 typecheck/lint/test/build、Playwright test discovery/compile、diff check 全部通过。临时 Postgres 16 实际执行 0001-0008，并验证最新记录保留、事件关联合并、ExportEvent 重定向及唯一约束拒绝重复插入。
+- Follow-up: 下一轮继续核对 README 对 TaskRun/AI 管线的逐项承诺，重点检查 worker 失败/重试是否形成可查询审计记录；证据充分的壳实现直接修复，完全缺失能力先查重现有 Issue。
+
 ### SPEC/README 实现一致性审计 Round 2：完整收藏集合与状态语义
 
 - Phase: Cross-phase / Phase 8 (Dashboard MVP) + Phase 9 (反馈学习)

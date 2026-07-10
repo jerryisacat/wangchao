@@ -210,8 +210,19 @@ export interface DashboardBriefingRecord {
   briefingId: string;
   generatedAt: Date;
   markdown: string | null;
+  period: "DAILY" | "WEEKLY" | "MONTHLY";
+  rangeEnd: Date;
+  rangeStart: Date;
   title: string;
   topicName: string;
+}
+
+export interface DashboardBriefingPage {
+  briefings: DashboardBriefingRecord[];
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  total: number;
 }
 
 export interface SourceGovernanceRecord {
@@ -275,6 +286,7 @@ export interface UpsertPreferenceMemoryInput extends TopicScope {
 export interface CreateDailyBriefingInput extends TopicScope {
   content: string;
   eventIds: string[];
+  generatedAt: Date;
   markdown: string;
   metadata?: Record<string, unknown>;
   rangeEnd: Date;
@@ -1738,15 +1750,19 @@ export async function upsertPreferenceMemory(
 
 export async function listEventsForDailyBriefing(
   prisma: PrismaClient,
-  scope: TenantScope & { topicId?: string },
+  scope: TenantScope & { rangeEnd: Date; rangeStart: Date; topicId: string },
   limit = 10,
 ): Promise<BriefingEventRecord[]> {
   const events = await prisma.intelligenceEvent.findMany({
     where: {
       organizationId: scope.organizationId,
       topicId: scope.topicId,
+      createdAt: {
+        gte: scope.rangeStart,
+        lt: scope.rangeEnd,
+      },
       status: {
-        in: ["UNREAD", "SAVED"],
+        in: ["UNREAD", "READ", "SAVED"],
       },
       primaryItem: {
         source: {
@@ -1830,33 +1846,63 @@ export async function createDailyBriefing(
   prisma: PrismaClient,
   input: CreateDailyBriefingInput,
 ) {
-  return prisma.briefing.create({
-    data: {
+  const eventReferences = input.eventIds.map((id) => ({ id }));
+
+  return prisma.briefing.upsert({
+    where: {
+      topicId_period_rangeStart: {
+        period: "DAILY",
+        rangeStart: input.rangeStart,
+        topicId: input.topicId,
+      },
+    },
+    update: {
+      title: input.title,
+      content: input.content,
+      generatedAt: input.generatedAt,
+      markdown: input.markdown,
+      rangeEnd: input.rangeEnd,
+      metadata: toInputJson(input.metadata),
+      events: {
+        set: eventReferences,
+      },
+    },
+    create: {
       organizationId: input.organizationId,
       topicId: input.topicId,
       period: "DAILY",
       title: input.title,
       content: input.content,
+      generatedAt: input.generatedAt,
       markdown: input.markdown,
       rangeStart: input.rangeStart,
       rangeEnd: input.rangeEnd,
       metadata: toInputJson(input.metadata),
       events: {
-        connect: input.eventIds.map((id) => ({ id })),
+        connect: eventReferences,
       },
     },
   });
 }
 
-export async function listLatestBriefingsForDashboard(
+export async function listBriefingsPage(
   prisma: PrismaClient,
   scope: TenantScope,
-  limit = 5,
-): Promise<DashboardBriefingRecord[]> {
+  requestedPage = 1,
+  requestedPageSize = 20,
+): Promise<DashboardBriefingPage> {
+  const pageSize = Math.max(1, Math.min(100, Math.trunc(requestedPageSize) || 20));
+  const where: Prisma.BriefingWhereInput = {
+    organizationId: scope.organizationId,
+  };
+  const total = await prisma.briefing.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(
+    pageCount,
+    Math.max(1, Math.trunc(requestedPage) || 1),
+  );
   const briefings = await prisma.briefing.findMany({
-    where: {
-      organizationId: scope.organizationId,
-    },
+    where,
     include: {
       topic: {
         select: {
@@ -1865,16 +1911,26 @@ export async function listLatestBriefingsForDashboard(
       },
     },
     orderBy: { generatedAt: "desc" },
-    take: limit,
+    skip: (page - 1) * pageSize,
+    take: pageSize,
   });
 
-  return briefings.map((briefing) => ({
-    briefingId: briefing.id,
-    generatedAt: briefing.generatedAt,
-    markdown: briefing.markdown,
-    title: briefing.title,
-    topicName: briefing.topic.name,
-  }));
+  return {
+    briefings: briefings.map((briefing) => ({
+      briefingId: briefing.id,
+      generatedAt: briefing.generatedAt,
+      markdown: briefing.markdown,
+      period: briefing.period,
+      rangeEnd: briefing.rangeEnd,
+      rangeStart: briefing.rangeStart,
+      title: briefing.title,
+      topicName: briefing.topic.name,
+    })),
+    page,
+    pageCount,
+    pageSize,
+    total,
+  };
 }
 
 export async function getBriefingMarkdownForDownload(

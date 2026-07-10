@@ -1,16 +1,31 @@
 import {
   buildRuleFallbackSummary,
+  createUtcDayRange,
   createIntelligenceEventDraft,
   evaluateRelevance,
 } from "./index.js";
 
 export function runCoreFixtures(): void {
+  testUtcDayRangeUsesStableBoundaries();
   testRuleFallbackSummaryCleansRssMetadata();
   testRuleFallbackSummaryUsesTitleWhenSummaryIsPureMetadata();
   testRuleFallbackSummaryUsesCleanSummaryWhenPresent();
   testRuleFallbackSummaryFallsBackToTitle();
   testCreateIntelligenceEventDraftUsesCleanSummary();
   testCreateIntelligenceEventDraftReturnsNullForIrrelevant();
+}
+
+function testUtcDayRangeUsesStableBoundaries(): void {
+  const result = createUtcDayRange(new Date("2026-07-11T23:59:59.999+08:00"));
+
+  assert(
+    result.rangeStart.toISOString() === "2026-07-11T00:00:00.000Z",
+    `Unexpected UTC day start: ${result.rangeStart.toISOString()}`,
+  );
+  assert(
+    result.rangeEnd.toISOString() === "2026-07-12T00:00:00.000Z",
+    `Unexpected UTC day end: ${result.rangeEnd.toISOString()}`,
+  );
 }
 
 function testRuleFallbackSummaryCleansRssMetadata(): void {

@@ -577,7 +577,8 @@ a:not([data-slot="button"]):hover {
   padding: 0 12px;
 }
 
-.saved-pagination {
+.saved-pagination,
+.briefing-pagination {
   display: flex;
   min-height: 44px;
   align-items: center;
@@ -590,7 +591,8 @@ a:not([data-slot="button"]):hover {
   font-size: 13px;
 }
 
-.saved-pagination-actions {
+.saved-pagination-actions,
+.briefing-pagination-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -603,7 +605,13 @@ a:not([data-slot="button"]):hover {
     flex-direction: column;
   }
 
-  .saved-pagination-actions > * {
+  .briefing-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .saved-pagination-actions > *,
+  .briefing-pagination-actions > * {
     flex: 1 1 0;
   }
 }
@@ -730,6 +738,14 @@ a:not([data-slot="button"]):hover {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 10px;
+}
+
+.briefing-title-row {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .tenant-card span {

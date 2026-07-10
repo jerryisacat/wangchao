@@ -75,7 +75,8 @@
             生成 PreferenceMemory（可解释的权重 + 置信度）
    ↓
 7. 简报     runDailyBriefingCycle() 按主题生成当日 Markdown 简报
-            写入 Briefing 表，供 Web 端下载
+            以 UTC 自然日过滤当日新建事件，按 topic+period+rangeStart 幂等 upsert
+            同日重跑只刷新同一份 Briefing，Web 可分页浏览完整历史并下载
    ↓
 8. 信源     runSourceGovernanceObservationCycle() 快照信源质量指标
 ```
@@ -85,6 +86,7 @@
 - 当前情报管线以**可解释规则**为主（关键词匹配 + 时间衰减 + 反馈权重），不依赖 LLM 调用即可跑通闭环。`packages/ai` 提供 OpenAI-compatible 边界，后续可接入更深的语义抽取和简报改写，但仍会保留可解释性和幂等写入。
 - Dashboard 主列表只展示 `UNREAD` 和 `SAVED` 事件，`READ` 和 `DISMISSED` 默认从主信息流隐藏。
 - Dashboard 排序 = `gravityScore` 基础分 × `PreferenceMemory` 权重。你的反馈会直接影响下一轮排序，不只是被记录。
+- Daily briefing 只使用 UTC 当日新建、来自 `ACTIVE` source 且状态为 `UNREAD` / `READ` / `SAVED` 的正式事件；已读不影响简报收录，`DISMISSED` / `ARCHIVED` 不进入正式简报。
 
 ## 用户的反馈如何影响系统
 

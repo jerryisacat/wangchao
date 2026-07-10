@@ -97,18 +97,18 @@ enum UsageEventType {
 }
 
 model User {
-  id                String             @id @default(cuid())
-  email             String             @unique
-  name              String?
-  memberships       Membership[]
-  topics            Topic[]
-  itemStates        UserItemState[]
-  feedbackEvents    FeedbackEvent[]
-  preferenceMemory  PreferenceMemory[]
-  exportEvents      ExportEvent[]
-  usageEvents       UsageEvent[]
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  id               String             @id @default(cuid())
+  email            String             @unique
+  name             String?
+  memberships      Membership[]
+  topics           Topic[]
+  itemStates       UserItemState[]
+  feedbackEvents   FeedbackEvent[]
+  preferenceMemory PreferenceMemory[]
+  exportEvents     ExportEvent[]
+  usageEvents      UsageEvent[]
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
 }
 
 model Organization {
@@ -133,24 +133,24 @@ model Organization {
 }
 
 model Subscription {
-  id                   String   @id @default(cuid())
-  organizationId       String   @unique
+  id             String @id @default(cuid())
+  organizationId String @unique
 
   // AI 凭证（OpenAI-compatible）
-  aiEncryptedKey       String?  // AES-256-GCM 密文
-  aiBaseUrl            String?  // endpoint URL
-  aiProvider           String?  // openai / custom 等
-  aiKeyHint            String?  // 脱敏显示，如 "sk-...xyz"
-  aiModel              String?  // 模型名
+  aiEncryptedKey String? // AES-256-GCM 密文
+  aiBaseUrl      String? // endpoint URL
+  aiProvider     String? // openai / custom 等
+  aiKeyHint      String? // 脱敏显示，如 "sk-...xyz"
+  aiModel        String? // 模型名
 
   // 搜索凭证（Brave Search 等）
-  searchEncryptedKey   String?  // AES-256-GCM 密文
-  searchProvider       String?  // brave 等
-  searchKeyHint        String?  // 脱敏显示
+  searchEncryptedKey String? // AES-256-GCM 密文
+  searchProvider     String? // brave 等
+  searchKeyHint      String? // 脱敏显示
 
-  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 }
 
 model Membership {
@@ -195,31 +195,31 @@ model Topic {
 }
 
 model Source {
-  id                 String              @id @default(cuid())
-  organizationId     String
-  topicId            String
-  kind               SourceKind          @default(RSS)
-  status             SourceStatus        @default(CANDIDATE)
-  name               String
-  url                String
-  canonicalUrl       String
-  description        String?
+  id                   String              @id @default(cuid())
+  organizationId       String
+  topicId              String
+  kind                 SourceKind          @default(RSS)
+  status               SourceStatus        @default(CANDIDATE)
+  name                 String
+  url                  String
+  canonicalUrl         String
+  description          String?
   recommendationReason String?
-  discoveryChannel   String?
-  trustScore         Float               @default(0)
-  qualityScore       Float               @default(0)
-  lastFetchedAt      DateTime?
-  lastError          String?
-  lastErrorAt        DateTime?
-  consecutiveFailures Int              @default(0)
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  topic              Topic               @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  items              Item[]
-  feedbackEvents     FeedbackEvent[]
-  sourceObservations SourceObservation[]
-  taskRuns           TaskRun[]
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  discoveryChannel     String?
+  trustScore           Float               @default(0)
+  qualityScore         Float               @default(0)
+  lastFetchedAt        DateTime?
+  lastError            String?
+  lastErrorAt          DateTime?
+  consecutiveFailures  Int                 @default(0)
+  organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic                Topic               @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  items                Item[]
+  feedbackEvents       FeedbackEvent[]
+  sourceObservations   SourceObservation[]
+  taskRuns             TaskRun[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
 
   @@unique([topicId, canonicalUrl])
   @@index([organizationId, status])
@@ -245,7 +245,7 @@ model Item {
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   topic              Topic               @relation(fields: [topicId], references: [id], onDelete: Cascade)
   source             Source              @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  intelligenceEvents IntelligenceEvent[]  @relation("PrimaryItem")
+  intelligenceEvents IntelligenceEvent[] @relation("PrimaryItem")
   eventItems         EventItem[]
   feedbackEvents     FeedbackEvent[]
   taskRuns           TaskRun[]
@@ -260,36 +260,36 @@ model Item {
 }
 
 model IntelligenceEvent {
-  id                String          @id @default(cuid())
-  organizationId    String
-  topicId           String
-  primaryItemId     String?
-  secondaryItemIds  String[]        @default([])
-  status            EventStatus     @default(UNREAD)
-  title             String
-  summary           String
-  category          String?
-  score             Float           @default(0)
-  gravityScore      Float           @default(0)
-  eventHash         String?
-  titleHash         String?
-  explanation       String?
-  entities          String[]        @default([])
+  id                 String          @id @default(cuid())
+  organizationId     String
+  topicId            String
+  primaryItemId      String?
+  secondaryItemIds   String[]        @default([])
+  status             EventStatus     @default(UNREAD)
+  title              String
+  summary            String
+  category           String?
+  score              Float           @default(0)
+  gravityScore       Float           @default(0)
+  eventHash          String?
+  titleHash          String?
+  explanation        String?
+  entities           String[]        @default([])
   followUpSuggestion String?
-  mergeReason       String?
-  occurredAt        DateTime?
-  rawAiResponse     Json?
-  organization      Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  topic             Topic           @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  primaryItem       Item?           @relation("PrimaryItem", fields: [primaryItemId], references: [id], onDelete: SetNull)
-  eventItems        EventItem[]
-  userStates        UserItemState[]
-  feedbackEvents    FeedbackEvent[]
-  briefings         Briefing[]      @relation("BriefingEvents")
-  exportEvents      ExportEvent[]
-  taskRuns          TaskRun[]
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  mergeReason        String?
+  occurredAt         DateTime?
+  rawAiResponse      Json?
+  organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic              Topic           @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  primaryItem        Item?           @relation("PrimaryItem", fields: [primaryItemId], references: [id], onDelete: SetNull)
+  eventItems         EventItem[]
+  userStates         UserItemState[]
+  feedbackEvents     FeedbackEvent[]
+  briefings          Briefing[]      @relation("BriefingEvents")
+  exportEvents       ExportEvent[]
+  taskRuns           TaskRun[]
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
 
   @@unique([topicId, eventHash])
   @@index([organizationId, status])
@@ -299,15 +299,15 @@ model IntelligenceEvent {
 }
 
 model EventItem {
-  id          String           @id @default(cuid())
+  id          String   @id @default(cuid())
   eventId     String
   itemId      String
-  role        String           @default("SECONDARY")
-  mergedAt    DateTime         @default(now())
+  role        String   @default("SECONDARY")
+  mergedAt    DateTime @default(now())
   mergeReason String?
 
-  event       IntelligenceEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  item        Item              @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  event IntelligenceEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  item  Item              @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   @@unique([eventId, itemId])
   @@index([eventId])
@@ -315,17 +315,17 @@ model EventItem {
 }
 
 model UserItemState {
-  id             String            @id @default(cuid())
-  userId         String
-  eventId        String
-  status         EventStatus        @default(UNREAD)
-  saved          Boolean            @default(false)
-  readAt         DateTime?
-  dismissedAt    DateTime?
-  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  event          IntelligenceEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  id          String            @id @default(cuid())
+  userId      String
+  eventId     String
+  status      EventStatus       @default(UNREAD)
+  saved       Boolean           @default(false)
+  readAt      DateTime?
+  dismissedAt DateTime?
+  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event       IntelligenceEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
   @@unique([userId, eventId])
   @@index([eventId])
@@ -397,6 +397,7 @@ model Briefing {
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
+  @@unique([topicId, period, rangeStart])
   @@index([organizationId, generatedAt])
   @@index([topicId, period, generatedAt])
 }
@@ -446,29 +447,29 @@ model SourceObservation {
 }
 
 model TaskRun {
-  id             String        @id @default(cuid())
+  id             String             @id @default(cuid())
   organizationId String
   topicId        String?
   sourceId       String?
   itemId         String?
   eventId        String?
   type           TaskRunType
-  status         TaskRunStatus @default(PENDING)
-  attempt        Int           @default(0)
-  maxAttempts    Int           @default(3)
-  scheduledAt    DateTime      @default(now())
+  status         TaskRunStatus      @default(PENDING)
+  attempt        Int                @default(0)
+  maxAttempts    Int                @default(3)
+  scheduledAt    DateTime           @default(now())
   startedAt      DateTime?
   finishedAt     DateTime?
   errorMessage   String?
   input          Json?
   output         Json?
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  topic          Topic?        @relation(fields: [topicId], references: [id], onDelete: SetNull)
-  source         Source?       @relation(fields: [sourceId], references: [id], onDelete: SetNull)
-  item           Item?         @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic          Topic?             @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  source         Source?            @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  item           Item?              @relation(fields: [itemId], references: [id], onDelete: SetNull)
   event          IntelligenceEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
 
   @@index([organizationId, status, scheduledAt])
   @@index([topicId, type])

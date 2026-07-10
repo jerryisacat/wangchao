@@ -49,6 +49,25 @@ test("saved events can be opened and removed in place", async ({ page }) => {
   await expect(savedRows).toHaveCount(savedCount - 1);
 });
 
+test("briefing history exposes real downloads and pagination", async ({ page }) => {
+  await page.goto("/briefings");
+  const briefingRows = page.locator(".briefing-row");
+
+  if ((await briefingRows.count()) === 0) {
+    test.skip(true, "No briefings are available in this workspace.");
+  }
+
+  await expect(
+    page.getByRole("navigation", { name: "简报分页" }),
+  ).toContainText(/第 \d+ \/ \d+ 页/);
+  await expect(
+    briefingRows.first().getByRole("link", { name: "Markdown" }),
+  ).toHaveAttribute("href", /^\/exports\/briefings\/[^/]+$/);
+  await expect(
+    briefingRows.first().getByText(/^(每日|每周|每月)$/),
+  ).toBeVisible();
+});
+
 test("admin credential tabs and client validation remain interactive", async ({ page }) => {
   await page.goto("/admin/settings");
   await expect(page.getByRole("heading", { name: "API Key 配置" })).toBeVisible();

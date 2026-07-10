@@ -97,6 +97,14 @@ SAVED ───unsave─────> READ（已有 readAt）或 UNREAD
 - 对已收藏事件执行 `read` 时写入 `readAt` 和 `READ` feedback，但保留 `saved=true` / `SAVED`；只有显式 `unsave` 才移出收藏集合。
 - 收藏集合以 `(userId, eventId)` 对应的 `UserItemState.saved=true` 为查询依据，并按用户分页读取；不得通过截取首页事件后再过滤来推断完整收藏集合。
 
+### Briefing 周期与幂等规则
+
+- `DAILY` 使用 UTC 自然日半开区间 `[rangeStart, rangeEnd)`；当前尚未实现 organization/user 可配置业务时区。
+- 同一 `topicId + period + rangeStart` 只能存在一条 Briefing。Worker 同日重跑通过 upsert 刷新内容、`generatedAt` 和事件关系，不新增重复记录。
+- Daily briefing 按 `IntelligenceEvent.createdAt` 选择当日新进入情报库的事件；`UNREAD`、`READ`、`SAVED` 可进入，`DISMISSED`、`ARCHIVED` 不进入。
+- 正式简报只允许 primary item 属于 `ACTIVE` source；candidate/muted/rejected 继续隔离。
+- Web 简报历史按 organization 分页读取，不能通过固定 Top-N 结果冒充完整历史。
+
 ### TaskRun 状态机
 
 ```text

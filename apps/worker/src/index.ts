@@ -16,6 +16,7 @@ import {
   createContentHash,
   createIntelligenceEventDraft,
   createIntelligenceEventDraftFromExtraction,
+  createUtcDayRange,
   evaluateRelevance,
   generatePreferenceDeltas,
   renderDailyBriefingMarkdown,
@@ -700,9 +701,13 @@ async function runDailyBriefingCycle(
   let generatedBriefings = 0;
 
   for (const topic of topics) {
+    const generatedAt = new Date();
+    const { rangeEnd, rangeStart } = createUtcDayRange(generatedAt);
     const [events, preferences] = await Promise.all([
       listEventsForDailyBriefing(prisma, {
         organizationId,
+        rangeEnd,
+        rangeStart,
         topicId: topic.id,
       }),
       listPreferenceMemoryForDashboard(prisma, { organizationId, userId }),
@@ -712,7 +717,6 @@ async function runDailyBriefingCycle(
       continue;
     }
 
-    const generatedAt = new Date();
     const markdown = renderDailyBriefingMarkdown({
       events: events.map((event) => ({
         category: event.category,
@@ -735,13 +739,10 @@ async function runDailyBriefingCycle(
         })),
       topicName: topic.name,
     });
-    const rangeEnd = generatedAt;
-    const rangeStart = new Date(generatedAt);
-    rangeStart.setHours(0, 0, 0, 0);
-
     await createDailyBriefing(prisma, {
       content: markdown,
       eventIds: events.map((event) => event.eventId),
+      generatedAt,
       markdown,
       metadata: {
         contentHash: createContentHash(markdown),
