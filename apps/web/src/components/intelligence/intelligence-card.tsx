@@ -45,7 +45,9 @@ export function IntelligenceCard({
   return (
     <article className="intelligence-card">
       <div className="intelligence-card-header">
-        <Badge variant="default">{event.topicName}</Badge>
+        <Badge className="intelligence-card-topic" variant="default">
+          {event.topicName}
+        </Badge>
         <span className="intelligence-card-source">
           {linkUrl ? (
             <a href={linkUrl} rel="noreferrer" target="_blank">

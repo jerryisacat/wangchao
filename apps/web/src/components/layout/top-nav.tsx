@@ -10,7 +10,8 @@ const mainLinks = [
   { href: "/", label: "未读情报" },
   { href: "/briefings", label: "今日简报" },
   { href: "/saved", label: "已保存" },
-];
+  { href: "/preferences", label: "偏好" },
+] as const;
 
 interface TopNavProps {
   className?: string;
@@ -50,25 +51,43 @@ export function TopNav({ className }: TopNavProps) {
 
         <div className="top-nav-actions">
           <Button asChild className="top-nav-action" size="sm" variant="primary">
-            <Link href="/topics/new">
+            <Link
+              aria-current={pathname === "/topics/new" ? "page" : undefined}
+              href="/topics/new"
+            >
               <Plus aria-hidden="true" size={14} />
               <span>新增主题</span>
             </Link>
           </Button>
           <Button asChild className="top-nav-action" size="sm" variant="secondary">
-            <Link href="/sources">
+            <Link
+              aria-current={pathname.startsWith("/sources") ? "page" : undefined}
+              href="/sources"
+            >
               <Rss aria-hidden="true" size={14} />
               <span>信源管理</span>
             </Link>
           </Button>
-          <Button asChild className="top-nav-action" size="sm" variant="ghost" aria-label="主题管理">
-            <Link href="/topics">
+          <Button asChild className="top-nav-action" size="sm" variant="ghost">
+            <Link
+              aria-current={
+                pathname.startsWith("/topics") && pathname !== "/topics/new"
+                  ? "page"
+                  : undefined
+              }
+              href="/topics"
+            >
               <List aria-hidden="true" size={14} />
+              <span>主题</span>
             </Link>
           </Button>
-          <Button asChild className="top-nav-action" size="sm" variant="ghost" aria-label="管理设置">
-            <Link href="/admin/settings">
+          <Button asChild className="top-nav-action" size="sm" variant="ghost">
+            <Link
+              aria-current={pathname.startsWith("/admin/settings") ? "page" : undefined}
+              href="/admin/settings"
+            >
               <Settings aria-hidden="true" size={14} />
+              <span>设置</span>
             </Link>
           </Button>
         </div>

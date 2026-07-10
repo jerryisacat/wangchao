@@ -112,11 +112,14 @@ textarea:disabled {
 }
 
 a {
-  color: inherit;
   text-decoration: none;
 }
 
-a:hover {
+a:not([class]) {
+  color: inherit;
+}
+
+a:not([data-slot="button"]):hover {
   color: var(--accent);
 }
 
@@ -279,6 +282,7 @@ a:hover {
 }
 
 .command-search input {
+  min-height: 44px;
   min-width: 0;
   border: 0;
   background: transparent;
@@ -466,7 +470,7 @@ a:hover {
 
 .event-row {
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 12px;
   border: 1px solid var(--border);
@@ -499,6 +503,12 @@ a:hover {
 
 .event-copy {
   min-width: 0;
+}
+
+.event-copy-meta {
+  margin-left: 8px;
+  color: var(--muted-foreground);
+  font-size: 12px;
 }
 
 .event-copy h3 {
@@ -557,6 +567,20 @@ a:hover {
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+}
+
+.saved-event-row .event-actions .icon-action,
+.source-governance-actions .icon-action {
+  grid-auto-flow: column;
+  width: auto;
+  gap: 6px;
+  padding: 0 12px;
+}
+
+.event-topic-badge {
+  max-width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
 }
 
 .icon-action {
@@ -951,6 +975,7 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 44px;
   color: var(--foreground);
   text-decoration: none;
 }
@@ -1037,6 +1062,17 @@ a:hover {
   white-space: nowrap;
 }
 
+.top-nav-action[aria-current="page"]:not([data-variant="primary"]) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--accent);
+}
+
+.top-nav-action[aria-current="page"][data-variant="primary"] {
+  box-shadow: inset 0 0 0 2px var(--accent-foreground);
+  color: var(--accent-foreground);
+}
+
 /* ===== Page Header ===== */
 
 .page-header {
@@ -1101,7 +1137,7 @@ a:hover {
   color: var(--foreground);
 }
 
-.topic-filter-item[aria-selected="true"] {
+.topic-filter-item[aria-current="page"] {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent);
@@ -1147,11 +1183,18 @@ a:hover {
 /* ===== Intelligence Card ===== */
 
 .intelligence-card {
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface);
   padding: 20px;
   transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.intelligence-card-topic {
+  max-width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
 }
 
 .intelligence-card:hover {

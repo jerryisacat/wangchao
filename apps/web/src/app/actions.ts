@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import seedSourcePack from "../../../../packages/db/seed-sources.json";
+import { defaultAiBaseUrl } from "./admin/settings/providers";
 
 export async function createTopicAction(formData: FormData): Promise<void> {
   let message = "主题已创建。";
@@ -811,14 +812,19 @@ function readRequiredUrl(formData: FormData, key: string): string {
 function readDashboardEventAction(
   formData: FormData,
   key: string,
-): "read" | "save" | "dismiss" {
+): "read" | "save" | "unsave" | "dismiss" {
   const value = readRequiredField(formData, key);
 
-  if (value === "read" || value === "save" || value === "dismiss") {
+  if (
+    value === "read" ||
+    value === "save" ||
+    value === "unsave" ||
+    value === "dismiss"
+  ) {
     return value;
   }
 
-  throw new Error(`${key} must be read, save, or dismiss.`);
+  throw new Error(`${key} must be read, save, unsave, or dismiss.`);
 }
 
 function readSourceGovernanceAction(
@@ -1341,6 +1347,53 @@ export async function testAiCredentialAction(
   }
 }
 
+export async function listAiModelsAction(
+  formData: FormData,
+): Promise<{ ok: boolean; message: string; models: Array<{ id: string; ownedBy?: string }> }> {
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to list models.");
+    }
+
+    const apiKey = readOptionalField(formData, "aiApiKey");
+    if (!apiKey) {
+      return { ok: false, message: "请输入 AI API Key 后再获取模型列表。", models: [] };
+    }
+    const provider = readOptionalField(formData, "aiProvider");
+    const baseUrl = readOptionalField(formData, "aiBaseUrl") || defaultAiBaseUrl(provider);
+    if (!baseUrl) {
+      return { ok: false, message: "请填写 AI Provider 的 Base URL 后再获取模型列表。", models: [] };
+    }
+    const parsed = new URL(baseUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return { ok: false, message: "请输入有效的 HTTP 或 HTTPS Base URL。", models: [] };
+    }
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      listAiModels,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    return listAiModels({ apiKey, baseUrl });
+  } catch (error) {
+    logActionError("listAiModelsAction", error);
+    return { ok: false, message: toUserActionError(error), models: [] };
+  }
+}
+
 export async function testSearchCredentialAction(
   formData: FormData,
 ): Promise<{ message: string; ok: boolean }> {
@@ -1378,14 +1431,4 @@ export async function testSearchCredentialAction(
     logActionError("testSearchCredentialAction", error);
     return { message: toUserActionError(error), ok: false };
   }
-}
-
-function defaultAiBaseUrl(provider: string): string {
-  const defaults: Record<string, string> = {
-    anthropic: "https://api.anthropic.com/v1",
-    deepseek: "https://api.deepseek.com/v1",
-    groq: "https://api.groq.com/openai/v1",
-    openai: "https://api.openai.com/v1",
-  };
-  return defaults[provider] ?? "";
 }

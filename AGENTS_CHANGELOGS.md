@@ -1,4 +1,28 @@
+## 2026-07-11
+
+### feat:AI 凭证嗅探模型列表 + chat/completions 兜底测试 + 自定义 provider 手动确认
+
+- Cause: (1) 用户需要知道 OpenAI-compatible 端点有哪些可用模型，而非手动猜测模型名；(2) `GET /models` 端点不是所有 provider 都支持（DeepSeek、Azure、代理），导致 AI 凭证测试标记失败；(3) 自定义 provider 无法通过自动测试，UI 会卡死在"测试不通过"状态；(4) AI/搜索 Provider 常量在前后端双源维护，存在不一致风险；(5) 用户需要明确 AI 凭证与搜索凭证相互独立。
+- Changed:
+  - `apps/web/src/app/admin/settings/providers.ts`：新建 Provider 常量集中文件，统一 `AI_PROVIDERS`、`SEARCH_PROVIDERS`、`defaultAiBaseUrl` 函数，替代前端 `credential-form.tsx` 内联常量与后端 `actions.ts` 独立函数。
+  - `packages/db/src/repositories.ts`：`testAiCredential` 新增 `POST /chat/completions` 兜底逻辑：当 `GET /models` 返回 404/405/415/501 或网络超时/Abort 时，自动回退到发送最小 chat 请求验证凭证有效性；新增 `listAiModels` 函数，通过 `GET /models` 嗅探可用模型列表，按 id 字典序排序返回；新增 `AiModelListResult`、`AiModelListInput` 类型。
+  - `packages/db/src/index.ts`：导出 `listAiModels`、`AiModelListResult`、`AiModelListInput`。
+  - `apps/web/src/app/actions.ts`：新增 `listAiModelsAction`（OWNER/ADMIN 守卫，不写 DB，不写 UsageEvent）；`defaultAiBaseUrl` 改为从 `./admin/settings/providers` 导入。
+  - `apps/web/src/app/admin/settings/credential-form.tsx`：AI 凭证表单新增"刷新模型列表"按钮，嗅探成功后显示 `<select>` 下拉选择模型（含 `ownedBy` 信息），支持"自定义..."选项回退到自由输入；新增自定义 provider 的手动确认 checkbox（勾选后覆盖 `testResult` 为通过状态，允许保存）；新增计费提示文案（测试将发送最小 API 请求）；Provider 常量改为从 `./providers` 导入。
+  - `apps/web/src/app/admin/settings/page.tsx`：新增"AI 凭证与搜索凭证相互独立，可分别保存与清除"说明文案；AI 凭证表单传入 `listModelsAction` prop。
+- Files: `apps/web/src/app/admin/settings/providers.ts`（新），`packages/db/src/repositories.ts`，`packages/db/src/index.ts`，`apps/web/src/app/actions.ts`，`apps/web/src/app/admin/settings/credential-form.tsx`，`apps/web/src/app/admin/settings/page.tsx`，`AGENTS_CHANGELOGS.md`。
+- Verification: `pnpm typecheck` ✓，`pnpm lint` ✓，`pnpm test` ✓，`pnpm build` ✓，`git diff --check` ✓。
+- Notes / Risk: (1) `POST /chat/completions` 兜底会发送一次真实请求（`max_tokens: 1`），极少量费用已通过 UI 提示告知用户；(2) `listAiModels` 返回的模型列表为远端嗅探派生数据，不持久化，刷新页面后需重新获取；(3) 自定义 provider 的"手动确认"生效后，再次切回自动测试通过的 provider 会清空手动确认状态。
+
 ## 2026-07-10
+
+### fix:全站交互与响应式多轮审计
+
+- Cause: 需要逐页验证交互是否畅通、功能是否易发现、组件是否遮挡/超框，以及暗色配色的可读性，并在每轮修复后继续覆盖下一组断点。
+- Changed: 修复 320px 首页/收藏页横向超框和收藏页正文列压缩；主导航增加偏好入口并为主题/设置保留文字与当前页状态；首页筛选改用正确的 `nav` + `aria-current`；收藏/信源动作补文字标签，收藏标题可进入详情；Button/Input/Tabs/密码显隐控件统一至少 44px；修复全局链接色覆盖酸黄 CTA 黑字的问题；偏好置信度补 `progressbar` 语义；新增 `unsave` 状态动作，使取消收藏留在当前页并且不写 `DISMISS`；新增六档宽度全站 Playwright 回归。
+- Files: `apps/web/src/app/actions.ts`, `apps/web/src/app/admin/settings/credential-form.tsx`, `apps/web/src/app/admin/settings/page.tsx`, `apps/web/src/app/globals.css`, `apps/web/src/app/preferences/page.tsx`, `apps/web/src/app/saved/page.tsx`, `apps/web/src/app/sources/page.tsx`, `apps/web/src/components/intelligence/intelligence-card.tsx`, `apps/web/src/components/intelligence/topic-filter.tsx`, `apps/web/src/components/layout/top-nav.tsx`, `apps/web/src/components/ui/button.tsx`, `apps/web/src/components/ui/input.tsx`, `apps/web/src/components/ui/tabs.tsx`, `packages/db/src/repositories.ts`, `tests/smoke/web.spec.ts`, `tests/smoke/responsive.spec.ts`, `FRONTEND.md`, `docs/L2-domain.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`.
+- Verification: 本地 Prisma Postgres migration/seed/fixture；`CI=true pnpm lint` ✓；`CI=true pnpm typecheck` ✓；`CI=true pnpm test` ✓；`CI=true pnpm build` ✓；`git diff --check` ✓；生产构建 `pnpm smoke:web` 11 passed / 1 skipped；响应式矩阵 11 页面 × 6 宽度 ✓；最终 414px/1024px 截图抽查 ✓。
+- Notes / Risk: `next dev` 与 `next build` / `next start` 不应并发写同一个 `apps/web/.next`；本轮没有 commit/push，不会触发 Railway 自动部署。
 
 ### fix:凭证测试后的 Key 输入保持
 

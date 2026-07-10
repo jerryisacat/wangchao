@@ -177,6 +177,7 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                           value="approve"
                         >
                           <Check aria-hidden="true" size={13} />
+                          <span>批准</span>
                         </button>
                       </form>
                       <form action={updateSourceGovernanceAction}>
@@ -191,6 +192,7 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                           value="observe"
                         >
                           <Clock3 aria-hidden="true" size={13} />
+                          <span>观察</span>
                         </button>
                       </form>
                       <form action={updateSourceGovernanceAction}>
@@ -205,6 +207,7 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                           value="mute"
                         >
                           <ShieldCheck aria-hidden="true" size={13} />
+                          <span>静音</span>
                         </button>
                       </form>
                       <form action={updateSourceGovernanceAction}>
@@ -219,6 +222,7 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                           value="reject"
                         >
                           <X aria-hidden="true" size={13} />
+                          <span>拒绝</span>
                         </button>
                       </form>
                     </div>

@@ -247,7 +247,7 @@ export interface SourceDiscoveryPageRecord {
 
 export type SourceGovernanceAction = "approve" | "mute" | "reject" | "observe";
 
-export type DashboardEventAction = "read" | "save" | "dismiss";
+export type DashboardEventAction = "read" | "save" | "unsave" | "dismiss";
 
 export interface UpdateDashboardEventStateInput {
   action: DashboardEventAction;
@@ -1977,9 +1977,45 @@ export async function updateDashboardEventState(
       id: true,
       topicId: true,
       primaryItemId: true,
+      userStates: {
+        where: { userId: input.userId },
+        select: { readAt: true },
+        take: 1,
+      },
     },
   });
   const now = new Date();
+
+  if (input.action === "unsave") {
+    const restoredStatus = event.userStates[0]?.readAt ? "READ" : "UNREAD";
+
+    await prisma.$transaction([
+      prisma.intelligenceEvent.update({
+        where: { id: event.id },
+        data: { status: restoredStatus },
+      }),
+      prisma.userItemState.upsert({
+        where: {
+          userId_eventId: {
+            eventId: event.id,
+            userId: input.userId,
+          },
+        },
+        update: {
+          dismissedAt: null,
+          saved: false,
+          status: restoredStatus,
+        },
+        create: {
+          eventId: event.id,
+          saved: false,
+          status: restoredStatus,
+          userId: input.userId,
+        },
+      }),
+    ]);
+    return;
+  }
 
   await prisma.$transaction([
     prisma.intelligenceEvent.update({
@@ -2468,9 +2504,54 @@ export async function testAiCredential(
     if (response.ok) {
       return { ok: true, message: "AI 凭证连接测试成功。" };
     }
+
+    if (isModelsEndpointUnavailable(response.status)) {
+      return probeChatCompletions(baseUrl, credential.apiKey, controller.signal);
+    }
+
     return {
       ok: false,
       message: `连接失败：HTTP ${response.status} ${response.statusText}`.trim(),
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return probeChatCompletions(baseUrl, credential.apiKey, controller.signal);
+    }
+    return {
+      ok: false,
+      message: `连接错误：${error instanceof Error ? error.message : String(error)}`,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function probeChatCompletions(
+  baseUrl: string,
+  apiKey: string,
+  signal: AbortSignal,
+): Promise<CredentialTestResult> {
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      body: JSON.stringify({
+        max_tokens: 1,
+        messages: [{ role: "user", content: "ping" }],
+        model: "gpt-4o-mini",
+      }),
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+      },
+      method: "POST",
+      signal,
+    });
+
+    if (response.ok) {
+      return { ok: true, message: "AI 凭证连接测试成功（通过 chat/completions 端点）。" };
+    }
+    return {
+      ok: false,
+      message: `连接失败（chat/completions）：HTTP ${response.status} ${response.statusText}`.trim(),
     };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
@@ -2479,6 +2560,66 @@ export async function testAiCredential(
     return {
       ok: false,
       message: `连接错误：${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+function isModelsEndpointUnavailable(status: number): boolean {
+  return status === 404 || status === 405 || status === 415 || status === 501;
+}
+
+export interface AiModelListResult {
+  ok: boolean;
+  message: string;
+  models: Array<{ id: string; ownedBy?: string }>;
+}
+
+export interface AiModelListInput {
+  apiKey: string;
+  baseUrl: string;
+}
+
+export async function listAiModels(
+  credential: AiModelListInput,
+): Promise<AiModelListResult> {
+  const baseUrl = credential.baseUrl.replace(/\/+$/, "");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    const response = await fetch(`${baseUrl}/models`, {
+      headers: { authorization: `Bearer ${credential.apiKey}` },
+      method: "GET",
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        message: `无法获取模型列表：HTTP ${response.status} ${response.statusText}`.trim(),
+        models: [],
+      };
+    }
+
+    const raw = await response.json() as { data?: Array<{ id: string; owned_by?: string }> };
+    const models = (raw.data ?? [])
+      .map((m) => ({ id: m.id, ownedBy: m.owned_by }))
+      .filter((m) => m.id)
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    if (models.length === 0) {
+      return { ok: false, message: "端点返回了空模型列表。", models: [] };
+    }
+
+    return { ok: true, message: `已发现 ${models.length} 个可用模型。`, models };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return { ok: false, message: "获取模型列表超时，请检查 Base URL 是否正确。", models: [] };
+    }
+    return {
+      ok: false,
+      message: `获取模型列表错误：${error instanceof Error ? error.message : String(error)}`,
+      models: [],
     };
   } finally {
     clearTimeout(timeout);

@@ -7,71 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-interface ProviderOption {
-  defaultBaseUrl?: string;
-  helpUrl?: string;
-  label: string;
-  value: string;
-}
-
-const AI_PROVIDERS: ProviderOption[] = [
-  {
-    defaultBaseUrl: "https://api.openai.com/v1",
-    helpUrl: "https://platform.openai.com/api-keys",
-    label: "OpenAI",
-    value: "openai",
-  },
-  {
-    helpUrl: "https://portal.azure.com/",
-    label: "Azure OpenAI",
-    value: "azure",
-  },
-  {
-    defaultBaseUrl: "https://api.anthropic.com/v1",
-    helpUrl: "https://console.anthropic.com/settings/keys",
-    label: "Anthropic",
-    value: "anthropic",
-  },
-  {
-    defaultBaseUrl: "https://api.groq.com/openai/v1",
-    helpUrl: "https://console.groq.com/keys",
-    label: "Groq",
-    value: "groq",
-  },
-  {
-    defaultBaseUrl: "https://api.deepseek.com/v1",
-    helpUrl: "https://platform.deepseek.com/api_keys",
-    label: "DeepSeek",
-    value: "deepseek",
-  },
-  {
-    defaultBaseUrl: "",
-    label: "自定义",
-    value: "custom",
-  },
-];
-
-const SEARCH_PROVIDERS: ProviderOption[] = [
-  {
-    helpUrl: "https://brave.com/search/api/",
-    label: "Brave Search",
-    value: "brave",
-  },
-  {
-    helpUrl: "https://serpapi.com/dashboard",
-    label: "SerpAPI",
-    value: "serpapi",
-  },
-  {
-    helpUrl: "https://app.tavily.com",
-    label: "Tavily",
-    value: "tavily",
-  },
-  {
-    label: "自定义",
-    value: "custom",
-  },
-];
+import { AI_PROVIDERS, SEARCH_PROVIDERS, type ProviderOption } from "./providers";
 
 function SubmitButton({
   disabled,
@@ -103,12 +39,16 @@ interface CredentialFormProps {
   formAction: (formData: FormData) => void;
   mode: "ai" | "search";
   testAction: (formData: FormData) => Promise<{ message: string; ok: boolean }>;
+  listModelsAction?: (
+    formData: FormData,
+  ) => Promise<{ ok: boolean; message: string; models: Array<{ id: string; ownedBy?: string }> }>;
 }
 
 export function CredentialForm({
   currentBaseUrl,
   currentProvider,
   formAction,
+  listModelsAction,
   mode,
   testAction,
 }: CredentialFormProps) {
@@ -130,8 +70,20 @@ export function CredentialForm({
     ok: boolean;
   } | null>(null);
   const [isTesting, setIsTesting] = useState(false);
+  const [isLoadingModels, setIsLoadingModels] = useState(false);
+  const [availableModels, setAvailableModels] = useState<Array<{ id: string; ownedBy?: string }>>([]);
+  const [modelsMessage, setModelsMessage] = useState<string | null>(null);
+  const [manualConfirm, setManualConfirm] = useState(false);
+  const [selectedModel, setSelectedModel] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
   const apiKeyRef = useRef<HTMLInputElement>(null);
+
+  const effectiveTestResult = (() => {
+    if (manualConfirm && selectedProvider === "custom") {
+      return { ok: true, message: "已手动确认（自定义 provider）" };
+    }
+    return testResult;
+  })();
 
   const providers = mode === "ai" ? AI_PROVIDERS : SEARCH_PROVIDERS;
   const provider = providers.find((p) => p.value === selectedProvider);
@@ -156,6 +108,38 @@ export function CredentialForm({
     handleInputChange();
   }
 
+  function handleRefreshModels() {
+    const form = formRef.current;
+    if (!form || !apiKey.trim()) {
+      setValidationError("请先输入 API Key 后再获取模型列表。");
+      apiKeyRef.current?.focus();
+      return;
+    }
+    if (!listModelsAction) {
+      return;
+    }
+
+    setValidationError("");
+    setIsLoadingModels(true);
+    setAvailableModels([]);
+    setModelsMessage(null);
+    startTransition(async () => {
+      try {
+        const result = await listModelsAction(new FormData(form));
+        if (result.ok && result.models.length > 0) {
+          setAvailableModels(result.models);
+          setModelsMessage(result.message);
+        } else {
+          setModelsMessage(result.message);
+        }
+      } catch {
+        setModelsMessage("获取模型列表失败，请稍后重试。");
+      } finally {
+        setIsLoadingModels(false);
+      }
+    });
+  }
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     if (!apiKey.trim()) {
       event.preventDefault();
@@ -163,7 +147,7 @@ export function CredentialForm({
       apiKeyRef.current?.focus();
       return;
     }
-    if (!testResult?.ok) {
+    if (!effectiveTestResult?.ok) {
       event.preventDefault();
       setValidationError("请先测试当前 API 配置，测试通过后再保存。");
       return;
@@ -196,20 +180,20 @@ export function CredentialForm({
   return (
     <form
       action={formAction}
-      className="grid gap-3 rounded-md border border-border bg-[#0f0f13] p-4"
+      className="grid gap-3 rounded-md border border-border bg-surface p-4"
       ref={formRef}
       onSubmit={handleSubmit}
     >
       <div className="grid gap-2 text-xs font-bold text-muted-foreground">
         <Label htmlFor={apiKeyFieldId}>
           API Key{" "}
-          <span className="font-normal text-muted-foreground/70">(必填)</span>
+          <span className="font-normal text-muted-foreground">(必填)</span>
         </Label>
         <div className="relative">
           <Input
             ref={apiKeyRef}
             autoComplete="off"
-            className="pr-9"
+            className="pr-11"
             id={apiKeyFieldId}
             name={apiKeyFieldId}
             onChange={(event) => handleApiKeyChange(event.target.value)}
@@ -221,9 +205,8 @@ export function CredentialForm({
           />
           <button
             aria-label={showPassword ? "隐藏 Key" : "显示 Key"}
-            className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+            className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
             onClick={() => setShowPassword((prev) => !prev)}
-            tabIndex={-1}
             type="button"
           >
             {showPassword ? (
@@ -243,11 +226,11 @@ export function CredentialForm({
       <div className="grid gap-2 text-xs font-bold text-muted-foreground">
         <Label htmlFor={providerFieldName}>
           Provider{" "}
-          <span className="font-normal text-muted-foreground/70">(必填)</span>
+          <span className="font-normal text-muted-foreground">(必填)</span>
         </Label>
         <select
           aria-label="Provider"
-          className="h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+          className="h-11 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
           name={providerFieldName}
           onChange={(e) => handleProviderChange(e.target.value)}
           value={selectedProvider}
@@ -264,7 +247,7 @@ export function CredentialForm({
         </select>
         {provider?.helpUrl ? (
           <a
-            className="text-xs font-normal text-muted-foreground underline-offset-4 hover:underline"
+            className="inline-flex min-h-11 w-fit items-center text-xs font-normal text-muted-foreground underline-offset-4 hover:underline"
             href={provider.helpUrl}
             rel="noopener noreferrer"
             target="_blank"
@@ -279,7 +262,7 @@ export function CredentialForm({
           <div className="grid gap-2 text-xs font-bold text-muted-foreground">
             <Label htmlFor="aiBaseUrl">
               Base URL{" "}
-              <span className="font-normal text-muted-foreground/70">
+              <span className="font-normal text-muted-foreground">
                 (可选)
               </span>
             </Label>
@@ -298,16 +281,66 @@ export function CredentialForm({
           <div className="grid gap-2 text-xs font-bold text-muted-foreground">
             <Label htmlFor="aiModel">
               模型{" "}
-              <span className="font-normal text-muted-foreground/70">
+              <span className="font-normal text-muted-foreground">
                 (可选)
               </span>
             </Label>
-            <Input
-              id="aiModel"
-              name="aiModel"
-              placeholder="gpt-4o-mini"
-              type="text"
-            />
+            {availableModels.length > 0 ? (
+              <select
+                aria-label="模型"
+                className="h-11 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+                name="aiModel"
+                onChange={(e) => {
+                  setSelectedModel(e.target.value);
+                  handleInputChange();
+                }}
+                value={selectedModel}
+              >
+                <option className="bg-[#121216] text-foreground" value="">
+                  请选择模型
+                </option>
+                {availableModels.map((m) => (
+                  <option
+                    className="bg-[#121216] text-foreground"
+                    key={m.id}
+                    value={m.id}
+                  >
+                    {m.id}{m.ownedBy ? ` (${m.ownedBy})` : ""}
+                  </option>
+                ))}
+                <option className="bg-[#121216] text-foreground" value="__custom__">
+                  自定义...
+                </option>
+              </select>
+            ) : null}
+            {availableModels.length === 0 || selectedModel === "__custom__" ? (
+              <Input
+                id="aiModel"
+                name="aiModel"
+                onChange={() => handleInputChange()}
+                placeholder="gpt-4o-mini"
+                type="text"
+              />
+            ) : null}
+            {mode === "ai" && listModelsAction ? (
+              <Button
+                disabled={isLoadingModels}
+                onClick={handleRefreshModels}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                {isLoadingModels ? (
+                  <Loader2 aria-hidden="true" className="animate-spin" size={14} />
+                ) : null}
+                {isLoadingModels ? "获取中..." : "刷新模型列表"}
+              </Button>
+            ) : null}
+            {modelsMessage ? (
+              <p className="text-xs font-normal text-muted-foreground">
+                {modelsMessage}
+              </p>
+            ) : null}
           </div>
         </>
       ) : null}
@@ -325,6 +358,22 @@ export function CredentialForm({
           {testResult.message}
         </p>
       ) : null}
+      {testResult && !testResult.ok && selectedProvider === "custom" ? (
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          <input
+            checked={manualConfirm}
+            className="h-4 w-4 rounded border-input"
+            onChange={(e) => {
+              setManualConfirm(e.target.checked);
+              if (!e.target.checked) {
+                setTestResult(null);
+              }
+            }}
+            type="checkbox"
+          />
+          我已确认此 Key 有效，跳过自动测试
+        </label>
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         <Button
@@ -341,15 +390,20 @@ export function CredentialForm({
           )}
           {isTesting ? "测试中..." : "测试当前配置"}
         </Button>
-        {testResult?.ok ? (
+        {effectiveTestResult?.ok ? (
           <span className="flex min-h-11 items-center text-xs text-success">
             测试通过，可以保存
           </span>
         ) : null}
       </div>
+      {mode === "ai" ? (
+        <p className="text-xs font-normal text-muted-foreground">
+          测试将发送一次最小 API 请求，可能产生极少量费用。
+        </p>
+      ) : null}
 
       <SubmitButton
-        disabled={!testResult?.ok}
+        disabled={!effectiveTestResult?.ok}
         icon={
           mode === "ai" ? (
             <KeyRound aria-hidden="true" size={14} />

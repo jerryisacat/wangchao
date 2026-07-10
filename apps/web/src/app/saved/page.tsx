@@ -45,15 +45,19 @@ export default async function SavedPage() {
             ) : (
               <div className="event-list">
                 {savedEvents.map((event) => (
-                  <article className="event-row" key={event.eventId}>
+                  <article className="event-row saved-event-row" key={event.eventId}>
                     <div className="event-copy">
                       <div className="event-copy-header">
-                        <Badge variant="default">{event.topicName}</Badge>
-                        <span style={{ marginLeft: 8, fontSize: 12, color: "var(--muted-foreground)" }}>
+                        <Badge className="event-topic-badge" variant="default">
+                          {event.topicName}
+                        </Badge>
+                        <span className="event-copy-meta">
                           {event.sourceName} · {formatDateTime(event.occurredAt)}
                         </span>
                       </div>
-                      <h3>{event.title}</h3>
+                      <h3>
+                        <Link href={`/events/${event.eventId}`}>{event.title}</Link>
+                      </h3>
                       <div className="event-summary">{event.summary}</div>
                       {event.explanation ? (
                         <div className="event-reason">
@@ -66,6 +70,7 @@ export default async function SavedPage() {
                       <Badge variant="accent">已收藏</Badge>
                       <form action={updateDashboardEventStateAction}>
                         <input name="eventId" type="hidden" value={event.eventId} />
+                        <input name="returnTo" type="hidden" value="/saved" />
                         <button
                           aria-label="标记已读"
                           className="icon-action"
@@ -75,19 +80,22 @@ export default async function SavedPage() {
                           value="read"
                         >
                           <Check aria-hidden="true" size={14} />
+                          <span>已读</span>
                         </button>
                       </form>
                       <form action={updateDashboardEventStateAction}>
                         <input name="eventId" type="hidden" value={event.eventId} />
+                        <input name="returnTo" type="hidden" value="/saved" />
                         <button
                           aria-label="取消收藏"
                           className="icon-action"
                           name="action"
                           title="取消收藏"
                           type="submit"
-                          value="dismiss"
+                          value="unsave"
                         >
                           <X aria-hidden="true" size={14} />
+                          <span>取消收藏</span>
                         </button>
                       </form>
                       {event.primaryItemUrl ? (
@@ -100,6 +108,7 @@ export default async function SavedPage() {
                           title="查看原文"
                         >
                           <ExternalLink aria-hidden="true" size={14} />
+                          <span>原文</span>
                         </a>
                       ) : null}
                     </div>

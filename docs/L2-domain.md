@@ -86,12 +86,14 @@ UNREAD ──save───────> SAVED
 UNREAD ──dismiss────> DISMISSED
 READ ────save───────> SAVED
 SAVED ───dismiss────> DISMISSED
+SAVED ───unsave─────> READ（已有 readAt）或 UNREAD
 * ───────archive────> ARCHIVED
 ```
 
 规则：
 - Dashboard 主列表只展示 `UNREAD` 和 `SAVED` 事件；`READ` 与 `DISMISSED` 默认从主信息流隐藏。
-- 状态动作必须同时写 `IntelligenceEvent`、`UserItemState` 和 `FeedbackEvent`，为偏好学习保留信号。
+- `read` / `save` / `dismiss` 必须同时写 `IntelligenceEvent`、`UserItemState` 和 `FeedbackEvent`，为偏好学习保留信号。
+- `unsave` 只取消收藏并恢复为已有阅读状态或未读状态，不写 `DISMISS`，避免把“取消收藏”误记为负反馈。
 
 ### TaskRun 状态机
 
@@ -132,6 +134,9 @@ FAILED ──retry───> RUNNING
 - Worker 运行时从 DB 读取并解密 Key → 注入 adapter → 调用完成后丢弃明文，不写入日志。
 - 环境变量（`AI_API_KEY`、`BRAVE_SEARCH_API_KEY` 等）仅作为 DB 未配置时的 fallback，不是主配置方式。
 - 当前 `Subscription` 只承载凭证；Phase 15 将在同一张表上扩展 Plan/Stripe/配额字段，演进为完整 BYOK + 订阅模型。
+- AI 模型列表（嗅探自 `GET /models`）为远端派生数据，不持久化到 `Subscription` 表；Admin 页面支持按需刷新并从下拉框选择模型，支持"自定义..."选项回退到自由输入。
+- AI 凭证连接测试在 `GET /models` 不可用时自动回退到 `POST /chat/completions`（最小 payload）兜底验证，确保 Azure、DeepSeek 等非标准 `/models` 端点的凭证也能正常测试。
+- 自定义 provider 可通过"手动确认" checkbox 跳过自动测试，但服务端仍校验 API Key 非空。
 
 
 

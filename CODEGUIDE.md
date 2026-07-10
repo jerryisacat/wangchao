@@ -174,6 +174,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 - `.env_example` 只能放占位符。
 - 导出内容必须保留来源链接和生成时间。
 - 商业化阶段必须补 tenant isolation、权限测试、usage audit。
+- AI 凭证与搜索凭证相互独立：UI 通过独立表单实例各自管理状态，`upsertAiCredential` 和 `upsertSearchCredential` 分别操作 `Subscription` 表的不同字段，不互相阻断。删除某一类凭证不会影响另一类。
 
 ---
 
@@ -204,6 +205,13 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 | `packages/ui` | 共享 UI 包（预留，当前空 scaffold） | [docs/L3-modules.md#packagesui](L3-modules.md#packagesui) |
 | `apps/web` | Next.js App Router 产品界面 | [docs/L3-modules.md#appsweb](L3-modules.md#appsweb) |
 | `apps/worker` | Node.js 后台 worker | [docs/L3-modules.md#appsworker](L3-modules.md#appsworker) |
+
+关键文件索引：
+
+| 文件 | 职责摘要 |
+|---|---|
+| `apps/web/src/app/admin/settings/credential-form.tsx` | AI/搜索凭证表单，模型嗅探下拉、自定义 provider 手动确认、计费提示 |
+| `apps/web/src/app/admin/settings/providers.ts` | Provider 常量集中定义（`AI_PROVIDERS`/`SEARCH_PROVIDERS`/`defaultAiBaseUrl`），前后端统一数据源。 |
 
 关键调用链索引：
 

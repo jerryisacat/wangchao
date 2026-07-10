@@ -17,9 +17,9 @@ export function TopicFilter({
   view = "all",
 }: TopicFilterProps) {
   return (
-    <div className={cn("topic-filter", className)}>
+    <nav aria-label="主题筛选" className={cn("topic-filter", className)}>
       <a
-        aria-selected={activeTopicId === null}
+        aria-current={activeTopicId === null ? "page" : undefined}
         className="topic-filter-item"
         href={buildTopicHref({ query, topicId: "", view })}
       >
@@ -27,7 +27,7 @@ export function TopicFilter({
       </a>
       {topics.map((topic) => (
         <a
-          aria-selected={activeTopicId === topic.id}
+          aria-current={activeTopicId === topic.id ? "page" : undefined}
           className="topic-filter-item"
           href={buildTopicHref({ query, topicId: topic.id, view })}
           key={topic.id}
@@ -35,7 +35,7 @@ export function TopicFilter({
           {topic.name}
         </a>
       ))}
-    </div>
+    </nav>
   );
 }
 

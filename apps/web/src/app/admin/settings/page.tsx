@@ -3,6 +3,7 @@ import Link from "next/link";
 import {
   deleteAiCredentialAction,
   deleteSearchCredentialAction,
+  listAiModelsAction,
   testAiCredentialAction,
   testSearchCredentialAction,
   upsertAiCredentialAction,
@@ -62,6 +63,10 @@ export default async function AdminSettingsPage({
         />
       ) : null}
 
+      <p className="mb-4 text-sm text-muted-foreground">
+        AI 凭证与搜索凭证相互独立，可分别保存与清除。配置其中一项不会影响另一项。
+      </p>
+
       <Tabs defaultValue="ai">
         <TabsList>
           <TabsTrigger value="ai">
@@ -85,7 +90,7 @@ export default async function AdminSettingsPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="mb-4 rounded-md border border-border bg-[#0f0f13] p-4">
+              <div className="mb-4 rounded-md border border-border bg-surface p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <Badge variant={credential?.ai.hasKey ? "success" : "muted"}>
                     {credential?.ai.hasKey ? "已配置" : "未配置"}
@@ -128,6 +133,7 @@ export default async function AdminSettingsPage({
                 currentBaseUrl={credential?.ai.baseUrl ?? null}
                 currentProvider={credential?.ai.provider ?? null}
                 formAction={upsertAiCredentialAction}
+                listModelsAction={listAiModelsAction}
                 mode="ai"
                 testAction={testAiCredentialAction}
               />
@@ -160,7 +166,7 @@ export default async function AdminSettingsPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="mb-4 rounded-md border border-border bg-[#0f0f13] p-4">
+              <div className="mb-4 rounded-md border border-border bg-surface p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <Badge
                     variant={credential?.search.hasKey ? "success" : "muted"}

@@ -48,7 +48,11 @@ export default async function PreferencesPage() {
                       <span>{Math.round(preference.confidence * 100)}%</span>
                       <div
                         aria-label={`置信度 ${Math.round(preference.confidence * 100)}%`}
+                        aria-valuemax={100}
+                        aria-valuemin={0}
+                        aria-valuenow={Math.round(preference.confidence * 100)}
                         className="confidence-meter"
+                        role="progressbar"
                       >
                         <span
                           style={{

@@ -106,6 +106,9 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - API Key 在数据库中使用 AES-256-GCM 加密存储，加密密钥来自 `ENCRYPTION_KEY` 环境变量。
 - Admin 后台不显示完整 API Key，仅展示脱敏 hint（如 `sk-...xyz`）；可新增或覆盖 Key，但不可查看。
 - Worker 运行时优先从 DB 读取并解密 Key，DB 未配置时 fallback 到环境变量。
+- AI 凭证表单支持"刷新模型列表"按钮，嗅探 OpenAI-compatible 端点（`GET /models`）的可用模型列表，填充为下拉选择框；支持"自定义..."选项回退到手填模型名。
+- 自定义 provider 的凭证可通过"我已确认此 Key 有效" checkbox 手动确认后保存，无需通过自动测试验证。
+- AI 凭证连接测试优先使用 `GET /models` 端点；若返回 404/405/415/501 或超时，自动回退到 `POST /chat/completions`（最小 payload，`max_tokens: 1`）兜底验证。测试时会产生极少量 API 费用，UI 已添加提示。
 
 ### AI
 
@@ -145,7 +148,7 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 ## 测试与验证入口
 
-- `pnpm smoke:web` 运行 Playwright smoke tests；默认单 worker 启动 `@wangchao/web` production server，避免真实 Server Action 与外部 RSS 验证并行互相干扰，因此需要先完成 `pnpm build`，并提供可用 `DATABASE_URL`。如已有服务可用，可设置 `PLAYWRIGHT_BASE_URL` 跳过内置 webServer。
+- `pnpm smoke:web` 运行 Playwright smoke tests；默认单 worker 启动 `@wangchao/web` production server，避免真实 Server Action 与外部 RSS 验证并行互相干扰，因此需要先完成 `pnpm build`，并提供可用 `DATABASE_URL`。如已有服务可用，可设置 `PLAYWRIGHT_BASE_URL` 跳过内置 webServer。用例覆盖搜索/筛选、情报详情、收藏取消、主题创建/管理、Admin Tabs/客户端校验；`tests/smoke/responsive.spec.ts` 额外覆盖 11 个页面在 320/375/414/768/1024/1440px 下的超框、44px 触达目标和主按钮对比度。
 - `apps/web/src/app/api/health/route.ts` 是 Web health endpoint，返回 web service 状态和数据库检查结果。
 - `apps/worker/src/index.ts --health` 是 worker health check 入口，可通过根脚本 `pnpm worker:health` 调用。
 - `docs/deployment.md` 记录当前 Railway 部署顺序、环境变量、服务配置、日志、备份和回滚策略。
@@ -161,4 +164,4 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - 2026-07-06 本地 Docker Postgres 已通过 `db:validate`、`db:generate`、`db:migrate`、`db:seed`、数据库写入 smoke test、Web `/api/health` 和 `worker:health`；浏览器创建主题 + RSS Server Action 已验证写入 Postgres。
 - 当前环境曾出现公网 RSS 抓取 `https://hnrss.org/newest?points=100` 失败并记录 `TaskRun(FAILED)`；后续个人使用前需要用真实可访问 RSS 复测，或手动使用离线 fixture source 验证 worker 闭环。
 - 2026-07-06 生产发现 `apps/web/src/app/page.tsx` 被 Next.js 静态预渲染，导致 Railway 上 `/api/health` database `ok` 但首页仍显示预览 fallback；已通过 `export const dynamic = "force-dynamic"` 修复，后续首页会读取运行时工作区数据。
-- 2026-07-08 已补 Playwright smoke 用例覆盖首页搜索/主题/视图 URL 状态和事件详情入口；当前本机 Chromium 因 macOS sandbox `MachPortRendezvousServer` permission denied 无法启动，已用临时 Docker Postgres + production server + HTTP smoke 验证 `/api/health`、`/?q=OpenAI&view=high`、`/events/[eventId]` 和 `/exports/events/[eventId]`。
+- 2026-07-10 已安装与 Playwright 匹配的 Chromium，并在沙箱外通过本地 Prisma Postgres + 干净 `next build` / `next start` 完成桌面/移动交互 smoke；同时通过 11 个页面 × 6 档宽度的响应式矩阵。不要让 `next dev` 与 `next build` / `next start` 同时使用同一个 `apps/web/.next`，并发写入会制造无效或不一致的客户端产物。

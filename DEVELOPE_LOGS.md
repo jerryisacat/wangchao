@@ -4,6 +4,17 @@
 
 ## 2026-07-10
 
+### Phase 3/8：全站交互、响应式与可访问性多轮审计
+
+- Phase: Cross-phase / Phase 3 (产品壳) + Phase 8 (Dashboard MVP)
+- Scope: 以桌面和 320/375/414/768/1024/1440px 六档宽度逐页审计首页、简报、收藏、偏好、信源、主题列表/新建/详情/编辑、情报详情和 Admin 设置；修复首页/收藏页超框、收藏页旧网格压缩、纯图标入口难发现、控件不足 44px、酸黄 CTA 白字低对比、主题筛选语义、偏好置信度语义和取消收藏误写 `DISMISS`。
+- Alignment: 符合 `FRONTEND.md` 的 mobile-first、无横向滚动、44px 触达、语义 token、键盘路径和高对比要求；状态语义同步 `docs/L2-domain.md`，前端调用链同步 `docs/L3-modules.md`。
+- Missing: 未新增暗色/亮色主题切换；当前产品仍只提供既定暗色视觉语言。清除 API 凭证的二次确认仍是既有后续项。
+- Bugs: 首轮发现 320px 首页和收藏页被长主题 Badge 撑宽；收藏页 `event-row` 遗留三列结构把正文放进 58px 列；全局未分层 `a { color: inherit }` 覆盖 `text-accent-foreground`，使主 CTA 变成酸黄底白字；“取消收藏”此前提交 `dismiss` 并跳回首页。
+- Fixes: 长 Badge 限宽省略；收藏页改两列并增加详情/文字动作；主导航补偏好、主题和设置文字入口及当前态；Button/Input/Tabs 统一 44px；链接 hover 排除 Button；新增独立 `unsave` 状态动作，不创建负反馈；新增全站响应式 Playwright 回归。
+- Verification: 本地 Prisma Postgres migration/seed + 审计 fixture；生产构建 smoke 11 passed / 1 skipped（唯一收藏被桌面轮先移除）；响应式矩阵 1 passed（11 页面 × 6 宽度）；最终桌面/移动截图抽查通过。完整仓库验证见本轮 `AGENTS_CHANGELOGS.md`。
+- Follow-up: 后续 UI 变更继续运行 `pnpm smoke:web` 和响应式矩阵；避免 `next dev` 与 `next build` / `next start` 并发写同一 `.next`。
+
 ### Issue #11：Worker 抓取增强 — 并发、退避、错误追踪、Parser 加固
 
 - Phase: Phase 5 (Worker 抓取) 增强 + Phase 11 (信源治理) 部分补齐

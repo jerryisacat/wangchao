@@ -20,8 +20,45 @@ test("dashboard search and filters keep URL state", async ({ page }) => {
     await topicLinks.first().click();
     await expect(page).toHaveURL(/q=OpenAI/);
     await expect(page).toHaveURL(/view=high/);
-    await expect(topicLinks.first()).toHaveAttribute("aria-selected", "true");
+    await expect(topicLinks.first()).toHaveAttribute("aria-current", "page");
   }
+});
+
+test("saved events can be opened and removed in place", async ({ page }) => {
+  await page.goto("/saved");
+  const savedRows = page.locator(".saved-event-row");
+  const savedCount = await savedRows.count();
+
+  if (savedCount === 0) {
+    test.skip(true, "No saved events are available in this workspace.");
+  }
+
+  const firstSavedRow = savedRows.first();
+  const detailLink = firstSavedRow.locator('a[href^="/events/"]');
+  await expect(detailLink).toBeVisible();
+
+  await firstSavedRow.getByRole("button", { name: "取消收藏" }).click();
+  await expect(page).toHaveURL(/\/saved/);
+  await expect(savedRows).toHaveCount(savedCount - 1);
+});
+
+test("admin credential tabs and client validation remain interactive", async ({ page }) => {
+  await page.goto("/admin/settings");
+  await expect(page.getByRole("heading", { name: "API Key 配置" })).toBeVisible();
+
+  await page.getByRole("tab", { name: "搜索凭证" }).click();
+  await expect(page.getByPlaceholder("输入新的搜索 API Key")).toBeVisible();
+
+  await page.getByRole("tab", { name: "AI 凭证" }).click();
+  const showKeyButton = page.getByRole("button", { name: "显示 Key" });
+  await expect(showKeyButton).toBeVisible();
+  await expect(showKeyButton).not.toHaveAttribute("tabindex", "-1");
+
+  await page.getByRole("button", { name: "测试当前配置" }).click();
+  await expect(
+    page.getByText("API Key 为必填项，请输入后再测试。"),
+  ).toBeVisible();
+  await expect(page.getByLabel("API Key (必填)")).toBeFocused();
 });
 
 test("first intelligence card opens a stable detail page", async ({ page }) => {
