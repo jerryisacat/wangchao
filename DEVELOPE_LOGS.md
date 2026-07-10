@@ -4,6 +4,17 @@
 
 ## 2026-07-10
 
+### Issue #11：Worker 抓取增强 — 并发、退避、错误追踪、Parser 加固
+
+- Phase: Phase 5 (Worker 抓取) 增强 + Phase 11 (信源治理) 部分补齐
+- Scope: 为 Worker 抓取管线增加并发控制（内联 pLimit）、指数退避 + jitter、HTTP 状态感知的错误分类、Source 级错误追踪字段（lastError/lastErrorAt/consecutiveFailures）、RSS/Atom parser 加固（content:encoded、Atom rel=alternate、数字字符引用）、质量报告显示 source 错误状态。
+- Alignment: 符合 `REFACTOR_PLAN.md` Phase 5 的 Worker 抓取要求和 `AGENTS.md` §13 验证规则。退避策略避免对死源无差别重试；错误分类避免 4xx 无意义重试；Source 错误追踪补齐了 Phase 11 治理决策的数据来源。
+- Missing: RSS/Atom parser 仍为 regex 基础，未替换为完整 XML parser（`fast-xml-parser` 等）；未实现 auto-mute（仅统计展示，治理决策留给人工）；并发压测未做。
+- Bugs: 无已知 bug。
+- Fixes: (1) `isFetchRssRetryable` 最初未覆盖 TypeError（fetch 网络失败的典型异常），review 后修复；(2) 最初引入 `p-limit` 依赖但因 ESM 构建冲突改为内联 pLimit。
+- Verification: `pnpm typecheck` ✓ (7/7), `pnpm lint` ✓ (7/7), `pnpm test` ✓ (7/7), `pnpm build` ✓ (7/7), `git diff --check` ✓.
+- Follow-up: Parser 完整 XML parser 替换可单独排期；auto-mute 可在人工治理运行稳定后评估；大规模 source 并发压测。
+
 ### Issue #12：AI Adapter 测试补齐 + Issue #16：前端表单 primitives 迁移
 
 - Phase: Cross-phase / Phase 6 (AI adapter) + Phase 3 (前端组件)
@@ -284,7 +295,7 @@
 
 - Scope: 为 `packages/sources` 实现无新增依赖的 RSS/Atom fetch + parse + normalize；为 `packages/db` 增加 active RSS source 查询、source fetch TaskRun 创建/完成/失败、source `lastFetchedAt` 更新和 Item 幂等 upsert；为 `apps/worker` 实现 `runFetchCycle()`，逐个抓取 active RSS source，最多尝试 3 次，并写入 `Item`。
 - Alignment: 部分符合 `REFACTOR_PLAN.md` Phase 5 和 `AGENTS.md`。抓取和长任务在 worker 中执行，没有放进 request lifecycle；RSS fetch、item normalize、URL canonicalization、source fetch status、TaskRun 错误记录、attempt 上限和幂等 upsert 都已有代码路径。因为本地依赖和 Postgres 仍未恢复，尚不能证明 worker 能真实写入 Postgres。
-- Missing: 没有真实 RSS 网络抓取验证；没有本地 Postgres 上的 item 写入验证；没有并发控制、调度器常驻循环、退避等待、source 级错误统计、candidate source observation 或完整 source quality report；RSS parser 是轻量实现，未覆盖所有 RSS/Atom 扩展格式。
+- Missing: 没有真实 RSS 网络抓取验证；~~没有并发控制~~（已补齐：内联 pLimit + WANGCHAO_FETCH_CONCURRENCY）、~~退避等待~~（已补齐：指数退避 + jitter + WANGCHAO_FETCH_BACKOFF_BASE_MS）、~~source 级错误统计~~（已补齐：lastError/lastErrorAt/consecutiveFailures + 质量报告显示）；RSS parser 已加固（content:encoded、Atom rel=alternate、数字实体），但仍为 regex 基础，未替换为完整 XML parser；未实现 auto-mute（留人工决策）。
 - Bugs: 静态审计发现初版 TaskRun 虽有 attempt 字段但没有实际重试行为；已补 `MAX_FETCH_ATTEMPTS=3` 的重试循环，每次尝试写独立 TaskRun。仍保留未验证风险：Prisma JSON 类型、worker TypeScript 编译和运行时模块解析未通过真实 typecheck/build。
 - Fixes: 新增 `fetchRssFeed()` / `parseRssFeed()` / `NormalizedSourceItem`；新增 `listActiveRssSourcesForFetch()`、`createSourceFetchTaskRun()`、`completeTaskRun()`、`failTaskRun()`、`recordSourceFetchSuccess()`、`upsertFetchedItems()`；worker 新增 `runFetchCycle()` 和 bounded retry。
 - Verification: 已运行 `git diff --check`，通过；已运行 `rg` 静态调用链检查，确认 worker -> sources -> db 的 Phase 5 路径存在。未运行 `pnpm typecheck/build/test`，因为当前 `node_modules` 链接未恢复，pnpm 会触发 registry 访问并持续 DNS 失败；未运行真实 worker/Postgres/RSS 端到端验证。

@@ -148,6 +148,15 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                           <span>{formatDiscoveryChannel(source.discoveryChannel)}</span>
                         ) : null}
                       </div>
+                      {source.consecutiveFailures > 0 ? (
+                        <p className="source-error-hint">
+                          连续失败 {source.consecutiveFailures} 次 ·{" "}
+                          {source.lastErrorAt
+                            ? formatDateTime(source.lastErrorAt)
+                            : "时间未知"}
+                          {source.lastError ? `: ${source.lastError}` : ""}
+                        </p>
+                      ) : null}
                       <p>
                         {source.topicName} · 建议 {formatRecommendation(source.recommendation)} · 最近{" "}
                         {source.lastFetchedAt

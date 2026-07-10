@@ -213,6 +213,9 @@ export interface SourceGovernanceRecord {
   filteredItems: number;
   hitRate: number;
   lastFetchedAt: Date | null;
+  lastError: string | null;
+  lastErrorAt: Date | null;
+  consecutiveFailures: number;
   mutedReason: string | null;
   noiseRate: number;
   qualityScore: number;
@@ -905,6 +908,9 @@ export async function listSourceGovernanceReport(
       filteredItems,
       hitRate,
       lastFetchedAt: source.lastFetchedAt,
+      lastError: source.lastError,
+      lastErrorAt: source.lastErrorAt,
+      consecutiveFailures: source.consecutiveFailures,
       mutedReason: readObservationReason(observation?.evidence),
       name: source.name,
       noiseRate,
@@ -1097,6 +1103,21 @@ export async function failTaskRun(
   });
 }
 
+export async function recordSourceFetchFailure(
+  prisma: PrismaClient,
+  sourceId: string,
+  errorMessage: string,
+) {
+  return prisma.source.update({
+    where: { id: sourceId },
+    data: {
+      lastError: errorMessage,
+      lastErrorAt: new Date(),
+      consecutiveFailures: { increment: 1 },
+    },
+  });
+}
+
 export async function recordSourceFetchSuccess(
   prisma: PrismaClient,
   sourceId: string,
@@ -1105,6 +1126,9 @@ export async function recordSourceFetchSuccess(
     where: { id: sourceId },
     data: {
       lastFetchedAt: new Date(),
+      lastError: null,
+      lastErrorAt: null,
+      consecutiveFailures: 0,
     },
   });
 }

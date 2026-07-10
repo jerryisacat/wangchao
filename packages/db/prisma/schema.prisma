@@ -209,6 +209,9 @@ model Source {
   trustScore         Float               @default(0)
   qualityScore       Float               @default(0)
   lastFetchedAt      DateTime?
+  lastError          String?
+  lastErrorAt        DateTime?
+  consecutiveFailures Int              @default(0)
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   topic              Topic               @relation(fields: [topicId], references: [id], onDelete: Cascade)
   items              Item[]

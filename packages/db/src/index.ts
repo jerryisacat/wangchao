@@ -53,6 +53,7 @@ export {
   recordUsageEvent,
   recordSourceQualityObservation,
   recordSourceFetchSuccess,
+  recordSourceFetchFailure,
   recordMarkdownExport,
   markItemFiltered,
   updateDashboardEventState,

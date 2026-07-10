@@ -36,6 +36,32 @@ export interface FetchRssFeedOptions {
   timeoutMs?: number;
 }
 
+export class FetchRssError extends Error {
+  constructor(
+    message: string,
+    readonly status?: number,
+    override readonly cause?: unknown,
+  ) {
+    super(message);
+    this.name = "FetchRssError";
+  }
+}
+
+export function isFetchRssRetryable(error: unknown): boolean {
+  if (error instanceof FetchRssError) {
+    return (
+      error.status === undefined ||
+      error.status === 408 ||
+      error.status === 429 ||
+      error.status >= 500
+    );
+  }
+  return (
+    (error instanceof Error && error.name === "AbortError") ||
+    (error instanceof TypeError)
+  );
+}
+
 export interface RssFeedValidationResult {
   itemCount: number;
   title: string;
@@ -66,10 +92,18 @@ export async function fetchRssFeed(
     });
 
     if (!response.ok) {
-      throw new Error(`RSS fetch failed with HTTP ${response.status}`);
+      throw new FetchRssError(`RSS fetch failed with HTTP ${response.status}`, response.status);
     }
 
-    return parseRssFeed(await response.text());
+    try {
+      return parseRssFeed(await response.text());
+    } catch (parseError) {
+      throw new FetchRssError(
+        parseError instanceof Error ? parseError.message : "RSS feed parsing failed",
+        undefined,
+        parseError,
+      );
+    }
   } finally {
     clearTimeout(timeout);
   }
@@ -152,6 +186,7 @@ function parseEntry(entryXml: string): NormalizedSourceItem | null {
   }
 
   const summary =
+    firstText(entryXml, "content:encoded") ??
     firstText(entryXml, "description") ??
     firstText(entryXml, "summary") ??
     firstText(entryXml, "content");
@@ -196,8 +231,15 @@ function firstLink(xml: string): string | undefined {
     return rssLink;
   }
 
-  const atomHref = xml.match(/<link\b[^>]*href=["']([^"']+)["'][^>]*>/i)?.[1];
-  return atomHref ? decodeXml(atomHref.trim()) : undefined;
+  const alternateLink = xml.match(
+    /<link\b[^>]*\brel=["']alternate["'][^>]*\bhref=["']([^"']+)["'][^>]*>/i,
+  )?.[1];
+  if (alternateLink) {
+    return decodeXml(alternateLink.trim());
+  }
+
+  const anyLink = xml.match(/<link\b[^>]*\bhref=["']([^"']+)["'][^>]*>/i)?.[1];
+  return anyLink ? decodeXml(anyLink.trim()) : undefined;
 }
 
 function stripCdata(value: string): string {
@@ -206,6 +248,12 @@ function stripCdata(value: string): string {
 
 function decodeXml(value: string): string {
   return value
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) =>
+      String.fromCodePoint(Number.parseInt(hex, 16)),
+    )
+    .replace(/&#(\d+);/g, (_, dec) =>
+      String.fromCodePoint(Number.parseInt(dec, 10)),
+    )
     .replaceAll("&amp;", "&")
     .replaceAll("&lt;", "<")
     .replaceAll("&gt;", ">")

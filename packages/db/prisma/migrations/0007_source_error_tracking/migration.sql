@@ -1,0 +1,3 @@
+ALTER TABLE "Source" ADD COLUMN "lastError" TEXT;
+ALTER TABLE "Source" ADD COLUMN "lastErrorAt" TIMESTAMP(3);
+ALTER TABLE "Source" ADD COLUMN "consecutiveFailures" INTEGER NOT NULL DEFAULT 0;

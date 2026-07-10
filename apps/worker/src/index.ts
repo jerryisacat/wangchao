@@ -44,6 +44,7 @@ import {
   markItemFiltered,
   mergeSemanticEvents,
   recordUsageEvent,
+  recordSourceFetchFailure,
   recordSourceFetchSuccess,
   recordSourceQualityObservation,
   upsertFetchedItems,
@@ -60,11 +61,66 @@ import {
   extractExternalLinksFromPage,
   extractTopicKeywords,
   fetchRssFeed,
+  FetchRssError,
+  isFetchRssRetryable,
   type FeedCandidate,
   type SearchProvider,
 } from "@wangchao/sources";
 
 const MAX_FETCH_ATTEMPTS = 3;
+
+function getFetchConcurrency(): number {
+  const raw = process.env.WANGCHAO_FETCH_CONCURRENCY;
+  if (!raw) return 5;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+}
+
+function getBackoffBaseMs(): number {
+  const raw = process.env.WANGCHAO_FETCH_BACKOFF_BASE_MS;
+  if (!raw) return 1000;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1000;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function pLimit(concurrency: number): <T>(fn: () => Promise<T>) => Promise<T> {
+  const queue: Array<() => void> = [];
+  let activeCount = 0;
+
+  const next = () => {
+    activeCount--;
+    if (queue.length > 0) {
+      queue.shift()!();
+    }
+  };
+
+  return <T>(fn: () => Promise<T>): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      const run = () => {
+        activeCount++;
+        fn().then(
+          (result) => {
+            resolve(result);
+            next();
+          },
+          (error) => {
+            reject(error);
+            next();
+          },
+        );
+      };
+
+      if (activeCount < concurrency) {
+        run();
+      } else {
+        queue.push(run);
+      }
+    });
+}
 
 export interface WorkerFetchCycleResult {
   analyzedItems: number;
@@ -74,6 +130,7 @@ export interface WorkerFetchCycleResult {
   filteredItems: number;
   generatedBriefings: number;
   insertedOrUpdatedItems: number;
+  lastError?: unknown;
   recordedSourceObservations: number;
   updatedPreferenceMemories: number;
 }
@@ -143,8 +200,11 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     updatedPreferenceMemories: 0,
   };
 
-  for (const source of sources) {
-    const sourceResult = await fetchSourceWithRetries(prisma, source);
+  const limit = pLimit(getFetchConcurrency());
+  const sourceResults = await Promise.all(
+    sources.map((source) => limit(() => fetchSourceWithRetries(prisma, source))),
+  );
+  for (const sourceResult of sourceResults) {
     result.fetchedSources += sourceResult.fetchedSources;
     result.failedSources += sourceResult.failedSources;
     result.insertedOrUpdatedItems += sourceResult.insertedOrUpdatedItems;
@@ -730,11 +790,25 @@ async function fetchSourceWithRetries(
   prisma: ReturnType<typeof getPrismaClient>,
   source: FetchedSourceRecord,
 ): Promise<WorkerFetchCycleResult> {
+  let lastError: unknown;
+
   for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt += 1) {
     const result = await fetchSourceAttempt(prisma, source, attempt);
 
     if (result.fetchedSources === 1) {
       return result;
+    }
+
+    lastError = result.lastError;
+
+    if (!isFetchRssRetryable(lastError)) {
+      break;
+    }
+
+    if (attempt < MAX_FETCH_ATTEMPTS) {
+      const backoffMs = getBackoffBaseMs() * 2 ** (attempt - 1);
+      const jitterMs = backoffMs * (0.5 + Math.random() * 0.5);
+      await sleep(Math.round(jitterMs));
     }
   }
 
@@ -746,6 +820,7 @@ async function fetchSourceWithRetries(
     filteredItems: 0,
     generatedBriefings: 0,
     insertedOrUpdatedItems: 0,
+    lastError,
     recordedSourceObservations: 0,
     updatedPreferenceMemories: 0,
   };
@@ -755,7 +830,7 @@ async function fetchSourceAttempt(
   prisma: ReturnType<typeof getPrismaClient>,
   source: FetchedSourceRecord,
   attempt: number,
-): Promise<WorkerFetchCycleResult> {
+): Promise<WorkerFetchCycleResult & { lastError?: unknown }> {
   const taskRun = await createSourceFetchTaskRun(prisma, source, {
     attempt,
     maxAttempts: MAX_FETCH_ATTEMPTS,
@@ -798,7 +873,10 @@ async function fetchSourceAttempt(
       updatedPreferenceMemories: 0,
     };
   } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
     await failTaskRun(prisma, taskRun.id, error);
+    await recordSourceFetchFailure(prisma, source.id, errorMessage);
+
     return {
       analyzedItems: 0,
       createdOrUpdatedEvents: 0,
@@ -807,6 +885,7 @@ async function fetchSourceAttempt(
       filteredItems: 0,
       generatedBriefings: 0,
       insertedOrUpdatedItems: 0,
+      lastError: error,
       recordedSourceObservations: 0,
       updatedPreferenceMemories: 0,
     };

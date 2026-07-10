@@ -1,5 +1,25 @@
 ## 2026-07-10
 
+### test+refactor:Worker 抓取增强 — 并发、退避、错误追踪、Parser 加固（Issue #11）
+
+- Cause: Worker 抓取管线存在 4 个问题：(1) 顺序抓取无并发控制，source 多时易超时；(2) 重试 3 次零延迟、不区分 4xx/5xx/网络错误；(3) Source 模型无错误追踪字段；(4) RSS parser 不支持 content:encoded、Atom rel=alternate、数字字符引用。
+- Changed:
+  - `packages/db/prisma/schema.prisma`：Source 模型新增 `lastError String?`、`lastErrorAt DateTime?`、`consecutiveFailures Int @default(0)`。
+  - `packages/db/prisma/migrations/0007_source_error_tracking/migration.sql`：新增 migration。
+  - `packages/db/src/repositories.ts`：新增 `recordSourceFetchFailure`（原子 increment consecutiveFailures）；修改 `recordSourceFetchSuccess` 重置错误字段；`SourceGovernanceRecord` 增加 3 个字段；`listSourceGovernanceReport` 返回新字段。
+  - `apps/worker/src/index.ts`：引入内联 `pLimit` 并发控制（替代 p-limit 依赖，避免 ESM 构建冲突）；fetch loop 从顺序 for 改为 `pLimit` + `Promise.all`；`fetchSourceWithRetries` 增加指数退避（base * 2^(attempt-1) * jitter 0.5-1.0）+ 错误分类（retryable → 继续，non-retryable → 立即 break）；`fetchSourceAttempt` 失败时写入 Source 错误字段。
+  - `packages/sources/src/index.ts`：新增 `FetchRssError`（携带 HTTP status）+ `isFetchRssRetryable`（408/429/5xx/AbortError/TypeError → retryable，4xx → non-retryable）；`fetchRssFeed` 抛 `FetchRssError`；parser 加固：`content:encoded` 优先于 description、Atom `rel="alternate"` 过滤、数字字符引用解码。
+  - `packages/sources/src/parser.fixtures.ts`：新增 6 个 parser 边界 fixture。
+  - `apps/web/src/app/sources/page.tsx`：质量报告显示 source 连续失败次数和最近错误信息。
+  - `apps/web/src/lib/topic-source-data.ts`：`SourceGovernanceSummary` 增加 3 个字段映射。
+  - `.env_example`：新增 `WANGCHAO_FETCH_CONCURRENCY`、`WANGCHAO_FETCH_BACKOFF_BASE_MS`。
+  - `docs/L4-operations.md`：新增 Worker 抓取环境变量章节 + migration 计数更新到 7。
+  - `docs/L3-modules.md`：新增 parser.fixtures.ts 条目。
+  - `apps/web/package.json`、`apps/worker/package.json`：短暂加入 p-limit 后因 ESM 构建冲突移除，改用内联 pLimit。
+- Files: 13 个文件（详见上方）。
+- Verification: `pnpm typecheck` ✓ (7/7), `pnpm lint` ✓ (7/7), `pnpm test` ✓ (7/7), `pnpm build` ✓ (7/7), `pnpm --filter @wangchao/sources build` 后手动运行 parser/discovery fixtures 通过。
+- Notes / Risk: (1) 内联 pLimit 在并发 5+ 时行为与 p-limit 一致，但未做大规模压测；(2) Source 错误字段写入会增加每轮 worker ~N 次 DB update（N = failed source 数），可接受；(3) Parser 加固仅覆盖最高影响缺口（content:encoded、Atom rel、数字实体），完整 XML parser 替换未做；(4) 质量统计部分（SourceObservation + listSourceGovernanceReport + web UI）已 ~80% 完成，本次补齐 fetch 级错误追踪。
+
 ### refactor:迁移表单到 shadcn Input/Label/Textarea primitives（Issue #16）
 
 - Cause: `Input`、`Label`、`Textarea` 三个 shadcn primitives 已存在于 `apps/web/src/components/ui/`，但被 0 个页面使用。`topics/new` 和 `admin/settings` 仍使用 raw `<input>` / `<textarea>` / `<label>` + 手写 CSS 类（`.topic-form`、`.candidate-form`、`.topic-name-input`），是"声称完成但实际没落地"的技术债。

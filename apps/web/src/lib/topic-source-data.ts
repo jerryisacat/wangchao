@@ -15,6 +15,9 @@ export interface SourceGovernanceSummary {
   eventCount: number;
   filteredItems: number;
   hitRate: number;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  consecutiveFailures: number;
   lastFetchedAt: string;
   name: string;
   noiseRate: number;
@@ -285,6 +288,9 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
         eventCount: source.eventCount,
         filteredItems: source.filteredItems,
         hitRate: source.hitRate,
+        lastError: source.lastError,
+        lastErrorAt: source.lastErrorAt?.toISOString() ?? null,
+        consecutiveFailures: source.consecutiveFailures,
         lastFetchedAt: source.lastFetchedAt?.toISOString() ?? "",
         name: source.name,
         noiseRate: source.noiseRate,
