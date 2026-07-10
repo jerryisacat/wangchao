@@ -1,4 +1,5 @@
 import { buildEventDisplayFields } from "@/lib/event-display";
+import type { DashboardEventRecord } from "@wangchao/db";
 
 export type DataMode = "database" | "error";
 
@@ -81,6 +82,14 @@ export interface BriefingSummary {
   generatedAt: string;
   title: string;
   topicName: string;
+}
+
+export interface SavedEventsPage {
+  events: DashboardEventSummary[];
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  total: number;
 }
 
 export interface TenantSummary {
@@ -238,39 +247,9 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
         title: briefing.title,
         topicName: briefing.topicName,
       })),
-      events: weightedEvents.map(({ event, preferenceScore }) => {
-        const display = buildEventDisplayFields({
-          explanation: event.explanation,
-          primaryItemUrl: event.primaryItemUrl,
-          summary: event.summary,
-          title: event.title,
-        });
-
-        return {
-          category: event.category ?? "general",
-          entities: event.entities ?? [],
-          eventId: event.eventId,
-          explanation: display.explanation,
-          followUpSuggestion: event.followUpSuggestion ?? "",
-          gravityScore: preferenceScore,
-          mergeReason: event.mergeReason ?? null,
-          mergedSourceCount: event.mergedSourceCount,
-          occurredAt:
-            event.occurredAt?.toISOString() ?? event.updatedAt.toISOString(),
-          primaryItemUrl: display.primaryItemUrl,
-          score: event.score,
-          sourceId: event.sourceId ?? "",
-          sourceName: event.sourceName ?? "Unknown source",
-          sourceUrl: event.sourceUrl ?? "",
-          status: event.userStatus ?? event.status,
-          summary: display.summary,
-          title: event.title,
-          topicId: event.topicId,
-          topicName: event.topicName,
-          updatedAt: event.updatedAt.toISOString(),
-          userSaved: event.userSaved,
-        };
-      }),
+      events: weightedEvents.map(({ event, preferenceScore }) =>
+        toDashboardEventSummary(event, preferenceScore),
+      ),
       memberships,
       mode: "database",
       message: "工作区已连接，情报排序会结合重要度和你的反馈偏好。",
@@ -335,6 +314,42 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
   }
 }
 
+export async function getSavedEventsPage(
+  requestedPage: number,
+  pageSize = 30,
+): Promise<SavedEventsPage> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not configured. Set DATABASE_URL to connect to Postgres.",
+    );
+  }
+
+  const {
+    ensureDefaultWorkspace,
+    getPrismaClient,
+    listSavedDashboardEvents,
+  } = await import("@wangchao/db");
+  const prisma = getPrismaClient();
+  const workspace = await ensureDefaultWorkspace(prisma);
+  const result = await listSavedDashboardEvents(
+    prisma,
+    {
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
+    },
+    requestedPage,
+    pageSize,
+  );
+
+  return {
+    events: result.events.map((event) => toDashboardEventSummary(event)),
+    page: result.page,
+    pageCount: result.pageCount,
+    pageSize: result.pageSize,
+    total: result.total,
+  };
+}
+
 export async function getDashboardEventDetail(
   eventId: string,
 ): Promise<DashboardEventSummary | null> {
@@ -362,40 +377,47 @@ export async function getDashboardEventDetail(
       return null;
     }
 
-    const display = buildEventDisplayFields({
-      explanation: event.explanation,
-      primaryItemUrl: event.primaryItemUrl,
-      summary: event.summary,
-    });
-
-    return {
-      category: event.category ?? "general",
-      entities: event.entities ?? [],
-      eventId: event.eventId,
-      explanation: display.explanation,
-      followUpSuggestion: event.followUpSuggestion ?? "",
-      gravityScore: event.gravityScore,
-      mergeReason: event.mergeReason ?? null,
-      mergedSourceCount: event.mergedSourceCount,
-      occurredAt:
-        event.occurredAt?.toISOString() ?? event.updatedAt.toISOString(),
-      primaryItemUrl: display.primaryItemUrl,
-      score: event.score,
-      sourceId: event.sourceId ?? "",
-      sourceName: event.sourceName ?? "Unknown source",
-      sourceUrl: event.sourceUrl ?? "",
-      status: event.userStatus ?? event.status,
-      summary: display.summary,
-      title: event.title,
-      topicId: event.topicId,
-      topicName: event.topicName,
-      updatedAt: event.updatedAt.toISOString(),
-      userSaved: event.userSaved,
-    };
+    return toDashboardEventSummary(event);
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "情报详情暂时无法读取，请稍后重试。";
 
     throw new Error(message);
   }
+}
+
+function toDashboardEventSummary(
+  event: DashboardEventRecord,
+  gravityScore = event.gravityScore,
+): DashboardEventSummary {
+  const display = buildEventDisplayFields({
+    explanation: event.explanation,
+    primaryItemUrl: event.primaryItemUrl,
+    summary: event.summary,
+    title: event.title,
+  });
+
+  return {
+    category: event.category ?? "general",
+    entities: event.entities ?? [],
+    eventId: event.eventId,
+    explanation: display.explanation,
+    followUpSuggestion: event.followUpSuggestion ?? "",
+    gravityScore,
+    mergeReason: event.mergeReason ?? null,
+    mergedSourceCount: event.mergedSourceCount,
+    occurredAt: event.occurredAt?.toISOString() ?? event.updatedAt.toISOString(),
+    primaryItemUrl: display.primaryItemUrl,
+    score: event.score,
+    sourceId: event.sourceId ?? "",
+    sourceName: event.sourceName ?? "Unknown source",
+    sourceUrl: event.sourceUrl ?? "",
+    status: event.userStatus ?? event.status,
+    summary: display.summary,
+    title: event.title,
+    topicId: event.topicId,
+    topicName: event.topicName,
+    updatedAt: event.updatedAt.toISOString(),
+    userSaved: event.userSaved,
+  };
 }

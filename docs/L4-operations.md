@@ -27,6 +27,8 @@ pnpm worker:source-discovery
 pnpm smoke:web
 ```
 
+`pnpm test` 会实际执行 `packages/core`、`packages/ai`、`packages/sources` 和 `packages/db` 的编译后 fixture；`packages/db` fixture 当前覆盖收藏集合查询的 tenant/user scope 与分页边界，而不是只做 TypeScript 编译。
+
 ## Railway 部署脚本
 
 ```bash

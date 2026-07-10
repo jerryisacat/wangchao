@@ -94,6 +94,8 @@ SAVED ───unsave─────> READ（已有 readAt）或 UNREAD
 - Dashboard 主列表只展示 `UNREAD` 和 `SAVED` 事件；`READ` 与 `DISMISSED` 默认从主信息流隐藏。
 - `read` / `save` / `dismiss` 必须同时写 `IntelligenceEvent`、`UserItemState` 和 `FeedbackEvent`，为偏好学习保留信号。
 - `unsave` 只取消收藏并恢复为已有阅读状态或未读状态，不写 `DISMISS`，避免把“取消收藏”误记为负反馈。
+- 对已收藏事件执行 `read` 时写入 `readAt` 和 `READ` feedback，但保留 `saved=true` / `SAVED`；只有显式 `unsave` 才移出收藏集合。
+- 收藏集合以 `(userId, eventId)` 对应的 `UserItemState.saved=true` 为查询依据，并按用户分页读取；不得通过截取首页事件后再过滤来推断完整收藏集合。
 
 ### TaskRun 状态机
 

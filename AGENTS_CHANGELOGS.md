@@ -1,5 +1,13 @@
 ## 2026-07-11
 
+### fix:第二轮 SPEC/README 实现审计 — 补齐完整收藏集合
+
+- Cause: `SPEC.md` 5.5/5.7 和 `README.md` 将收藏描述为可持续管理的用户集合，但 `/saved` 实际复用首页 `listDashboardEvents(limit=30)` 后再过滤；第 31 条及更早的收藏无法出现。继续反查状态动作时发现，收藏页“标记已读”还会把 `saved` 清零，形成隐式取消收藏，与独立“取消收藏”动作冲突。
+- Changed: 新增 `listSavedDashboardEvents()`，按 `organizationId + userId + UserItemState.saved=true` 查询、统计并分页，页码越界自动收敛；`/saved` 改用 dedicated loader，展示收藏总数和上一页/下一页，移动端分页纵向排布。已收藏事件执行 READ 时保留 `saved=true/SAVED`，同时写入 `readAt` 和 READ feedback；只有显式 unsave 才移出集合。新增可实际执行的 `packages/db` repository fixture，覆盖 tenant/user scope、65 条/3 页分页、越界页和 read-preserves-save 状态转换；Playwright 用例同步覆盖分页语义、已读不减少条目、取消收藏才减少条目。统一 Web event record → display summary 映射，避免首页、收藏、详情三处漂移。
+- Files: `packages/db/src/repositories.ts`, `packages/db/src/repositories.fixtures.ts`（新）, `packages/db/src/index.ts`, `packages/db/package.json`, `apps/web/src/lib/topic-source-data.ts`, `apps/web/src/app/saved/page.tsx`, `apps/web/src/app/globals.css`, `tests/smoke/web.spec.ts`, `README.md`, `README-en.md`, `FRONTEND.md`, `CODEGUIDE.md`, `docs/L2-domain.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification: `pnpm --filter @wangchao/db test` ✓（实际执行 repository fixture），`pnpm typecheck` ✓（7/7），`pnpm lint` ✓（7/7），`pnpm test` ✓（7/7），`pnpm build` ✓（7/7，沙箱外 Turbopack），`pnpm exec playwright test --list` ✓（14 tests 可发现/编译），`git diff --check` ✓。本轮没有可控 Postgres/浏览器数据环境（Docker daemon 未运行），未执行会写状态的 Playwright smoke。
+- Notes / Risk: 分页每页 30 条，repository 强制 1-100 的 page size；查询完全基于用户状态，不再依赖 organization 级 `IntelligenceEvent.status='SAVED'`，为后续多用户隔离保留正确边界。本轮未新增 GitHub Issue，因为确认的是已有功能壳的实现缺陷并已直接修复。
+
 ### fix:第一轮 SPEC/README 实现审计 — 修正情报卡片原文链接
 
 - Cause: 按 `SPEC.md` 5.4/5.8、`README.md`“未读情报是如何被筛选和录入”以及 `FRONTEND.md` 的原文动作承诺反查真实调用链时，发现首页情报卡片把 `Source.url` 作为“原文”首选地址；RSS Source URL 通常是 feed 本身，因此该按钮虽然可点击，实际没有打开 `Item.url` 指向的原始文章，与详情页行为不一致。

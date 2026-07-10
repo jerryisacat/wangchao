@@ -90,6 +90,8 @@
 
 每条情报支持：已读 / 收藏 / 忽略 / 导出。每个动作都会同时写 `IntelligenceEvent` 状态、`UserItemState` 和 `FeedbackEvent`，作为偏好学习的信号。
 
+“已保存”页面直接按当前用户的 `UserItemState.saved=true` 分页查询完整收藏集合，不依赖首页最多 30 条情报的加载结果；标记已读不会取消收藏，只有显式“取消收藏”才移出集合，而且不会被记录为负反馈。
+
 ```text
 SAVE / EXPORT  →  提升 category / source 权重（+2 信号）
 READ           →  轻微提升（+0.5）

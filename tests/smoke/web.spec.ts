@@ -36,8 +36,15 @@ test("saved events can be opened and removed in place", async ({ page }) => {
   const firstSavedRow = savedRows.first();
   const detailLink = firstSavedRow.locator('a[href^="/events/"]');
   await expect(detailLink).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "收藏分页" }),
+  ).toContainText(/第 \d+ \/ \d+ 页/);
 
-  await firstSavedRow.getByRole("button", { name: "取消收藏" }).click();
+  await firstSavedRow.getByRole("button", { name: "标记已读" }).click();
+  await expect(page).toHaveURL(/\/saved/);
+  await expect(savedRows).toHaveCount(savedCount);
+
+  await savedRows.first().getByRole("button", { name: "取消收藏" }).click();
   await expect(page).toHaveURL(/\/saved/);
   await expect(savedRows).toHaveCount(savedCount - 1);
 });

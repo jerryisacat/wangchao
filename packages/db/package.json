@@ -17,7 +17,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:validate": "prisma validate --schema prisma/schema.prisma",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json && node -e \"await import('./dist/repositories.fixtures.js').then((m) => m.runRepositoryFixtures())\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "prisma": {

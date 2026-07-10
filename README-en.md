@@ -15,7 +15,7 @@ The current product path is a TypeScript monorepo for a personal intelligence wo
 | Area | Status |
 |---|---|
 | Main stack | TypeScript, pnpm, Turborepo, Next.js App Router, Prisma, Postgres, Node.js worker |
-| Web | Topic/RSS form, intelligence feed, event detail, read/save/dismiss actions, preference memory, briefing export, source governance, workspace member/usage audit, `/api/health` |
+| Web | Topic/RSS form, intelligence feed, event detail, read/save/dismiss actions, user-scoped paginated saved collection, preference memory, briefing export, source governance, workspace member/usage audit, `/api/health` |
 | Worker | RSS fetch, item writes, deterministic intelligence pipeline, preference learning, daily briefing, source quality observation, `--health` |
 | Database | Prisma schema, initial migration, seed, workspace models, UsageEvent |
 

@@ -131,6 +131,14 @@ export interface DashboardEventRecord {
   userStatus: "UNREAD" | "READ" | "SAVED" | "DISMISSED" | "ARCHIVED" | null;
 }
 
+export interface DashboardEventPage {
+  events: DashboardEventRecord[];
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  total: number;
+}
+
 type DashboardEventQueryResult = Prisma.IntelligenceEventGetPayload<{
   include: {
     primaryItem: {
@@ -1483,6 +1491,73 @@ export async function listDashboardEvents(
   return events.map(mapDashboardEventRecord);
 }
 
+export async function listSavedDashboardEvents(
+  prisma: PrismaClient,
+  scope: TenantScope & { userId: string },
+  requestedPage = 1,
+  requestedPageSize = 30,
+): Promise<DashboardEventPage> {
+  const pageSize = Math.max(1, Math.min(100, Math.trunc(requestedPageSize) || 30));
+  const savedWhere: Prisma.IntelligenceEventWhereInput = {
+    organizationId: scope.organizationId,
+    userStates: {
+      some: {
+        saved: true,
+        userId: scope.userId,
+      },
+    },
+  };
+  const total = await prisma.intelligenceEvent.count({ where: savedWhere });
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(
+    pageCount,
+    Math.max(1, Math.trunc(requestedPage) || 1),
+  );
+
+  const events = await prisma.intelligenceEvent.findMany({
+    where: savedWhere,
+    include: {
+      topic: {
+        select: {
+          name: true,
+        },
+      },
+      primaryItem: {
+        select: {
+          sourceId: true,
+          url: true,
+          source: {
+            select: {
+              name: true,
+              url: true,
+            },
+          },
+        },
+      },
+      eventItems: {
+        select: { itemId: true, role: true },
+      },
+      userStates: {
+        where: {
+          userId: scope.userId,
+        },
+        take: 1,
+      },
+    },
+    orderBy: [{ updatedAt: "desc" }, { gravityScore: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+  });
+
+  return {
+    events: events.map(mapDashboardEventRecord),
+    page,
+    pageCount,
+    pageSize,
+    total,
+  };
+}
+
 export async function getDashboardEventById(
   prisma: PrismaClient,
   scope: TenantScope & { eventId: string; userId: string },
@@ -1979,7 +2054,7 @@ export async function updateDashboardEventState(
       primaryItemId: true,
       userStates: {
         where: { userId: input.userId },
-        select: { readAt: true },
+        select: { readAt: true, saved: true },
         take: 1,
       },
     },
@@ -2017,11 +2092,15 @@ export async function updateDashboardEventState(
     return;
   }
 
+  const preserveSaved =
+    input.action === "read" && event.userStates[0]?.saved === true;
+  const nextStatus = preserveSaved ? "SAVED" : target.status;
+
   await prisma.$transaction([
     prisma.intelligenceEvent.update({
       where: { id: event.id },
       data: {
-        status: target.status,
+        status: nextStatus,
       },
     }),
     prisma.userItemState.upsert({
@@ -2034,15 +2113,15 @@ export async function updateDashboardEventState(
       update: {
         dismissedAt: target.status === "DISMISSED" ? now : null,
         readAt: target.status === "READ" ? now : undefined,
-        saved: target.status === "SAVED",
-        status: target.status,
+        saved: preserveSaved || target.status === "SAVED",
+        status: nextStatus,
       },
       create: {
         dismissedAt: target.status === "DISMISSED" ? now : undefined,
         eventId: event.id,
         readAt: target.status === "READ" ? now : undefined,
-        saved: target.status === "SAVED",
-        status: target.status,
+        saved: preserveSaved || target.status === "SAVED",
+        status: nextStatus,
         userId: input.userId,
       },
     }),

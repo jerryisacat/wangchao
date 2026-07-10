@@ -4,6 +4,17 @@
 
 ## 2026-07-11
 
+### SPEC/README 实现一致性审计 Round 2：完整收藏集合与状态语义
+
+- Phase: Cross-phase / Phase 8 (Dashboard MVP) + Phase 9 (反馈学习)
+- Scope: 验证 `/saved` 是否从用户状态读取完整收藏集合、分页是否覆盖首页上限之外的数据，以及收藏页 READ/unsave 动作是否具有独立且可追溯的状态语义。
+- Alignment: `listSavedDashboardEvents()` 以 `UserItemState.saved=true` 和 organization/user 双重 scope 为 source of truth，符合 `SPEC.md` 5.5 的用户阅读状态与 5.7 的收藏集合目标；READ 保留收藏但仍写入 readAt/feedback，unsave 才移出集合，README 已同步当前真实行为。
+- Missing: 浏览器 smoke 用例已补，但当前没有可控 Postgres，Docker/OrbStack daemon 也未运行，因此本轮以可执行 repository fixture + production build 证明查询和状态转换；后续部署或本地数据库可用时再执行两端浏览器写入验证。
+- Bugs: `/saved` 只过滤首页 Top 30，旧收藏不可达；READ 将 `saved` 设为 false，等同隐式 unsave；页面忽略 workspace data mode 时还可能把读取错误显示为“暂无收藏”，改用 dedicated loader 后数据库错误进入统一 error boundary，不再伪装空集合。
+- Fixes: 新增完整收藏分页 repository 和 Web loader；添加总数/页码/上一页/下一页；移动端分页布局；READ-preserves-save 状态转换；新增 DB runtime fixture 并让 `packages/db test` 从“只编译”升级为实际执行；统一 dashboard event display mapper；同步 L2/L3/L4 和 README。
+- Verification: DB fixture、全仓 typecheck/lint/test/build、Playwright test discovery/compile、diff check 全部通过；详细命令见同日 `AGENTS_CHANGELOGS.md`。
+- Follow-up: 下一轮审计 daily briefing 的日期幂等与历史列表完整性，并继续核对 README 的 TaskRun/AI 管线描述；存在实现壳则修复，完全缺失且未被 Issue 覆盖则查重建单。
+
 ### SPEC/README 实现一致性审计 Round 1：情报卡片原文入口
 
 - Phase: Cross-phase / Phase 8 (Dashboard MVP) + ongoing implementation audit

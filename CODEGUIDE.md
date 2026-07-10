@@ -198,7 +198,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 
 | 包/目录 | 职责摘要 | 链接 |
 |---|---|---|
-| `packages/db` | Postgres/Prisma schema、migration、client、repositories | [docs/L3-modules.md#packagesdb](L3-modules.md#packagesdb) |
+| `packages/db` | Postgres/Prisma schema、migration、client、repositories 与可执行 repository fixtures | [docs/L3-modules.md#packagesdb](L3-modules.md#packagesdb) |
 | `packages/core` | 领域逻辑：topic profile、relevance、event draft、gravity ranking、preference、Markdown | [docs/L3-modules.md#packagescore](L3-modules.md#packagescore) |
 | `packages/ai` | OpenAI-compatible adapter、parser、source recommendation | [docs/L3-modules.md#packagesai](L3-modules.md#packagesai) |
 | `packages/sources` | RSS/Web source adapter、search provider、discovery | [docs/L3-modules.md#packagessources](L3-modules.md#packagessources) |
@@ -210,6 +210,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 
 | 文件 | 职责摘要 |
 |---|---|
+| `packages/db/src/repositories.fixtures.ts` | Repository runtime fixtures，覆盖收藏查询 scope、分页边界和状态转换。 |
 | `apps/web/src/app/admin/settings/credential-form.tsx` | AI/搜索凭证表单，模型嗅探下拉、自定义 provider 手动确认、计费提示 |
 | `apps/web/src/app/admin/settings/providers.ts` | Provider 常量集中定义（`AI_PROVIDERS`/`SEARCH_PROVIDERS`/`defaultAiBaseUrl`），前后端统一数据源。 |
 

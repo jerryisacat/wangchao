@@ -12,15 +12,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
-import { getTopicSourceWorkspace } from "@/lib/topic-source-data";
+import { getSavedEventsPage } from "@/lib/topic-source-data";
 
 export const dynamic = "force-dynamic";
 
-export default async function SavedPage() {
-  const workspace = await getTopicSourceWorkspace();
-  const savedEvents = workspace.events.filter(
-    (event) => event.userSaved || event.status === "SAVED",
-  );
+interface SavedPageProps {
+  searchParams?:
+    | Promise<Record<string, string | string[] | undefined>>
+    | Record<string, string | string[] | undefined>;
+}
+
+export default async function SavedPage({ searchParams }: SavedPageProps) {
+  const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
+  const savedPage = await getSavedEventsPage(readPage(resolvedSearchParams.page));
+  const savedEvents = savedPage.events;
 
   return (
     <>
@@ -33,7 +38,7 @@ export default async function SavedPage() {
       <div>
         <Card variant="work">
           <CardHeader>
-            <CardTitle>收藏列表</CardTitle>
+            <CardTitle>收藏列表 · {savedPage.total}</CardTitle>
           </CardHeader>
           <CardContent>
             {savedEvents.length === 0 ? (
@@ -116,11 +121,40 @@ export default async function SavedPage() {
                 ))}
               </div>
             )}
+            {savedPage.total > 0 ? (
+              <nav aria-label="收藏分页" className="saved-pagination">
+                <span>
+                  第 {savedPage.page} / {savedPage.pageCount} 页
+                </span>
+                <div className="saved-pagination-actions">
+                  {savedPage.page > 1 ? (
+                    <Button asChild size="sm" variant="ghost">
+                      <Link href={savedPageHref(savedPage.page - 1)}>上一页</Link>
+                    </Button>
+                  ) : null}
+                  {savedPage.page < savedPage.pageCount ? (
+                    <Button asChild size="sm" variant="ghost">
+                      <Link href={savedPageHref(savedPage.page + 1)}>下一页</Link>
+                    </Button>
+                  ) : null}
+                </div>
+              </nav>
+            ) : null}
           </CardContent>
         </Card>
       </div>
     </>
   );
+}
+
+function readPage(value: string | string[] | undefined): number {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const page = Number.parseInt(rawValue ?? "1", 10);
+  return Number.isFinite(page) && page > 0 ? page : 1;
+}
+
+function savedPageHref(page: number): string {
+  return page <= 1 ? "/saved" : `/saved?page=${page}`;
 }
 
 function formatDateTime(value: string): string {
