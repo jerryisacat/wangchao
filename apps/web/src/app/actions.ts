@@ -1276,13 +1276,23 @@ export async function deleteSearchCredentialAction(formData: FormData): Promise<
   redirect(actionRedirectHref("/admin/settings", type, message));
 }
 
-export async function testAiCredentialAction(formData: FormData): Promise<void> {
-  let message = "AI 凭证连接测试成功。";
-  let type: ActionRedirectType = "notice";
-
+export async function testAiCredentialAction(
+  formData: FormData,
+): Promise<{ message: string; ok: boolean }> {
   try {
     if (!process.env.DATABASE_URL) {
       throw new Error("Database connection is required to test credentials.");
+    }
+
+    const apiKey = readRequiredField(formData, "aiApiKey");
+    const provider = readOptionalField(formData, "aiProvider");
+    const baseUrl = readOptionalField(formData, "aiBaseUrl") || defaultAiBaseUrl(provider);
+    if (!baseUrl) {
+      return { message: "请填写 AI Provider 的 Base URL 后再测试。", ok: false };
+    }
+    const parsed = new URL(baseUrl);
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return { message: "请输入有效的 HTTP 或 HTTPS Base URL。", ok: false };
     }
 
     const {
@@ -1303,27 +1313,23 @@ export async function testAiCredentialAction(formData: FormData): Promise<void> 
       ["OWNER", "ADMIN"],
     );
 
-    const result = await testAiCredential(prisma, { organizationId: workspace.organizationId });
-    message = result.message;
-    type = result.ok ? "notice" : "error";
+    return testAiCredential({ apiKey, baseUrl });
   } catch (error) {
     logActionError("testAiCredentialAction", error);
-    message = toUserActionError(error);
-    type = "error";
+    return { message: toUserActionError(error), ok: false };
   }
-
-  revalidatePath("/admin/settings");
-  redirect(actionRedirectHref("/admin/settings", type, message));
 }
 
-export async function testSearchCredentialAction(formData: FormData): Promise<void> {
-  let message = "搜索凭证连接测试成功。";
-  let type: ActionRedirectType = "notice";
-
+export async function testSearchCredentialAction(
+  formData: FormData,
+): Promise<{ message: string; ok: boolean }> {
   try {
     if (!process.env.DATABASE_URL) {
       throw new Error("Database connection is required to test credentials.");
     }
+
+    const apiKey = readRequiredField(formData, "searchApiKey");
+    const provider = readOptionalField(formData, "searchProvider") || "brave";
 
     const {
       assertMembershipRole,
@@ -1343,15 +1349,19 @@ export async function testSearchCredentialAction(formData: FormData): Promise<vo
       ["OWNER", "ADMIN"],
     );
 
-    const result = await testSearchCredential(prisma, { organizationId: workspace.organizationId });
-    message = result.message;
-    type = result.ok ? "notice" : "error";
+    return testSearchCredential({ apiKey, provider });
   } catch (error) {
     logActionError("testSearchCredentialAction", error);
-    message = toUserActionError(error);
-    type = "error";
+    return { message: toUserActionError(error), ok: false };
   }
+}
 
-  revalidatePath("/admin/settings");
-  redirect(actionRedirectHref("/admin/settings", type, message));
+function defaultAiBaseUrl(provider: string): string {
+  const defaults: Record<string, string> = {
+    anthropic: "https://api.anthropic.com/v1",
+    deepseek: "https://api.deepseek.com/v1",
+    groq: "https://api.groq.com/openai/v1",
+    openai: "https://api.openai.com/v1",
+  };
+  return defaults[provider] ?? "";
 }

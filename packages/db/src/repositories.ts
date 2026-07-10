@@ -2441,23 +2441,26 @@ export interface CredentialTestResult {
   message: string;
 }
 
-export async function testAiCredential(
-  prisma: PrismaClient,
-  scope: TenantScope,
-): Promise<CredentialTestResult> {
-  const credentials = await getDecryptedCredentials(prisma, scope);
-  const ai = credentials?.ai;
-  if (!ai) {
-    return { ok: false, message: "未配置 AI 凭证，请先保存再测试。" };
-  }
+export interface AiCredentialTestInput {
+  apiKey: string;
+  baseUrl: string;
+}
 
-  const baseUrl = ai.baseUrl.replace(/\/+$/, "");
+export interface SearchCredentialTestInput {
+  apiKey: string;
+  provider: string;
+}
+
+export async function testAiCredential(
+  credential: AiCredentialTestInput,
+): Promise<CredentialTestResult> {
+  const baseUrl = credential.baseUrl.replace(/\/+$/, "");
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
 
   try {
     const response = await fetch(`${baseUrl}/models`, {
-      headers: { authorization: `Bearer ${ai.apiKey}` },
+      headers: { authorization: `Bearer ${credential.apiKey}` },
       method: "GET",
       signal: controller.signal,
     });
@@ -2483,16 +2486,9 @@ export async function testAiCredential(
 }
 
 export async function testSearchCredential(
-  prisma: PrismaClient,
-  scope: TenantScope,
+  credential: SearchCredentialTestInput,
 ): Promise<CredentialTestResult> {
-  const credentials = await getDecryptedCredentials(prisma, scope);
-  const search = credentials?.search;
-  if (!search) {
-    return { ok: false, message: "未配置搜索凭证，请先保存再测试。" };
-  }
-
-  const { apiKey, provider } = search;
+  const { apiKey, provider } = credential;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
 

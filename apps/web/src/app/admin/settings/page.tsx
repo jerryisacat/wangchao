@@ -1,4 +1,4 @@
-import { Check, CircleAlert, KeyRound, Search, Trash2, Zap } from "lucide-react";
+import { Check, CircleAlert, KeyRound, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import {
   deleteAiCredentialAction,
@@ -125,18 +125,14 @@ export default async function AdminSettingsPage({
               </div>
 
               <CredentialForm
+                currentBaseUrl={credential?.ai.baseUrl ?? null}
                 currentProvider={credential?.ai.provider ?? null}
                 formAction={upsertAiCredentialAction}
                 mode="ai"
+                testAction={testAiCredentialAction}
               />
 
               <div className="mt-3 flex flex-wrap gap-2">
-                <form action={testAiCredentialAction}>
-                  <Button size="sm" type="submit" variant="ghost">
-                    <Zap aria-hidden="true" size={14} />
-                    测试连接
-                  </Button>
-                </form>
                 <form action={deleteAiCredentialAction}>
                   <Button size="sm" type="submit" variant="danger">
                     <Trash2 aria-hidden="true" size={14} />
@@ -203,15 +199,10 @@ export default async function AdminSettingsPage({
                 currentProvider={credential?.search.provider ?? null}
                 formAction={upsertSearchCredentialAction}
                 mode="search"
+                testAction={testSearchCredentialAction}
               />
 
               <div className="mt-3 flex flex-wrap gap-2">
-                <form action={testSearchCredentialAction}>
-                  <Button size="sm" type="submit" variant="ghost">
-                    <Zap aria-hidden="true" size={14} />
-                    测试连接
-                  </Button>
-                </form>
                 <form action={deleteSearchCredentialAction}>
                   <Button size="sm" type="submit" variant="danger">
                     <Trash2 aria-hidden="true" size={14} />

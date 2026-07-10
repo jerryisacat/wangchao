@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { startTransition, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { Eye, EyeOff, KeyRound, Loader2, Search } from "lucide-react";
+import { Check, Eye, EyeOff, KeyRound, Loader2, Search, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -74,17 +74,19 @@ const SEARCH_PROVIDERS: ProviderOption[] = [
 ];
 
 function SubmitButton({
+  disabled,
   icon,
   label,
   variant,
 }: {
+  disabled: boolean;
   icon: React.ReactNode;
   label: string;
   variant: "primary" | "secondary";
 }) {
   const { pending } = useFormStatus();
   return (
-    <Button disabled={pending} size="sm" type="submit" variant={variant}>
+    <Button disabled={disabled || pending} size="sm" type="submit" variant={variant}>
       {pending ? (
         <Loader2 aria-hidden="true" className="animate-spin" size={14} />
       ) : (
@@ -96,23 +98,39 @@ function SubmitButton({
 }
 
 interface CredentialFormProps {
+  currentBaseUrl?: string | null;
   currentProvider?: string | null;
   formAction: (formData: FormData) => void;
   mode: "ai" | "search";
+  testAction: (formData: FormData) => Promise<{ message: string; ok: boolean }>;
 }
 
 export function CredentialForm({
+  currentBaseUrl,
   currentProvider,
   formAction,
   mode,
+  testAction,
 }: CredentialFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState(
     currentProvider ?? (mode === "ai" ? "openai" : "brave"),
   );
+  const [baseUrl, setBaseUrl] = useState(
+    currentBaseUrl ??
+      (mode === "ai"
+        ? (AI_PROVIDERS.find((item) => item.value === (currentProvider ?? "openai"))
+            ?.defaultBaseUrl ?? "")
+        : ""),
+  );
   const [validationError, setValidationError] = useState("");
+  const [testResult, setTestResult] = useState<{
+    message: string;
+    ok: boolean;
+  } | null>(null);
+  const [isTesting, setIsTesting] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
   const apiKeyRef = useRef<HTMLInputElement>(null);
-  const baseUrlRef = useRef<HTMLInputElement>(null);
 
   const providers = mode === "ai" ? AI_PROVIDERS : SEARCH_PROVIDERS;
   const provider = providers.find((p) => p.value === selectedProvider);
@@ -121,12 +139,15 @@ export function CredentialForm({
 
   function handleProviderChange(value: string) {
     setSelectedProvider(value);
-    if (mode === "ai" && baseUrlRef.current) {
+    if (mode === "ai") {
       const selected = AI_PROVIDERS.find((p) => p.value === value);
-      if (selected?.defaultBaseUrl && !baseUrlRef.current.value) {
-        baseUrlRef.current.value = selected.defaultBaseUrl;
-      }
+      setBaseUrl(selected?.defaultBaseUrl ?? "");
     }
+    setTestResult(null);
+  }
+
+  function handleInputChange() {
+    setTestResult(null);
   }
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
@@ -137,13 +158,42 @@ export function CredentialForm({
       apiKeyRef.current?.focus();
       return;
     }
+    if (!testResult?.ok) {
+      event.preventDefault();
+      setValidationError("请先测试当前 API 配置，测试通过后再保存。");
+      return;
+    }
     setValidationError("");
+  }
+
+  function handleTest() {
+    const form = formRef.current;
+    const apiKey = apiKeyRef.current?.value?.trim() ?? "";
+    if (!form || !apiKey) {
+      setValidationError("API Key 为必填项，请输入后再测试。");
+      apiKeyRef.current?.focus();
+      return;
+    }
+
+    setValidationError("");
+    setIsTesting(true);
+    setTestResult(null);
+    startTransition(async () => {
+      try {
+        setTestResult(await testAction(new FormData(form)));
+      } catch {
+        setTestResult({ message: "测试未完成，请稍后重试。", ok: false });
+      } finally {
+        setIsTesting(false);
+      }
+    });
   }
 
   return (
     <form
       action={formAction}
       className="grid gap-3 rounded-md border border-border bg-[#0f0f13] p-4"
+      ref={formRef}
       onSubmit={handleSubmit}
     >
       <div className="grid gap-2 text-xs font-bold text-muted-foreground">
@@ -158,6 +208,7 @@ export function CredentialForm({
             className="pr-9"
             id={apiKeyFieldId}
             name={apiKeyFieldId}
+            onChange={handleInputChange}
             placeholder={
               mode === "ai" ? "输入新的 API Key" : "输入新的搜索 API Key"
             }
@@ -230,9 +281,13 @@ export function CredentialForm({
             <Input
               id="aiBaseUrl"
               name="aiBaseUrl"
+              onChange={(event) => {
+                setBaseUrl(event.target.value);
+                handleInputChange();
+              }}
               placeholder="https://api.openai.com/v1"
-              ref={baseUrlRef}
               type="url"
+              value={baseUrl}
             />
           </div>
           <div className="grid gap-2 text-xs font-bold text-muted-foreground">
@@ -252,7 +307,44 @@ export function CredentialForm({
         </>
       ) : null}
 
+      {testResult ? (
+        <p
+          aria-live="polite"
+          className={
+            testResult.ok
+              ? "flex items-center gap-1.5 text-xs font-normal text-success"
+              : "text-xs font-normal text-destructive"
+          }
+        >
+          {testResult.ok ? <Check aria-hidden="true" size={14} /> : null}
+          {testResult.message}
+        </p>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          disabled={isTesting}
+          onClick={handleTest}
+          size="sm"
+          type="button"
+          variant="secondary"
+        >
+          {isTesting ? (
+            <Loader2 aria-hidden="true" className="animate-spin" size={14} />
+          ) : (
+            <Zap aria-hidden="true" size={14} />
+          )}
+          {isTesting ? "测试中..." : "测试当前配置"}
+        </Button>
+        {testResult?.ok ? (
+          <span className="flex min-h-11 items-center text-xs text-success">
+            测试通过，可以保存
+          </span>
+        ) : null}
+      </div>
+
       <SubmitButton
+        disabled={!testResult?.ok}
         icon={
           mode === "ai" ? (
             <KeyRound aria-hidden="true" size={14} />

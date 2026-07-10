@@ -1,5 +1,18 @@
 ## 2026-07-10
 
+### fix:先测试再保存 API 凭证
+
+- Cause: `/admin/settings` 的“测试连接”在凭证表单外，只能测试数据库中已保存的旧 Key；新填入的 Key 无法先测，用户会在保存流程中遇到笼统的必填提示，且不符合先验证后持久化的操作顺序。
+- Changed:
+  - `apps/web/src/app/admin/settings/credential-form.tsx`：将 AI/搜索凭证的测试按钮放进各自表单，测试当前输入；测试成功前禁用保存，修改 Key、Provider 或 AI Base URL 后要求重新测试，并在原位展示成功/失败反馈。
+  - `apps/web/src/app/admin/settings/page.tsx`：移除测试已保存凭证的表单外按钮，将两个独立测试 Server Action 传入 AI/搜索表单。
+  - `apps/web/src/app/actions.ts`：测试 Server Action 改为校验当前 FormData、执行权限检查后返回序列化测试结果，不重定向、不写入凭证。
+  - `packages/db/src/repositories.ts`、`packages/db/src/index.ts`：连接测试函数改为接收临时 Key/Provider/Base URL 输入，避免测试路径解密或读取数据库中的旧凭证。
+  - `docs/L3-modules.md`：同步“测试当前输入 → 测试通过 → 保存”的凭证配置链路。
+- Files: `apps/web/src/app/admin/settings/credential-form.tsx`, `apps/web/src/app/admin/settings/page.tsx`, `apps/web/src/app/actions.ts`, `packages/db/src/repositories.ts`, `packages/db/src/index.ts`, `docs/L3-modules.md`, `AGENTS_CHANGELOGS.md`.
+- Verification: `pnpm db:generate` ✓，`pnpm typecheck` ✓，`pnpm lint` ✓，`pnpm test` ✓，`pnpm build` ✓，`git diff --check` ✓。首次 sandbox 内构建被 Turbopack CSS 处理的端口限制拦截，受限环境外复跑通过。
+- Notes / Risk: AI 测试仍使用 OpenAI-compatible `{Base URL}/models`；不兼容该端点的 provider 可能需要手动确认或后续扩展其专用校验协议。
+
 ### fix:凭证表单客户端校验 + 搜索凭证测试连接
 
 - Cause: (1) 提交 API Key 时，React Server Action 的 `<form action={serverAction}>` 绕过浏览器原生 `required` 属性校验，空值直达服务端 `readRequiredField` 后才报错"请补全必填内容后再提交"；(2) 搜索凭证 tab 缺少"测试连接"功能，与 AI 凭证 tab 不对称。

@@ -502,7 +502,14 @@ packages/db getSubscriptionCredentialView(prisma, { organizationId })
   ↓ 返回 SubscriptionCredentialView（脱敏 hint，不含明文）
 Admin UI 渲染 AI/search 凭证状态 + 表单
 
-Admin 提交 AI Key 表单
+Admin 在 AI 表单填入当前配置并测试连接（不写入数据库）
+  ↓ apps/web testAiCredentialAction(formData)
+packages/db assertMembershipRole(['OWNER','ADMIN'])
+  ↓ packages/db testAiCredential({ apiKey, baseUrl })
+AI: fetch GET {baseUrl}/models (Bearer auth, 10s timeout)
+CredentialTestResult { ok, message } 回到表单；通过前禁用保存，任何 Key/Provider/Base URL 修改都会要求重新测试
+
+Admin 测试通过后提交 AI Key 表单
   ↓ apps/web upsertAiCredentialAction(formData)
 packages/db assertMembershipRole(['OWNER','ADMIN'])
   ↓ packages/db upsertAiCredential(prisma, scope, input)
@@ -511,7 +518,14 @@ packages/db/crypto encryptCredential(apiKey, ENCRYPTION_KEY) + maskKeyHint(apiKe
 Subscription.aiEncryptedKey + aiKeyHint + aiBaseUrl + aiModel
 UsageEvent(type='WEB_ACTION', subjectType='subscription')
 
-Admin 提交搜索 Key 表单
+Admin 在搜索表单填入当前配置并测试连接（不写入数据库）
+  ↓ apps/web testSearchCredentialAction(formData)
+packages/db assertMembershipRole(['OWNER','ADMIN'])
+  ↓ packages/db testSearchCredential({ apiKey, provider })
+Search: 按 provider 调用对应搜索 API (10s timeout)
+CredentialTestResult { ok, message } 回到表单；通过前禁用保存，任何 Key/Provider 修改都会要求重新测试
+
+Admin 测试通过后提交搜索 Key 表单
   ↓ apps/web upsertSearchCredentialAction(formData)
 packages/db assertMembershipRole(['OWNER','ADMIN'])
   ↓ packages/db upsertSearchCredential(prisma, scope, input)
@@ -519,15 +533,6 @@ packages/db/crypto encryptCredential + maskKeyHint
   ↓
 Subscription.searchEncryptedKey + searchKeyHint + searchProvider
 UsageEvent(type='WEB_ACTION', subjectType='subscription')
-
-Admin 点击测试连接
-  ↓ apps/web testAiCredentialAction / testSearchCredentialAction(formData)
-packages/db assertMembershipRole(['OWNER','ADMIN'])
-  ↓ packages/db testAiCredential / testSearchCredential(prisma, scope)
-packages/db getDecryptedCredentials -> decryptCredential
-  ↓ AI: fetch GET {baseUrl}/models (Bearer auth, 10s timeout)
-  ↓ Search: 按 provider 调用对应搜索 API (10s timeout)
-CredentialTestResult { ok, message } -> redirect notice/error
 
 Admin 点击清除凭证
   ↓ apps/web deleteAiCredentialAction / deleteSearchCredentialAction(formData)
