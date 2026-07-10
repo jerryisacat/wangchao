@@ -1,5 +1,13 @@
 ## 2026-07-10
 
+### fix:凭证测试后的 Key 输入保持
+
+- Cause: “测试当前配置”的 Server Action 返回后会刷新 Server Component 数据；凭证输入框此前是非受控字段，浏览器可能清空密码值。于是界面仍显示“测试通过”，但随后保存请求缺少 `searchApiKey` 或 `aiApiKey`，服务端正确触发必填防御校验。
+- Changed: `apps/web/src/app/admin/settings/credential-form.tsx` 将 API Key 改为客户端受控状态；测试动作、成功状态和后续保存均读取同一份 Key 状态。AI 与搜索表单各自拥有独立状态，测试其中一个不会影响另一个。`apps/web/src/app/actions.ts` 移除凭证保存与测试路径对通用 `readRequiredField()` 的依赖，改为只校验各自 Key，并返回明确的 AI/搜索 Key 缺失提示，避免“请补全必填内容后再提交”掩盖根因。
+- Files: `apps/web/src/app/admin/settings/credential-form.tsx`, `apps/web/src/app/actions.ts`, `AGENTS_CHANGELOGS.md`.
+- Verification: `pnpm typecheck` ✓，`pnpm lint` ✓，`pnpm test` ✓，`pnpm build` ✓，`git diff --check` ✓。
+- Notes / Risk: Key 只保存在当前浏览器页面的 React 内存和原生表单字段中，不会写入 Local Storage、URL 或日志；刷新/离开页面仍会清空。
+
 ### fix:先测试再保存 API 凭证
 
 - Cause: `/admin/settings` 的“测试连接”在凭证表单外，只能测试数据库中已保存的旧 Key；新填入的 Key 无法先测，用户会在保存流程中遇到笼统的必填提示，且不符合先验证后持久化的操作顺序。

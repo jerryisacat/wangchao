@@ -123,6 +123,7 @@ export function CredentialForm({
             ?.defaultBaseUrl ?? "")
         : ""),
   );
+  const [apiKey, setApiKey] = useState("");
   const [validationError, setValidationError] = useState("");
   const [testResult, setTestResult] = useState<{
     message: string;
@@ -150,9 +151,13 @@ export function CredentialForm({
     setTestResult(null);
   }
 
+  function handleApiKeyChange(value: string) {
+    setApiKey(value);
+    handleInputChange();
+  }
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    const apiKey = apiKeyRef.current?.value?.trim() ?? "";
-    if (!apiKey) {
+    if (!apiKey.trim()) {
       event.preventDefault();
       setValidationError("API Key 为必填项，请输入后再提交。");
       apiKeyRef.current?.focus();
@@ -168,8 +173,7 @@ export function CredentialForm({
 
   function handleTest() {
     const form = formRef.current;
-    const apiKey = apiKeyRef.current?.value?.trim() ?? "";
-    if (!form || !apiKey) {
+    if (!form || !apiKey.trim()) {
       setValidationError("API Key 为必填项，请输入后再测试。");
       apiKeyRef.current?.focus();
       return;
@@ -208,11 +212,12 @@ export function CredentialForm({
             className="pr-9"
             id={apiKeyFieldId}
             name={apiKeyFieldId}
-            onChange={handleInputChange}
+            onChange={(event) => handleApiKeyChange(event.target.value)}
             placeholder={
               mode === "ai" ? "输入新的 API Key" : "输入新的搜索 API Key"
             }
             type={showPassword ? "text" : "password"}
+            value={apiKey}
           />
           <button
             aria-label={showPassword ? "隐藏 Key" : "显示 Key"}

@@ -756,6 +756,18 @@ function actionRedirectHref(
 }
 
 function toUserActionError(error: unknown): string {
+  if (error instanceof Error && error.message === "AI_API_KEY_MISSING") {
+    return "AI API Key 未随保存请求提交，请重新输入后测试并保存。";
+  }
+
+  if (error instanceof Error && error.message === "SEARCH_API_KEY_MISSING") {
+    return "搜索 API Key 未随保存请求提交，请重新输入后测试并保存。";
+  }
+
+  if (error instanceof Error && error.message === "AI_BASE_URL_INVALID") {
+    return "AI Base URL 必须是有效的 HTTP 或 HTTPS 地址。";
+  }
+
   if (error instanceof Error && /HTTP or HTTPS URL/.test(error.message)) {
     return "请输入有效的 HTTP 或 HTTPS RSS 地址。";
   }
@@ -1066,7 +1078,10 @@ export async function upsertAiCredentialAction(formData: FormData): Promise<void
       throw new Error("Database connection is required to configure credentials.");
     }
 
-    const apiKey = readRequiredField(formData, "aiApiKey");
+    const apiKey = readOptionalField(formData, "aiApiKey");
+    if (!apiKey) {
+      throw new Error("AI_API_KEY_MISSING");
+    }
     const baseUrl = readOptionalField(formData, "aiBaseUrl");
     const provider = readOptionalField(formData, "aiProvider");
     const model = readOptionalField(formData, "aiModel");
@@ -1074,7 +1089,7 @@ export async function upsertAiCredentialAction(formData: FormData): Promise<void
     if (baseUrl) {
       const parsed = new URL(baseUrl);
       if (!["http:", "https:"].includes(parsed.protocol)) {
-        throw new Error("AI Base URL must be an HTTP or HTTPS URL.");
+        throw new Error("AI_BASE_URL_INVALID");
       }
     }
 
@@ -1132,7 +1147,10 @@ export async function upsertSearchCredentialAction(formData: FormData): Promise<
       throw new Error("Database connection is required to configure credentials.");
     }
 
-    const apiKey = readRequiredField(formData, "searchApiKey");
+    const apiKey = readOptionalField(formData, "searchApiKey");
+    if (!apiKey) {
+      throw new Error("SEARCH_API_KEY_MISSING");
+    }
     const provider = readOptionalField(formData, "searchProvider");
 
     const {
@@ -1284,7 +1302,10 @@ export async function testAiCredentialAction(
       throw new Error("Database connection is required to test credentials.");
     }
 
-    const apiKey = readRequiredField(formData, "aiApiKey");
+    const apiKey = readOptionalField(formData, "aiApiKey");
+    if (!apiKey) {
+      return { message: "请输入 AI API Key 后再测试。", ok: false };
+    }
     const provider = readOptionalField(formData, "aiProvider");
     const baseUrl = readOptionalField(formData, "aiBaseUrl") || defaultAiBaseUrl(provider);
     if (!baseUrl) {
@@ -1328,7 +1349,10 @@ export async function testSearchCredentialAction(
       throw new Error("Database connection is required to test credentials.");
     }
 
-    const apiKey = readRequiredField(formData, "searchApiKey");
+    const apiKey = readOptionalField(formData, "searchApiKey");
+    if (!apiKey) {
+      return { message: "请输入搜索 API Key 后再测试。", ok: false };
+    }
     const provider = readOptionalField(formData, "searchProvider") || "brave";
 
     const {
