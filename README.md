@@ -224,6 +224,7 @@ curl -fsS http://127.0.0.1:3000/api/health
 | `WANGCHAO_DISCOVERY_FETCH_TIMEOUT_MS` | discovery 网页/RSS 探测超时 |
 | `WANGCHAO_TOPIC_CREATE_SOURCE_LIMIT` | 新建主题时从内置信源包最多写入多少个候选源 |
 | `WANGCHAO_TOPIC_CREATE_FEED_TIMEOUT_MS` | 新建主题时 RSS/Atom 候选源验证超时 |
+| `ENCRYPTION_KEY` | **必填** — Admin 后台 API Key 加密存储密钥。必须为 32 字节 UTF-8 字符串或 64 位 hex。生成方式：`openssl rand -hex 32`。未设置时 Admin 后台无法保存任何 API Key 凭证。 |
 
 ## 开发阶段审计
 

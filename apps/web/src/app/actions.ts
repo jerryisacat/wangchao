@@ -773,6 +773,14 @@ function toUserActionError(error: unknown): string {
     return "请输入有效的 HTTP 或 HTTPS RSS 地址。";
   }
 
+  if (error instanceof Error && /ENCRYPTION_KEY is required/.test(error.message)) {
+    return "加密密钥未配置，请设置 ENCRYPTION_KEY 环境变量后重启服务。";
+  }
+
+  if (error instanceof Error && /DATABASE_URL is required/.test(error.message)) {
+    return "数据库连接未配置，请设置 DATABASE_URL 环境变量后重启服务。";
+  }
+
   if (error instanceof Error && /required/.test(error.message)) {
     return "请补全必填内容后再提交。";
   }
