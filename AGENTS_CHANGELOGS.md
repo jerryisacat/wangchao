@@ -1,5 +1,13 @@
 ## 2026-07-11
 
+### fix:第四轮 SPEC/README 实现审计 — 补齐全管线 TaskRun 审计
+
+- Cause: `REFACTOR_PLAN.md` 将 TaskRun 定义为持久化 worker 状态、重试、错误和耗时的边界，`docs/L2-domain.md` 也列出了六种任务类型；实际代码却只有 `SOURCE_FETCH` / `SOURCE_DISCOVERY` 会写 TaskRun，`AI_RELEVANCE`、`AI_EVENT_EXTRACTION`、`BRIEFING_GENERATION`、`EXPORT_GENERATION` 只是 schema 枚举壳。LLM extraction 失败只写 stderr 并回退规则，AI UsageEvent 又只统计成功响应，导致失败调用和后续阶段无法在数据库审计。
+- Changed: 新增通用 tenant-scoped `createTaskRun()`，fetch/discovery helper 复用同一 RUNNING/attempt/timing 契约。分析周期为每个 Item 写 `AI_RELEVANCE`，有 AI runtime 时另写 `AI_EVENT_EXTRACTION`；成功、filtered、provider 失败和规则 fallback 都收口到 output/errorMessage。简报按主题写 `BRIEFING_GENERATION`，无事件也记录 `skipped-no-events`；事件/简报 Markdown route 写 `EXPORT_GENERATION` 并在 ExportEvent/UsageEvent 完成后收口。AI UsageEvent 改按逻辑 adapter 调用计量（含最终失败调用，内部 HTTP retry 不重复计数），source recommendation/semantic dedup 同步避免只统计成功。删除无调用方的 `listPendingTaskRuns()`，L2 状态机改为当前真实的 RUNNING → SUCCEEDED/FAILED，明确 PENDING/CANCELED 是未实现的队列预留。
+- Files: `packages/db/src/repositories.ts`, `packages/db/src/repositories.fixtures.ts`, `packages/db/src/index.ts`, `apps/worker/src/index.ts`, `apps/web/src/app/exports/briefings/[briefingId]/route.ts`, `apps/web/src/app/exports/events/[eventId]/route.ts`, `SPEC.md`, `README.md`, `README-en.md`, `CODEGUIDE.md`, `docs/L2-domain.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `docs/deployment.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification: `pnpm db:generate` ✓，`pnpm db:validate` ✓，`pnpm typecheck` ✓（7/7），`pnpm lint` ✓（7/7），`pnpm test` ✓（7/7，DB fixture 实际执行 TaskRun 生命周期），`pnpm build` ✓（7/7，沙箱外 Turbopack），`pnpm exec playwright test --list` ✓（16 tests），`git diff --check` ✓。临时 Postgres 16 + 本地 RSS/OpenAI-compatible mock 完整运行 Worker：2 Items、2 Events、1 Briefing；数据库确认 `SOURCE_FETCH=SUCCEEDED`、`AI_RELEVANCE=2 SUCCEEDED`、`AI_EVENT_EXTRACTION=1 SUCCEEDED + 1 FAILED`、fallback relevance output 为 `llmFallback=true`、`BRIEFING_GENERATION=SUCCEEDED`，所有 TaskRun 均有 startedAt/finishedAt，AI_CALL quantity=2 且 metadata 为 1 successful/1 fallback。生产构建 Web route 实际下载简报 Markdown 200，并确认 `EXPORT_GENERATION=SUCCEEDED`、ExportEvent=1、EXPORT UsageEvent=1。
+- Notes / Risk: `PENDING`/`CANCELED`、进程被强杀后的 stale RUNNING 恢复和 Web 任务观测仍不是当前代码能力；现有 Issue #20 已覆盖 Railway Cron + TaskRun 双层观测闭环，本轮不重复建 Issue。TaskRun 仅保存模型名、阶段结果和错误消息，不保存 API Key 或原始凭证明文。
+
 ### fix:第三轮 SPEC/README 实现审计 — 简报日期幂等与完整历史
 
 - Cause: `SPEC.md` 5.9 和 `README.md` 将每日简报描述为按主题、按时间范围生成且可回看，但 Worker 原实现每轮读取全部未读/收藏事件后直接 `Briefing.create()`，没有日期窗口或唯一性约束；同一天重复运行会生成重复简报，旧事件也会反复进入后续日期。`/briefings` 同时复用 Dashboard 的 5 条预览查询，更早历史不可达。

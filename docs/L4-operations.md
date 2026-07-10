@@ -27,7 +27,9 @@ pnpm worker:source-discovery
 pnpm smoke:web
 ```
 
-`pnpm test` 会实际执行 `packages/core`、`packages/ai`、`packages/sources` 和 `packages/db` 的编译后 fixture；`packages/db` fixture 当前覆盖收藏集合的 tenant/user scope、分页与状态转换，以及 Daily Briefing 的时间窗口、幂等 upsert 和历史分页，而不是只做 TypeScript 编译。
+`pnpm test` 会实际执行 `packages/core`、`packages/ai`、`packages/sources` 和 `packages/db` 的编译后 fixture；`packages/db` fixture 当前覆盖收藏集合的 tenant/user scope、分页与状态转换，Daily Briefing 的时间窗口、幂等 upsert、历史分页，以及 TaskRun 的 RUNNING → SUCCEEDED/FAILED 生命周期，而不是只做 TypeScript 编译。
+
+Worker/导出链路变更后，应在临时 Postgres 中至少验证 `TaskRun.type/status/attempt/maxAttempts/startedAt/finishedAt/output/errorMessage`。AI provider 失败但规则 fallback 成功时，应同时看到失败的 `AI_EVENT_EXTRACTION`、成功且 `llmFallback=true` 的 `AI_RELEVANCE`，并确认 `UsageEvent(type='AI_CALL').quantity` 包含最终失败的逻辑 adapter 调用（内部 HTTP retry 不重复计数）。
 
 Briefing schema 变更后必须运行 `pnpm db:generate`、`pnpm db:validate` 和 migration 验证。`0008_briefing_idempotency` 会在增加唯一索引前合并同一 `topicId + period + rangeStart` 的历史重复记录，保留最新简报，将既有 `ExportEvent` 指向保留记录，并合并 `_BriefingEvents` 关系；生产发布前不得跳过 migration/predeploy。
 

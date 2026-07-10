@@ -4,6 +4,17 @@
 
 ## 2026-07-11
 
+### SPEC/README 实现一致性审计 Round 4：全管线 TaskRun 与失败调用计量
+
+- Phase: Cross-phase / Phase 5-10 worker pipeline + Phase 12 usage audit boundary
+- Scope: 验证 schema 中六类 TaskRun 是否都有真实写入者，LLM extraction 失败后规则 fallback 是否仍保留错误证据，AI UsageEvent 是否漏记失败调用，以及 Markdown export 是否同时具备 ExportEvent、UsageEvent 和任务状态。
+- Alignment: fetch/discovery/relevance/extraction/briefing/export 现在都通过同一 tenant-scoped TaskRun 生命周期记录 timing、attempt、output/error；符合 `REFACTOR_PLAN.md` 对 durable worker task status/errors/timing 的要求。分析失败可以降级但不会被伪装成“从未调用 AI”，符合 SPEC 的可解释、可审计边界。
+- Missing: 当前没有 DB queue consumer，`PENDING`/`CANCELED` 仍是预留状态；进程被 SIGKILL/容器强杀时可能遗留 RUNNING，Web 也没有任务历史页。上述 Railway Cron + 应用 TaskRun 观测闭环由既有 Issue #20 继续追踪。
+- Bugs: 四个 TaskRunType 枚举没有任何调用方；LLM extraction 失败只写 stderr；analysis/semantic dedup/source recommendation 的 AI_CALL 计量只覆盖成功结果；简报无事件时没有 durable skipped 证据；Markdown export 只有 ExportEvent/UsageEvent，没有成功/失败任务状态。
+- Fixes: 增加通用 `createTaskRun()`；分析建立外层 relevance 与可选 extraction TaskRun；fallback 保留 failed extraction + successful relevance；简报按主题记录 upsert/skipped；两条 Markdown route 记录 export TaskRun；AI 用量改为逻辑 adapter 调用数并附成功/fallback metadata；删除没有 queue consumer 的死导出 `listPendingTaskRuns()`；更新 repository fixture 和 L2-L4/README/SPEC/deployment 文档。
+- Verification: 全仓 generate/validate/typecheck/lint/test/build、Playwright test discovery 和 diff check 全部通过。临时 Postgres + mock RSS/AI 做真实成功/失败混合 Worker cycle，并用 SQL 核对六条 Worker TaskRun、AI_CALL 数量和 briefing；生产构建 Web route 返回 Markdown 200，SQL 核对 export TaskRun/ExportEvent/UsageEvent，详细结果见同日 `AGENTS_CHANGELOGS.md`。
+- Follow-up: 下一轮审计 README 所述 SourceObservation hit/noise/duplicate 计算是否真实反映 source 事件与去重数据，并继续核对工作区“成员/用量审计”是否只是汇总卡片壳；完全缺失项先与 #10/#14/#20 查重。
+
 ### SPEC/README 实现一致性审计 Round 3：简报日期幂等与完整历史
 
 - Phase: Cross-phase / Phase 10 (简报导出) + Phase 8 (Dashboard MVP)

@@ -28,6 +28,7 @@ import {
   createDailyBriefing,
   createSourceDiscoveryTaskRun,
   createSourceFetchTaskRun,
+  createTaskRun,
   ensureDefaultWorkspace,
   failTaskRun,
   getDecryptedCredentials,
@@ -137,6 +138,8 @@ export interface WorkerFetchCycleResult {
 }
 
 export interface SourceDiscoveryCycleResult {
+  aiRecommendationAttempts: number;
+  aiRecommendationFallbacks: number;
   aiRecommendations: number;
   backlinkedCandidates: number;
   candidateSourcesWritten: number;
@@ -313,6 +316,8 @@ export async function runSourceDiscoveryCycle(
     userId: options.userId ?? workspace.userId,
   });
   const result: SourceDiscoveryCycleResult = {
+    aiRecommendationAttempts: 0,
+    aiRecommendationFallbacks: 0,
     aiRecommendations: 0,
     backlinkedCandidates: 0,
     candidateSourcesWritten: 0,
@@ -352,6 +357,9 @@ export async function runSourceDiscoveryCycle(
 
     for (const candidate of limitedCandidates) {
       const recommendation = await getSourceRecommendation(candidate, ai);
+      result.aiRecommendationAttempts += recommendation.attemptedAi ? 1 : 0;
+      result.aiRecommendationFallbacks +=
+        recommendation.attemptedAi && !recommendation.usedAi ? 1 : 0;
       result.aiRecommendations += recommendation.usedAi ? 1 : 0;
 
       try {
@@ -386,6 +394,24 @@ export async function runSourceDiscoveryCycle(
       } catch {
         result.failedCandidates += 1;
       }
+    }
+
+    if (result.aiRecommendationAttempts > 0) {
+      await recordUsageEvent(prisma, {
+        metadata: {
+          fallbackCalls: result.aiRecommendationFallbacks,
+          source: "worker-source-recommendation",
+          successfulCalls: result.aiRecommendations,
+          taskRunId: taskRun.id,
+        },
+        organizationId: workspace.organizationId,
+        quantity: result.aiRecommendationAttempts,
+        subjectId: taskRun.id,
+        subjectType: "task-run",
+        type: "AI_CALL",
+        unit: "call",
+        userId: options.userId ?? workspace.userId,
+      });
     }
 
     await completeTaskRun(prisma, taskRun.id, { ...result });
@@ -424,26 +450,85 @@ async function runAnalysisCycle(
     analyzedItems: 0,
     createdOrUpdatedEvents: 0,
     filteredItems: 0,
+    llmAttempts: 0,
     llmItems: 0,
     llmFallbackItems: 0,
   };
 
   for (const item of items) {
-    let draft = null;
-    let rawAiResponse: Record<string, unknown> = {
-      mode: "uninitialized",
-    };
-    let usedLlm = false;
-    let usedFallback = false;
+    const relevanceTask = await createTaskRun(prisma, {
+      input: {
+        mode: ai ? "llm-with-rules-fallback" : "explainable-rules",
+      },
+      itemId: item.id,
+      organizationId,
+      topicId: item.topicId,
+      type: "AI_RELEVANCE",
+    });
 
-    if (ai) {
-      try {
-        const extractionInput = buildExtractionInput(item, item.topicProfile);
-        const extraction = await extractEvent(extractionInput, {
-          adapter: ai.adapter,
-          model: ai.model,
+    try {
+      let draft = null;
+      let rawAiResponse: Record<string, unknown> = {
+        mode: "uninitialized",
+      };
+      let usedLlm = false;
+      let usedFallback = false;
+
+      if (ai) {
+        result.llmAttempts += 1;
+        const extractionTask = await createTaskRun(prisma, {
+          input: { model: ai.model },
+          itemId: item.id,
+          organizationId,
+          topicId: item.topicId,
+          type: "AI_EVENT_EXTRACTION",
         });
-        draft = createIntelligenceEventDraftFromExtraction(
+
+        try {
+          const extractionInput = buildExtractionInput(item, item.topicProfile);
+          const extraction = await extractEvent(extractionInput, {
+            adapter: ai.adapter,
+            model: ai.model,
+          });
+          draft = createIntelligenceEventDraftFromExtraction(
+            {
+              fetchedAt: item.fetchedAt,
+              id: item.id,
+              publishedAt: item.publishedAt,
+              summary: item.summary,
+              title: item.title,
+              topicProfile: item.topicProfile,
+              url: item.url,
+            },
+            extractionToAiEventExtraction(extraction),
+          );
+          rawAiResponse = { mode: "llm", extraction };
+          usedLlm = true;
+          await completeTaskRun(prisma, extractionTask.id, {
+            isRelevant: extraction.isRelevant,
+            model: ai.model,
+            outcome: draft ? "draft-created" : "filtered",
+          });
+        } catch (error) {
+          usedFallback = true;
+          await failTaskRun(prisma, extractionTask.id, error);
+          process.stderr.write(
+            `[analysis-cycle] LLM extraction failed for item ${item.id} (topic ${item.topicId}): ${error instanceof Error ? error.message : String(error)}\n`,
+          );
+        }
+      }
+
+      if (!usedLlm) {
+        const decision = evaluateRelevance({
+          fetchedAt: item.fetchedAt,
+          id: item.id,
+          publishedAt: item.publishedAt,
+          summary: item.summary,
+          title: item.title,
+          topicProfile: item.topicProfile,
+          url: item.url,
+        });
+        draft = createIntelligenceEventDraft(
           {
             fetchedAt: item.fetchedAt,
             id: item.id,
@@ -453,91 +538,75 @@ async function runAnalysisCycle(
             topicProfile: item.topicProfile,
             url: item.url,
           },
-          extractionToAiEventExtraction(extraction),
+          decision,
         );
-        rawAiResponse = { mode: "llm", extraction };
-        usedLlm = true;
-      } catch (error) {
-        usedFallback = true;
-        process.stderr.write(
-          `[analysis-cycle] LLM extraction failed for item ${item.id} (topic ${item.topicId}): ${error instanceof Error ? error.message : String(error)}\n`,
-        );
+        rawAiResponse = {
+          mode: "explainable-rules",
+          relevance: decision,
+          ...(usedFallback ? { llmFallback: true } : {}),
+        };
       }
-    }
 
-    if (!usedLlm) {
-      const decision = evaluateRelevance({
-        fetchedAt: item.fetchedAt,
-        id: item.id,
-        publishedAt: item.publishedAt,
-        summary: item.summary,
-        title: item.title,
-        topicProfile: item.topicProfile,
-        url: item.url,
+      result.analyzedItems += 1;
+      if (usedLlm) result.llmItems += 1;
+      if (usedFallback) result.llmFallbackItems += 1;
+
+      if (!draft) {
+        const noiseReason = usedFallback
+          ? "AI 分析失败且规则判定为噪声。"
+          : "Item did not pass relevance threshold.";
+        await markItemFiltered(prisma, item.id, noiseReason);
+        result.filteredItems += 1;
+        await completeTaskRun(prisma, relevanceTask.id, {
+          llmFallback: usedFallback,
+          mode: usedLlm ? "llm" : "explainable-rules",
+          outcome: "filtered",
+        });
+        continue;
+      }
+
+      const event = await upsertIntelligenceEventFromItem(prisma, {
+        organizationId: item.organizationId,
+        topicId: item.topicId,
+        primaryItemId: item.id,
+        title: draft.title,
+        summary: draft.summary,
+        category: draft.category,
+        entities: draft.entities,
+        score: draft.score,
+        gravityScore: draft.gravityScore,
+        eventHash: draft.eventHash,
+        titleHash: draft.titleHash,
+        explanation: draft.explanation,
+        followUpSuggestion: draft.followUpSuggestion,
+        mergeReason: draft.mergeReason,
+        occurredAt: draft.occurredAt,
+        rawAiResponse,
       });
-      draft = createIntelligenceEventDraft(
-        {
-          fetchedAt: item.fetchedAt,
-          id: item.id,
-          publishedAt: item.publishedAt,
-          summary: item.summary,
-          title: item.title,
-          topicProfile: item.topicProfile,
-          url: item.url,
-        },
-        decision,
-      );
-      rawAiResponse = {
-        mode: "explainable-rules",
-        relevance: decision,
-        ...(usedFallback ? { llmFallback: true } : {}),
-      };
+      result.createdOrUpdatedEvents += 1;
+      await completeTaskRun(prisma, relevanceTask.id, {
+        eventId: event.id,
+        llmFallback: usedFallback,
+        mode: usedLlm ? "llm" : "explainable-rules",
+        outcome: "event-upserted",
+      });
+    } catch (error) {
+      await failTaskRun(prisma, relevanceTask.id, error);
+      throw error;
     }
-
-    result.analyzedItems += 1;
-    if (usedLlm) result.llmItems += 1;
-    if (usedFallback) result.llmFallbackItems += 1;
-
-    if (!draft) {
-      const noiseReason = usedFallback
-        ? "AI 分析失败且规则判定为噪声。"
-        : "Item did not pass relevance threshold.";
-      await markItemFiltered(prisma, item.id, noiseReason);
-      result.filteredItems += 1;
-      continue;
-    }
-
-    await upsertIntelligenceEventFromItem(prisma, {
-      organizationId: item.organizationId,
-      topicId: item.topicId,
-      primaryItemId: item.id,
-      title: draft.title,
-      summary: draft.summary,
-      category: draft.category,
-      entities: draft.entities,
-      score: draft.score,
-      gravityScore: draft.gravityScore,
-      eventHash: draft.eventHash,
-      titleHash: draft.titleHash,
-      explanation: draft.explanation,
-      followUpSuggestion: draft.followUpSuggestion,
-      mergeReason: draft.mergeReason,
-      occurredAt: draft.occurredAt,
-      rawAiResponse,
-    });
-    result.createdOrUpdatedEvents += 1;
   }
 
-  if (ai && result.llmItems > 0) {
+  if (ai && result.llmAttempts > 0) {
     await recordUsageEvent(prisma, {
       metadata: {
+        attemptedItems: result.llmAttempts,
         filteredItems: result.filteredItems,
         fallbackItems: result.llmFallbackItems,
-        llmItems: result.llmItems,
         source: "worker-analysis-cycle",
+        successfulItems: result.llmItems,
       },
       organizationId,
-      quantity: result.llmItems,
+      quantity: result.llmAttempts,
       subjectType: "analysis-cycle",
       type: "AI_CALL",
       unit: "item",
@@ -621,6 +690,7 @@ async function runSemanticDedupCycle(
       if (candidates.length === 0) continue;
 
       try {
+        result.llmCalls += 1;
         const dedupResult = await dedupEvent(
           {
             newEvent: {
@@ -644,9 +714,6 @@ async function runSemanticDedupCycle(
             model: ai.model,
           },
         );
-
-        result.llmCalls += 1;
-
         if (dedupResult.duplicateEventId && dedupResult.confidence >= 0.7) {
           await mergeSemanticEvents(prisma, {
             keepEventId: dedupResult.duplicateEventId,
@@ -703,58 +770,83 @@ async function runDailyBriefingCycle(
   for (const topic of topics) {
     const generatedAt = new Date();
     const { rangeEnd, rangeStart } = createUtcDayRange(generatedAt);
-    const [events, preferences] = await Promise.all([
-      listEventsForDailyBriefing(prisma, {
+    const taskRun = await createTaskRun(prisma, {
+      input: {
+        period: "DAILY",
+        rangeEnd: rangeEnd.toISOString(),
+        rangeStart: rangeStart.toISOString(),
+      },
+      organizationId,
+      topicId: topic.id,
+      type: "BRIEFING_GENERATION",
+    });
+
+    try {
+      const [events, preferences] = await Promise.all([
+        listEventsForDailyBriefing(prisma, {
+          organizationId,
+          rangeEnd,
+          rangeStart,
+          topicId: topic.id,
+        }),
+        listPreferenceMemoryForDashboard(prisma, { organizationId, userId }),
+      ]);
+
+      if (events.length === 0) {
+        await completeTaskRun(prisma, taskRun.id, {
+          eventCount: 0,
+          outcome: "skipped-no-events",
+        });
+        continue;
+      }
+
+      const markdown = renderDailyBriefingMarkdown({
+        events: events.map((event) => ({
+          category: event.category,
+          explanation: event.explanation,
+          occurredAt: event.occurredAt,
+          score: event.score,
+          sourceName: event.sourceName,
+          sourceUrl: event.sourceUrl,
+          summary: event.summary,
+          title: event.title,
+          url: event.url,
+        })),
+        generatedAt,
+        preferences: preferences
+          .filter((preference) => preference.topicId === topic.id)
+          .map((preference) => ({
+            explanation: preference.explanation,
+            key: preference.key,
+            weight: preference.weight,
+          })),
+        topicName: topic.name,
+      });
+      const briefing = await createDailyBriefing(prisma, {
+        content: markdown,
+        eventIds: events.map((event) => event.eventId),
+        generatedAt,
+        markdown,
+        metadata: {
+          contentHash: createContentHash(markdown),
+          mode: "explainable-rules",
+        },
         organizationId,
         rangeEnd,
         rangeStart,
+        title: `${topic.name} Daily Briefing`,
         topicId: topic.id,
-      }),
-      listPreferenceMemoryForDashboard(prisma, { organizationId, userId }),
-    ]);
-
-    if (events.length === 0) {
-      continue;
+      });
+      await completeTaskRun(prisma, taskRun.id, {
+        briefingId: briefing.id,
+        eventCount: events.length,
+        outcome: "upserted",
+      });
+      generatedBriefings += 1;
+    } catch (error) {
+      await failTaskRun(prisma, taskRun.id, error);
+      throw error;
     }
-
-    const markdown = renderDailyBriefingMarkdown({
-      events: events.map((event) => ({
-        category: event.category,
-        explanation: event.explanation,
-        occurredAt: event.occurredAt,
-        score: event.score,
-        sourceName: event.sourceName,
-        sourceUrl: event.sourceUrl,
-        summary: event.summary,
-        title: event.title,
-        url: event.url,
-      })),
-      generatedAt,
-      preferences: preferences
-        .filter((preference) => preference.topicId === topic.id)
-        .map((preference) => ({
-          explanation: preference.explanation,
-          key: preference.key,
-          weight: preference.weight,
-        })),
-      topicName: topic.name,
-    });
-    await createDailyBriefing(prisma, {
-      content: markdown,
-      eventIds: events.map((event) => event.eventId),
-      generatedAt,
-      markdown,
-      metadata: {
-        contentHash: createContentHash(markdown),
-        mode: "explainable-rules",
-      },
-      organizationId,
-      rangeEnd,
-      rangeStart,
-      title: `${topic.name} Daily Briefing`,
-      topicId: topic.id,
-    });
-    generatedBriefings += 1;
   }
 
   return generatedBriefings;
@@ -1057,7 +1149,11 @@ function feedCandidateToDiscoveryCandidate(
 async function getSourceRecommendation(
   candidate: DiscoveryCandidate,
   ai: { adapter: SourceRecommendationAdapter; model: string } | null,
-): Promise<{ usedAi: boolean; value: SourceRecommendation }> {
+): Promise<{
+  attemptedAi: boolean;
+  usedAi: boolean;
+  value: SourceRecommendation;
+}> {
   const input = {
     evidence: candidate.evidence,
     sourceName: candidate.name,
@@ -1069,6 +1165,7 @@ async function getSourceRecommendation(
 
   if (!ai) {
     return {
+      attemptedAi: false,
       usedAi: false,
       value: fallbackSourceRecommendation(input),
     };
@@ -1076,11 +1173,13 @@ async function getSourceRecommendation(
 
   try {
     return {
+      attemptedAi: true,
       usedAi: true,
       value: await recommendSourceCandidate(input, ai),
     };
   } catch {
     return {
+      attemptedAi: true,
       usedAi: false,
       value: fallbackSourceRecommendation(input),
     };

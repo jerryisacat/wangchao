@@ -355,6 +355,19 @@ export interface CreateSourceFetchTaskRunOptions {
   maxAttempts: number;
 }
 
+export type AuditedTaskRunType = Prisma.TaskRunCreateInput["type"];
+
+export interface CreateTaskRunInput extends TenantScope {
+  attempt?: number;
+  eventId?: string;
+  input?: Record<string, unknown>;
+  itemId?: string;
+  maxAttempts?: number;
+  sourceId?: string;
+  topicId?: string;
+  type: AuditedTaskRunType;
+}
+
 export async function ensureDefaultWorkspace(
   prisma: PrismaClient,
 ): Promise<WorkspaceSeed> {
@@ -1053,22 +1066,17 @@ export async function createSourceFetchTaskRun(
   source: FetchedSourceRecord,
   options: CreateSourceFetchTaskRunOptions,
 ) {
-  return prisma.taskRun.create({
-    data: {
-      organizationId: source.organizationId,
-      topicId: source.topicId,
-      sourceId: source.id,
-      type: "SOURCE_FETCH",
-      status: "RUNNING",
-      attempt: options.attempt,
-      maxAttempts: options.maxAttempts,
-      scheduledAt: new Date(),
-      startedAt: new Date(),
-      input: {
-        sourceName: source.name,
-        sourceUrl: source.url,
-      },
+  return createTaskRun(prisma, {
+    attempt: options.attempt,
+    input: {
+      sourceName: source.name,
+      sourceUrl: source.url,
     },
+    maxAttempts: options.maxAttempts,
+    organizationId: source.organizationId,
+    sourceId: source.id,
+    topicId: source.topicId,
+    type: "SOURCE_FETCH",
   });
 }
 
@@ -1076,19 +1084,37 @@ export async function createSourceDiscoveryTaskRun(
   prisma: PrismaClient,
   input: TenantScope & { input?: Record<string, unknown>; userId?: string },
 ) {
+  return createTaskRun(prisma, {
+    input: {
+      ...(input.input ?? {}),
+      ...(input.userId ? { userId: input.userId } : {}),
+    },
+    maxAttempts: 1,
+    organizationId: input.organizationId,
+    type: "SOURCE_DISCOVERY",
+  });
+}
+
+export async function createTaskRun(
+  prisma: PrismaClient,
+  input: CreateTaskRunInput,
+) {
+  const startedAt = new Date();
+
   return prisma.taskRun.create({
     data: {
       organizationId: input.organizationId,
-      type: "SOURCE_DISCOVERY",
+      topicId: input.topicId,
+      sourceId: input.sourceId,
+      itemId: input.itemId,
+      eventId: input.eventId,
+      type: input.type,
       status: "RUNNING",
-      attempt: 1,
-      maxAttempts: 1,
-      scheduledAt: new Date(),
-      startedAt: new Date(),
-      input: toInputJson({
-        ...(input.input ?? {}),
-        userId: input.userId,
-      }),
+      attempt: input.attempt ?? 1,
+      maxAttempts: input.maxAttempts ?? 1,
+      scheduledAt: startedAt,
+      startedAt,
+      input: toInputJson(input.input),
     },
   });
 }
@@ -2206,17 +2232,6 @@ export async function listUnreadEvents(prisma: PrismaClient, scope: TopicScope) 
       status: "UNREAD",
     },
     orderBy: [{ gravityScore: "desc" }, { createdAt: "desc" }],
-  });
-}
-
-export async function listPendingTaskRuns(prisma: PrismaClient, scope: TenantScope) {
-  return prisma.taskRun.findMany({
-    where: {
-      organizationId: scope.organizationId,
-      status: "PENDING",
-    },
-    orderBy: { scheduledAt: "asc" },
-    take: 100,
   });
 }
 

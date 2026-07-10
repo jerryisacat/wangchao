@@ -108,15 +108,17 @@ SAVED ───unsave─────> READ（已有 readAt）或 UNREAD
 ### TaskRun 状态机
 
 ```text
-PENDING ──start──> RUNNING ──success──> SUCCEEDED
-PENDING ──start──> RUNNING ──failure───> FAILED (attempt < maxAttempts 时可重试)
-RUNNING ──cancel─> CANCELED
-FAILED ──retry───> RUNNING
+                     ┌──success──> SUCCEEDED
+create/start ──> RUNNING
+                     └──failure──> FAILED
 ```
 
 规则：
-- Worker fetch pipeline 必须有 attempt 上限；当前 `MAX_FETCH_ATTEMPTS=3`，每次尝试都会写入独立 `TaskRun`。
-- TaskRun 类型包括：`SOURCE_FETCH`、`SOURCE_DISCOVERY`、`AI_RELEVANCE`、`AI_EVENT_EXTRACTION`、`BRIEFING_GENERATION`、`EXPORT_GENERATION`。
+- Worker fetch pipeline 必须有 attempt 上限；当前 `MAX_FETCH_ATTEMPTS=3`，每次尝试都会新建独立 `TaskRun`，失败记录不会被下一次 attempt 覆盖。
+- 当前运行路径创建后直接进入 `RUNNING`，最终收敛为 `SUCCEEDED` 或 `FAILED`；`PENDING` / `CANCELED` 为后续 DB queue/cancel 能力预留，当前代码不把它们描述为已实现状态转换。
+- 六类 TaskRun 均有真实写入者：`SOURCE_FETCH`、`SOURCE_DISCOVERY`、`AI_RELEVANCE`、`AI_EVENT_EXTRACTION`、`BRIEFING_GENERATION`、`EXPORT_GENERATION`。
+- LLM extraction 失败但规则 fallback 成功时，`AI_EVENT_EXTRACTION=FAILED`，外层 `AI_RELEVANCE=SUCCEEDED` 且 output 标记 `llmFallback=true`；这不是整轮失败，也不会丢失 provider 错误证据。
+- AI UsageEvent 的 quantity 统计逻辑 adapter 调用数（内部 HTTP retry 不重复计数），包括最终失败的调用；成功数和 fallback 数保留在 metadata。
 
 ### FeedbackKind 枚举
 

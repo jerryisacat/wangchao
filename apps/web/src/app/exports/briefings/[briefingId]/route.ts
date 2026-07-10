@@ -12,7 +12,10 @@ export async function GET(_request: Request, context: BriefingRouteContext) {
 
   const {
     assertMembershipRole,
+    completeTaskRun,
+    createTaskRun,
     ensureDefaultWorkspace,
+    failTaskRun,
     getBriefingMarkdownForDownload,
     getPrismaClient,
     recordMarkdownExport,
@@ -38,30 +41,50 @@ export async function GET(_request: Request, context: BriefingRouteContext) {
     return new Response("Briefing not found.", { status: 404 });
   }
 
-  const fileName = `${slugify(briefing.title)}.md`;
-  await recordMarkdownExport(prisma, {
-    briefingId: briefing.id,
-    contentHash: createContentHash(briefing.markdown),
-    fileName,
-    organizationId: workspace.organizationId,
-    topicId: briefing.topicId,
-    userId: workspace.userId,
-  });
-  await recordUsageEvent(prisma, {
-    metadata: {
-      fileName,
-      source: "briefing-markdown-route",
+  const taskRun = await createTaskRun(prisma, {
+    input: {
+      briefingId: briefing.id,
+      format: "MARKDOWN",
     },
     organizationId: workspace.organizationId,
-    quantity: 1,
-    subjectId: briefing.id,
-    subjectType: "briefing",
-    type: "EXPORT",
-    unit: "file",
-    userId: workspace.userId,
+    topicId: briefing.topicId,
+    type: "EXPORT_GENERATION",
   });
 
-  return markdownResponse(briefing.markdown, fileName);
+  try {
+    const fileName = `${slugify(briefing.title)}.md`;
+    await recordMarkdownExport(prisma, {
+      briefingId: briefing.id,
+      contentHash: createContentHash(briefing.markdown),
+      fileName,
+      organizationId: workspace.organizationId,
+      topicId: briefing.topicId,
+      userId: workspace.userId,
+    });
+    await recordUsageEvent(prisma, {
+      metadata: {
+        fileName,
+        source: "briefing-markdown-route",
+      },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectId: briefing.id,
+      subjectType: "briefing",
+      type: "EXPORT",
+      unit: "file",
+      userId: workspace.userId,
+    });
+    await completeTaskRun(prisma, taskRun.id, {
+      fileName,
+      format: "MARKDOWN",
+      outcome: "generated",
+    });
+
+    return markdownResponse(briefing.markdown, fileName);
+  } catch (error) {
+    await failTaskRun(prisma, taskRun.id, error);
+    throw error;
+  }
 }
 
 function markdownResponse(markdown: string, fileName: string): Response {

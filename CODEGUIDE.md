@@ -211,7 +211,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 | 文件 | 职责摘要 |
 |---|---|
 | `packages/db/prisma/migrations/0008_briefing_idempotency/migration.sql` | 清理历史重复简报并建立主题/周期/窗口唯一约束。 |
-| `packages/db/src/repositories.fixtures.ts` | Repository runtime fixtures，覆盖收藏查询与 daily briefing 的 scope、分页、时间窗口、幂等和状态转换。 |
+| `packages/db/src/repositories.fixtures.ts` | Repository runtime fixtures，覆盖收藏、daily briefing 和 TaskRun 的 scope、分页、时间窗口、幂等与生命周期状态转换。 |
 | `apps/web/src/app/admin/settings/credential-form.tsx` | AI/搜索凭证表单，模型嗅探下拉、自定义 provider 手动确认、计费提示 |
 | `apps/web/src/app/admin/settings/providers.ts` | Provider 常量集中定义（`AI_PROVIDERS`/`SEARCH_PROVIDERS`/`defaultAiBaseUrl`），前后端统一数据源。 |
 

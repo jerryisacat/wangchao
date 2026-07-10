@@ -14,7 +14,10 @@ export async function GET(_request: Request, context: EventRouteContext) {
 
   const {
     assertMembershipRole,
+    completeTaskRun,
+    createTaskRun,
     ensureDefaultWorkspace,
+    failTaskRun,
     getEventMarkdownExportRecord,
     getPrismaClient,
     recordMarkdownExport,
@@ -40,54 +43,72 @@ export async function GET(_request: Request, context: EventRouteContext) {
     return new Response("Event not found.", { status: 404 });
   }
 
-  const display = buildEventDisplayFields({
-    explanation: event.explanation,
-    primaryItemUrl: event.url,
-    summary: event.summary,
-    title: event.title,
-  });
-
-  const markdown = renderEventMarkdown(
-    {
-      category: event.category,
-      entities: event.entities ?? undefined,
-      explanation: event.explanation,
-      followUpSuggestion: event.followUpSuggestion ?? undefined,
-      occurredAt: event.occurredAt,
-      score: event.score,
-      sourceName: event.sourceName,
-      sourceUrl: event.sourceUrl,
-      summary: display.summary,
-      title: event.title,
-      url: event.url,
-    },
-    generatedAt,
-  );
-  const fileName = `${slugify(event.title)}.md`;
-
-  await recordMarkdownExport(prisma, {
-    contentHash: createContentHash(markdown),
+  const taskRun = await createTaskRun(prisma, {
     eventId: event.eventId,
-    fileName,
+    input: { format: "MARKDOWN" },
     organizationId: workspace.organizationId,
     topicId: event.topicId,
-    userId: workspace.userId,
-  });
-  await recordUsageEvent(prisma, {
-    metadata: {
-      fileName,
-      source: "event-markdown-route",
-    },
-    organizationId: workspace.organizationId,
-    quantity: 1,
-    subjectId: event.eventId,
-    subjectType: "intelligence-event",
-    type: "EXPORT",
-    unit: "file",
-    userId: workspace.userId,
+    type: "EXPORT_GENERATION",
   });
 
-  return markdownResponse(markdown, fileName);
+  try {
+    const display = buildEventDisplayFields({
+      explanation: event.explanation,
+      primaryItemUrl: event.url,
+      summary: event.summary,
+      title: event.title,
+    });
+
+    const markdown = renderEventMarkdown(
+      {
+        category: event.category,
+        entities: event.entities ?? undefined,
+        explanation: event.explanation,
+        followUpSuggestion: event.followUpSuggestion ?? undefined,
+        occurredAt: event.occurredAt,
+        score: event.score,
+        sourceName: event.sourceName,
+        sourceUrl: event.sourceUrl,
+        summary: display.summary,
+        title: event.title,
+        url: event.url,
+      },
+      generatedAt,
+    );
+    const fileName = `${slugify(event.title)}.md`;
+
+    await recordMarkdownExport(prisma, {
+      contentHash: createContentHash(markdown),
+      eventId: event.eventId,
+      fileName,
+      organizationId: workspace.organizationId,
+      topicId: event.topicId,
+      userId: workspace.userId,
+    });
+    await recordUsageEvent(prisma, {
+      metadata: {
+        fileName,
+        source: "event-markdown-route",
+      },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectId: event.eventId,
+      subjectType: "intelligence-event",
+      type: "EXPORT",
+      unit: "file",
+      userId: workspace.userId,
+    });
+    await completeTaskRun(prisma, taskRun.id, {
+      fileName,
+      format: "MARKDOWN",
+      outcome: "generated",
+    });
+
+    return markdownResponse(markdown, fileName);
+  } catch (error) {
+    await failTaskRun(prisma, taskRun.id, error);
+    throw error;
+  }
 }
 
 function markdownResponse(markdown: string, fileName: string): Response {

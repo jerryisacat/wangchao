@@ -152,8 +152,8 @@ The worker health command runs the built worker entrypoint, prints runtime depen
 
 - Web route handlers and Server Actions should not log secrets, cookies, auth headers, provider URLs with tokens, or raw LLM output.
 - Worker logs should be structured around cycle result counts: fetched sources, failed sources, inserted items, generated briefings, source observations, and usage events.
-- Long-running failures should be persisted through `TaskRun.errorMessage` where possible.
-- Usage/cost related activity should be persisted through `UsageEvent`, not inferred only from logs.
+- Fetch、discovery、relevance、AI extraction、briefing 和 Markdown export 都必须把成功/失败持久化到对应 `TaskRun`；provider 失败后走规则 fallback 时仍保留失败的 extraction `errorMessage`。
+- Usage/cost related activity should be persisted through `UsageEvent`, not inferred only from logs. AI_CALL quantity uses logical adapter calls (internal HTTP retries are not counted separately), including calls that ultimately fail, while success/fallback counts stay in metadata.
 
 ## Backup and Rollback
 

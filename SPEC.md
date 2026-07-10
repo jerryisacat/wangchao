@@ -340,6 +340,8 @@ AI 分析不应只是摘要，而应围绕主题判断信息价值。
 | `follow_up_suggestion` | 后续跟踪建议 |
 | `generated_at` | 生成时间 |
 
+当前 TypeScript 主路径为每个待分析 Item 建立 `AI_RELEVANCE` TaskRun；配置 AI 时再建立关联同一 Item 的 `AI_EVENT_EXTRACTION` TaskRun。LLM 成功、失败和规则 fallback 分别落入 `output` 或 `errorMessage`，不会只存在于 stderr；所有逻辑 AI 调用（一次 adapter 调用计一次，内部 HTTP retry 不重复计数，包括最终失败后 fallback 的调用）都会计入 `UsageEvent(type='AI_CALL')`。每日简报和 Markdown 导出分别建立 `BRIEFING_GENERATION`、`EXPORT_GENERATION` TaskRun，因此 fetch、discovery、analysis、briefing、export 六类已声明任务都有真实写入链路。
+
 ### 5.5 阅读状态管理
 
 用户需要管理信息流，而不是每天看到重复内容。

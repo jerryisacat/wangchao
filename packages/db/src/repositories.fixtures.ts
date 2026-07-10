@@ -1,6 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
 import {
+  completeTaskRun,
   createDailyBriefing,
+  createTaskRun,
+  failTaskRun,
   listBriefingsPage,
   listEventsForDailyBriefing,
   listSavedDashboardEvents,
@@ -13,6 +16,7 @@ export async function runRepositoryFixtures(): Promise<void> {
   await verifyDailyBriefingWindowFilter();
   await verifyDailyBriefingUpsert();
   await verifyBriefingHistoryPagination();
+  await verifyTaskRunLifecycle();
 }
 
 async function verifySavedPagination(): Promise<void> {
@@ -218,6 +222,58 @@ async function verifyBriefingHistoryPagination(): Promise<void> {
   const findArgs = readArgsByName(calls, "briefing.findMany");
   assert(findArgs.skip === 40, `Expected briefing offset 40, received ${String(findArgs.skip)}.`);
   assert(findArgs.take === 20, `Expected briefing page size 20, received ${String(findArgs.take)}.`);
+}
+
+async function verifyTaskRunLifecycle(): Promise<void> {
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const prisma = {
+    taskRun: {
+      create: async (args: unknown) => {
+        calls.push({ args, method: "taskRun.create" });
+        return { id: "task-1" };
+      },
+      update: async (args: unknown) => {
+        calls.push({ args, method: "taskRun.update" });
+        return { id: "task-1" };
+      },
+    },
+  } as unknown as PrismaClient;
+
+  await createTaskRun(prisma, {
+    input: { mode: "llm-with-fallback" },
+    itemId: "item-1",
+    organizationId: "org-1",
+    topicId: "topic-1",
+    type: "AI_RELEVANCE",
+  });
+  await completeTaskRun(prisma, "task-1", { outcome: "event-upserted" });
+  await failTaskRun(prisma, "task-1", new Error("provider unavailable"));
+
+  const createData = readRecord(
+    readArgsByName(calls, "taskRun.create").data,
+    "taskRun.create.data",
+  );
+  assert(createData.organizationId === "org-1", "TaskRun must remain tenant-scoped.");
+  assert(createData.topicId === "topic-1", "TaskRun must retain its topic relation.");
+  assert(createData.itemId === "item-1", "TaskRun must retain its item relation.");
+  assert(createData.type === "AI_RELEVANCE", "TaskRun must persist its real stage type.");
+  assert(createData.status === "RUNNING", "A newly started TaskRun must be RUNNING.");
+  assert(createData.attempt === 1, "A one-shot task must start at attempt 1.");
+  assert(createData.maxAttempts === 1, "A one-shot task must expose its retry cap.");
+  assert(createData.startedAt instanceof Date, "A TaskRun must record its start time.");
+  assert(
+    createData.scheduledAt === createData.startedAt,
+    "Immediate TaskRuns must use one stable scheduled/start timestamp.",
+  );
+
+  const updates = calls.filter((entry) => entry.method === "taskRun.update");
+  assert(updates.length === 2, "TaskRun completion and failure must both update lifecycle state.");
+  const completed = readRecord(readRecord(updates[0]?.args, "complete.args").data, "complete.data");
+  const failed = readRecord(readRecord(updates[1]?.args, "fail.args").data, "fail.data");
+  assert(completed.status === "SUCCEEDED", "Completion must persist SUCCEEDED.");
+  assert(completed.finishedAt instanceof Date, "Completion must record finishedAt.");
+  assert(failed.status === "FAILED", "Failure must persist FAILED.");
+  assert(failed.errorMessage === "provider unavailable", "Failure must persist the error reason.");
 }
 
 function readArgs(
