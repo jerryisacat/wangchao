@@ -2400,6 +2400,88 @@ export async function upsertSearchCredential(
   });
 }
 
+export async function deleteAiCredential(
+  prisma: PrismaClient,
+  scope: TenantScope,
+): Promise<void> {
+  await prisma.subscription.upsert({
+    where: { organizationId: scope.organizationId },
+    update: {
+      aiEncryptedKey: null,
+      aiKeyHint: null,
+      aiBaseUrl: null,
+      aiProvider: null,
+      aiModel: null,
+    },
+    create: {
+      organizationId: scope.organizationId,
+    },
+  });
+}
+
+export async function deleteSearchCredential(
+  prisma: PrismaClient,
+  scope: TenantScope,
+): Promise<void> {
+  await prisma.subscription.upsert({
+    where: { organizationId: scope.organizationId },
+    update: {
+      searchEncryptedKey: null,
+      searchKeyHint: null,
+      searchProvider: null,
+    },
+    create: {
+      organizationId: scope.organizationId,
+    },
+  });
+}
+
+export interface CredentialTestResult {
+  ok: boolean;
+  message: string;
+}
+
+export async function testAiCredential(
+  prisma: PrismaClient,
+  scope: TenantScope,
+): Promise<CredentialTestResult> {
+  const credentials = await getDecryptedCredentials(prisma, scope);
+  const ai = credentials?.ai;
+  if (!ai) {
+    return { ok: false, message: "未配置 AI 凭证，请先保存再测试。" };
+  }
+
+  const baseUrl = ai.baseUrl.replace(/\/+$/, "");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    const response = await fetch(`${baseUrl}/models`, {
+      headers: { authorization: `Bearer ${ai.apiKey}` },
+      method: "GET",
+      signal: controller.signal,
+    });
+
+    if (response.ok) {
+      return { ok: true, message: "AI 凭证连接测试成功。" };
+    }
+    return {
+      ok: false,
+      message: `连接失败：HTTP ${response.status} ${response.statusText}`.trim(),
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return { ok: false, message: "连接超时，请检查 Base URL 是否正确。" };
+    }
+    return {
+      ok: false,
+      message: `连接错误：${error instanceof Error ? error.message : String(error)}`,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function getDecryptedCredentials(
   prisma: PrismaClient,
   scope: TenantScope,

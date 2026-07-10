@@ -1177,3 +1177,141 @@ export async function upsertSearchCredentialAction(formData: FormData): Promise<
   revalidatePath("/admin/settings");
   redirect(actionRedirectHref("/admin/settings", type, message));
 }
+
+export async function deleteAiCredentialAction(formData: FormData): Promise<void> {
+  let message = "AI 凭证已清除。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to manage credentials.");
+    }
+
+    const {
+      assertMembershipRole,
+      deleteAiCredential,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      recordUsageEvent,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    await deleteAiCredential(prisma, { organizationId: workspace.organizationId });
+
+    await recordUsageEvent(prisma, {
+      metadata: { source: "admin-settings" },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectType: "subscription",
+      type: "WEB_ACTION",
+      unit: "credential-delete",
+      userId: workspace.userId,
+    });
+  } catch (error) {
+    logActionError("deleteAiCredentialAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/admin/settings");
+  redirect(actionRedirectHref("/admin/settings", type, message));
+}
+
+export async function deleteSearchCredentialAction(formData: FormData): Promise<void> {
+  let message = "搜索凭证已清除。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to manage credentials.");
+    }
+
+    const {
+      assertMembershipRole,
+      deleteSearchCredential,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      recordUsageEvent,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    await deleteSearchCredential(prisma, { organizationId: workspace.organizationId });
+
+    await recordUsageEvent(prisma, {
+      metadata: { source: "admin-settings" },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectType: "subscription",
+      type: "WEB_ACTION",
+      unit: "credential-delete",
+      userId: workspace.userId,
+    });
+  } catch (error) {
+    logActionError("deleteSearchCredentialAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/admin/settings");
+  redirect(actionRedirectHref("/admin/settings", type, message));
+}
+
+export async function testAiCredentialAction(formData: FormData): Promise<void> {
+  let message = "AI 凭证连接测试成功。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to test credentials.");
+    }
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      testAiCredential,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    const result = await testAiCredential(prisma, { organizationId: workspace.organizationId });
+    message = result.message;
+    type = result.ok ? "notice" : "error";
+  } catch (error) {
+    logActionError("testAiCredentialAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/admin/settings");
+  redirect(actionRedirectHref("/admin/settings", type, message));
+}

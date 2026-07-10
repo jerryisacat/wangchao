@@ -37,6 +37,17 @@
 - Verification: `pnpm --filter @wangchao/db/worker/web exec tsc --noEmit` 全部通过；待跑完整 `pnpm typecheck && pnpm lint && pnpm test && pnpm build`。
 - Follow-up: Phase 15 在同表扩展 Plan/Stripe/配额字段和 BYOK `byok*` 字段；补 Playwright smoke test 覆盖 `/admin/settings` 页面；考虑在 `ensureDefaultWorkspace` 时自动创建空 `Subscription` 行。
 
+### Phase 12 前置增强：Admin 凭证管理体验优化
+
+- Phase: Phase 12 (商业化基础) 前置 - 凭证管理 UI/UX 增强
+- Scope: 新增凭证删除（`deleteAiCredential` / `deleteSearchCredential`）和连接测试（`testAiCredential`）repository 函数 + Server Actions；重写 `/admin/settings` 页面：Tabs 布局替代双卡片堆叠、新增客户端 `CredentialForm` 组件（密码显隐、Provider 下拉 + 自动填充 Base URL、帮助链接、必填/可选标记、提交 loading 态）、状态区重构为 key-value 布局 + 更新时间、新增测试连接和清除凭证操作按钮。
+- Alignment: 符合 AGENTS.md §5.2（API Key 通过 Admin 后台配置，加密存储，脱敏展示）和 `FRONTEND.md`（暗色 token、44px 触摸目标、移动端单列无横向滚动、focus-visible）。测试连接和清除凭证补齐了原 DEVELOPE_LOGS 中记录的 "Key 验证端点未实现" 缺口。
+- Missing: 测试连接仅覆盖 OpenAI-compatible `/models` 端点，不支持 Anthropic 等非 OpenAI API 格式的 provider；清除凭证无二次确认弹窗（依赖浏览器原生 confirm 或后续 AlertDialog）；无 Playwright smoke test 覆盖新增操作。
+- Bugs: 无已知 bug。Review 修复了 `credential-form.tsx` 中 `document.getElementById` 改为 `useRef` 的 React 惯用写法。
+- Fixes: 无。
+- Verification: `pnpm typecheck` ✓, `pnpm lint` ✓, `pnpm test` ✓, `pnpm build` ✓, `git diff --check` ✓.
+- Follow-up: 补 Playwright smoke test 覆盖测试连接/清除凭证流；考虑 shadcn Select/AlertDialog 组件替代原生 `<select>` 和缺失的二次确认；测试连接可扩展支持 Anthropic 等非 OpenAI-compatible API 格式。
+
 ## 2026-07-08
 
 ### Phase 4/5：新建主题自动候选源

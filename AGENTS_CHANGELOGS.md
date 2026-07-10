@@ -1,5 +1,20 @@
 ## 2026-07-10
 
+## 2026-07-10
+
+### feat:API 配置页面体验优化 - Tabs 布局、密码显隐、Provider 下拉、测试连接、清除凭证
+
+- Cause: `/admin/settings` 页面体验粗糙：两张雷同卡片纵向堆叠无层次、Provider 是纯文本输入无引导、无密码显隐切换、无提交 loading 态、无法清除已保存凭证、无法测试连接是否有效、状态展示信息密度低、内联 style 混用。
+- Changed:
+  - `packages/db/src/repositories.ts`：新增 `deleteAiCredential(prisma, scope)` / `deleteSearchCredential(prisma, scope)`（upsert null 清除加密字段）、`testAiCredential(prisma, scope)`（调 `getDecryptedCredentials` 后 `GET {baseUrl}/models` 验证连接，10s 超时，返回 `CredentialTestResult`）、`CredentialTestResult` 接口。
+  - `packages/db/src/index.ts`：导出 `deleteAiCredential` / `deleteSearchCredential` / `testAiCredential` / `CredentialTestResult`。
+  - `apps/web/src/app/actions.ts`：新增 `deleteAiCredentialAction` / `deleteSearchCredentialAction`（OWNER/ADMIN 守卫，记录 `credential-delete` UsageEvent，redirect 反馈）、`testAiCredentialAction`（OWNER/ADMIN 守卫，调用 `testAiCredential`，根据 `result.ok` 设置 notice/error）。
+  - `apps/web/src/app/admin/settings/credential-form.tsx`（新增）：`"use client"` 组件 `CredentialForm`，支持 `mode: "ai" | "search"`；密码显隐切换（Eye/EyeOff，`type="button"` 防误提交）；Provider 下拉选择（AI: OpenAI/Azure/Anthropic/Groq/DeepSeek/自定义，Search: Brave/SerpAPI/Tavily/自定义）+ 已知 Provider 自动填充 Base URL（ref 实现，非 DOM query）；Provider 帮助链接（`target="_blank" rel="noopener noreferrer"`）；必填/可选标记；`useFormStatus` 提交 loading 态（Loader2 spinner + "保存中..."）。
+  - `apps/web/src/app/admin/settings/page.tsx`（重写）：两张卡片改为 `Tabs` 布局（AI 凭证 / 搜索凭证，带图标）；状态区重构为 key-value `<dl>` 布局（Key/端点/模型），显示更新时间（`formatDate` helper）；AI tab 增加"测试连接"（Zap 图标，ghost）和"清除凭证"（Trash2 图标，danger）操作；Search tab 增加"清除凭证"操作；所有内联 `style={{}}` 替换为 Tailwind 类。
+- Files: `packages/db/src/repositories.ts`, `packages/db/src/index.ts`, `apps/web/src/app/actions.ts`, `apps/web/src/app/admin/settings/credential-form.tsx`（新增）, `apps/web/src/app/admin/settings/page.tsx`.
+- Verification: `pnpm typecheck` ✓, `pnpm lint` ✓, `pnpm test` ✓, `pnpm build` ✓.
+- Notes / Risk: (1) 测试连接调用 `GET {baseUrl}/models`，部分 OpenAI-compatible provider 可能不支持该端点，会返回非 200 但不代表 Key 无效；(2) 清除凭证是 upsert null，如果 subscription 行不存在会创建空行（设计安全）；(3) Provider 下拉使用原生 `<select>`，option 显式设置 `bg-[#121216]` 保证暗色主题可读性；(4) 密码显隐切换按钮 `tabIndex={-1}` 避免干扰表单 Tab 流。
+
 ### test+refactor:Worker 抓取增强 — 并发、退避、错误追踪、Parser 加固（Issue #11）
 
 - Cause: Worker 抓取管线存在 4 个问题：(1) 顺序抓取无并发控制，source 多时易超时；(2) 重试 3 次零延迟、不区分 4xx/5xx/网络错误；(3) Source 模型无错误追踪字段；(4) RSS parser 不支持 content:encoded、Atom rel=alternate、数字字符引用。
