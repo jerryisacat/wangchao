@@ -71,6 +71,11 @@ test("first intelligence card opens a stable detail page", async ({ page }) => {
 
   const titleLink = firstCard.locator(".intelligence-card-title a").first();
   const href = await titleLink.getAttribute("href");
+  const cardOriginalLink = firstCard.getByRole("link", { name: "查看原文" });
+  const cardOriginalHref =
+    (await cardOriginalLink.count()) > 0
+      ? await cardOriginalLink.getAttribute("href")
+      : null;
   expect(href).toMatch(/^\/events\/[^/]+$/);
 
   await titleLink.click();
@@ -78,6 +83,13 @@ test("first intelligence card opens a stable detail page", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "情报详情" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Markdown" })).toBeVisible();
   await expect(page.getByRole("link", { name: "返回情报流" })).toBeVisible();
+
+  const detailOriginalLink = page.getByRole("link", { name: "原文" });
+  if (cardOriginalHref) {
+    await expect(detailOriginalLink).toHaveAttribute("href", cardOriginalHref);
+  } else {
+    await expect(detailOriginalLink).toHaveCount(0);
+  }
 });
 
 test("new topic only needs name and description", async ({ page }, testInfo) => {

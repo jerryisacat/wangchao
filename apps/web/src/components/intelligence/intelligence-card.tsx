@@ -40,7 +40,7 @@ export function IntelligenceCard({
 }: IntelligenceCardProps) {
   const sourceUrl = isHttpUrl(event.sourceUrl) ? event.sourceUrl : null;
   const itemUrl = isHttpUrl(event.primaryItemUrl) ? event.primaryItemUrl : null;
-  const linkUrl = sourceUrl ?? itemUrl;
+  const sourceLinkUrl = sourceUrl ?? itemUrl;
 
   return (
     <article className="intelligence-card">
@@ -49,8 +49,8 @@ export function IntelligenceCard({
           {event.topicName}
         </Badge>
         <span className="intelligence-card-source">
-          {linkUrl ? (
-            <a href={linkUrl} rel="noreferrer" target="_blank">
+          {sourceLinkUrl ? (
+            <a href={sourceLinkUrl} rel="noreferrer" target="_blank">
               {event.sourceName}
             </a>
           ) : (
@@ -128,17 +128,29 @@ export function IntelligenceCard({
             <span>减少</span>
           </button>
         </form>
-        {linkUrl ? (
+        {itemUrl ? (
           <a
             aria-label="查看原文"
             className="icon-action"
-            href={linkUrl}
+            href={itemUrl}
             rel="noreferrer"
             target="_blank"
             title="查看原文"
           >
             <ExternalLink aria-hidden="true" size={14} />
             <span>原文</span>
+          </a>
+        ) : sourceUrl ? (
+          <a
+            aria-label="查看来源"
+            className="icon-action"
+            href={sourceUrl}
+            rel="noreferrer"
+            target="_blank"
+            title="查看来源"
+          >
+            <ExternalLink aria-hidden="true" size={14} />
+            <span>来源</span>
           </a>
         ) : null}
       </div>

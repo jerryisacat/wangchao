@@ -264,7 +264,7 @@ apps/web/src/
 |------|------|
 | `apps/web/components.json` | shadcn/ui v4 配置入口（radix 库、zinc baseColor、cssVariables）。 |
 | `apps/web/postcss.config.mjs` | Tailwind v4 PostCSS 插件配置。 |
-| `apps/web/src/app/page.tsx` | 首页：未读情报流，顶部搜索、主题筛选、`view=all\|high\|saved` 视图、情报卡片列表、已读/收藏/减少动作。 |
+| `apps/web/src/app/page.tsx` | 首页：未读情报流，顶部搜索、主题筛选、`view=all\|high\|saved` 视图、情报卡片列表、已读/收藏/减少动作；卡片来源名称链接到 Source URL，“原文”动作只链接到清洗后的 Item/Article URL，无原文时降级显示“来源”。 |
 | `apps/web/src/app/events/[eventId]/page.tsx` | 单条情报详情页：稳定 URL、来源/时间/分数/解释、已读/收藏/减少、Markdown 导出和原文链接。 |
 | `apps/web/src/app/topics/new/page.tsx` | 新建主题页：只填写主题名称和描述，提交后自动生成 topic profile 并尝试发现候选信源。 |
 | `apps/web/src/app/sources/page.tsx` | 信源治理页：候选源表单、手动触发 source discovery、LLM/兜底推荐理由展示、质量报告、批准/观察/静音/拒绝动作。 |

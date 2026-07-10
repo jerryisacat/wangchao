@@ -1,5 +1,13 @@
 ## 2026-07-11
 
+### fix:第一轮 SPEC/README 实现审计 — 修正情报卡片原文链接
+
+- Cause: 按 `SPEC.md` 5.4/5.8、`README.md`“未读情报是如何被筛选和录入”以及 `FRONTEND.md` 的原文动作承诺反查真实调用链时，发现首页情报卡片把 `Source.url` 作为“原文”首选地址；RSS Source URL 通常是 feed 本身，因此该按钮虽然可点击，实际没有打开 `Item.url` 指向的原始文章，与详情页行为不一致。
+- Changed: 情报卡片将来源名称链接与原文动作拆成两个语义：来源名称继续指向 Source URL（缺失时可回退到 Item URL），“原文”只使用清洗后的 `primaryItemUrl`；事件没有可用原文时改为明确的“来源”动作，不再把 feed 冒充原文。Playwright 回归用例新增卡片与详情页原文 href 一致性断言。同步更新 L3 调用链说明。审计同时确认完全未开发且既有 Issue 未覆盖的“主题时间线/周月报”和“Telegram 简报投递”，查重后建立 #28、#29；PDF/Obsidian/批量导出、丰富反馈、按需专题报告分别由既有 #8、#7、#17 覆盖，未重复建单。
+- Files: `apps/web/src/components/intelligence/intelligence-card.tsx`, `tests/smoke/web.spec.ts`, `docs/L3-modules.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification: `pnpm typecheck` ✓（7/7），`pnpm lint` ✓（7/7），`pnpm test` ✓（7/7），`pnpm build` ✓（7/7；沙箱内首次因 Turbopack 创建内部端口被拒，沙箱外重跑通过），`git diff --check` ✓。Playwright 断言已加入，但本轮工作区没有 `.env` / 可控测试数据库，未执行会读取真实事件的浏览器场景。
+- Notes / Risk: 本轮只修复入口 URL 语义，不改变抓取、事件持久化或导出契约。分支上已有独立 commit `921f7b3`（`README.md` 与环境变量错误提示），本轮提交不混入该 commit 的内容；推送分支时会一并发布尚未推送的既有 commit。
+
 ### feat:AI 凭证嗅探模型列表 + chat/completions 兜底测试 + 自定义 provider 手动确认
 
 - Cause: (1) 用户需要知道 OpenAI-compatible 端点有哪些可用模型，而非手动猜测模型名；(2) `GET /models` 端点不是所有 provider 都支持（DeepSeek、Azure、代理），导致 AI 凭证测试标记失败；(3) 自定义 provider 无法通过自动测试，UI 会卡死在"测试不通过"状态；(4) AI/搜索 Provider 常量在前后端双源维护，存在不一致风险；(5) 用户需要明确 AI 凭证与搜索凭证相互独立。

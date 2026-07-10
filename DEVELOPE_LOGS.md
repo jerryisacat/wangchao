@@ -2,6 +2,19 @@
 
 本文件记录分阶段开发审计和延期功能追踪，辅助 `AGENTS_CHANGELOGS.md` 使用。它不是传统 release changelog；重点是记录每个阶段是否达成 `REFACTOR_PLAN.md` 和 `AGENTS.md` 目标、缺失功能、已知问题、修复情况和后续追踪项。
 
+## 2026-07-11
+
+### SPEC/README 实现一致性审计 Round 1：情报卡片原文入口
+
+- Phase: Cross-phase / Phase 8 (Dashboard MVP) + ongoing implementation audit
+- Scope: 从 `SPEC.md` 目标能力和 `README.md` 当前实现承诺反查 Web → repository → Worker/Core → Prisma 路径；本轮重点验证未读情报卡片的“原文”动作是否真正落到原始 Item URL，并对完全未开发能力执行 GitHub Issue 查重分流。
+- Alignment: 修复后首页卡片与详情页都把 `primaryItemUrl`（含 `event-display.ts` 从 RSS metadata 提取的 Article URL）作为原文，Source feed 只作为“来源”，符合 `SPEC.md` 5.4/5.8 的来源可追溯要求、`README.md` 的情报录入说明和 `FRONTEND.md` 的卡片动作语义。
+- Missing: `SPEC.md` 要求但代码完全未开发的主题时间线/周报/月报已建 #28；Telegram 每日简报投递已建 #29。PDF/Obsidian/批量导出由 #8 覆盖，丰富反馈与分析阶段偏好应用由 #7 覆盖，按需专题报告由 #17 覆盖，均避免重复。其余功能继续按下一轮调用链审计，不在证据不足时扩大实现范围。
+- Bugs: 首页 `IntelligenceCard` 原来使用 `sourceUrl ?? itemUrl` 作为底部“原文”链接；绝大多数 RSS 事件都有 Source URL，导致按钮打开 feed 而非文章。详情页已正确优先 Item URL，形成同一事件两个入口行为不一致。
+- Fixes: 拆分 `sourceLinkUrl` 与 `itemUrl`；“原文”只在有效 Item/Article URL 存在时显示，否则显示明确的“来源”；Playwright 增加卡片和详情页原文 href 一致性回归断言；同步 `docs/L3-modules.md`。
+- Verification: `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build` 全部通过；构建首次在沙箱内因 Turbopack 端口权限失败，沙箱外同一命令通过，判定为环境限制而非代码错误。浏览器断言因本轮无本地数据库环境未执行。
+- Follow-up: 下一轮优先审计“收藏集合是否只读取首页 Top 30”“每日简报是否按主题/日期幂等”以及 README 对 TaskRun/AI 管线的逐项表述；有实现壳则修复，完全缺失且无重复 Issue 则建单。
+
 ## 2026-07-10
 
 ### Phase 3/8：全站交互、响应式与可访问性多轮审计
