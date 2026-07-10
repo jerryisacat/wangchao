@@ -110,6 +110,8 @@ export function CredentialForm({
   const [selectedProvider, setSelectedProvider] = useState(
     currentProvider ?? (mode === "ai" ? "openai" : "brave"),
   );
+  const [validationError, setValidationError] = useState("");
+  const apiKeyRef = useRef<HTMLInputElement>(null);
   const baseUrlRef = useRef<HTMLInputElement>(null);
 
   const providers = mode === "ai" ? AI_PROVIDERS : SEARCH_PROVIDERS;
@@ -127,10 +129,22 @@ export function CredentialForm({
     }
   }
 
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    const apiKey = apiKeyRef.current?.value?.trim() ?? "";
+    if (!apiKey) {
+      event.preventDefault();
+      setValidationError("API Key 为必填项，请输入后再提交。");
+      apiKeyRef.current?.focus();
+      return;
+    }
+    setValidationError("");
+  }
+
   return (
     <form
       action={formAction}
       className="grid gap-3 rounded-md border border-border bg-[#0f0f13] p-4"
+      onSubmit={handleSubmit}
     >
       <div className="grid gap-2 text-xs font-bold text-muted-foreground">
         <Label htmlFor={apiKeyFieldId}>
@@ -139,6 +153,7 @@ export function CredentialForm({
         </Label>
         <div className="relative">
           <Input
+            ref={apiKeyRef}
             autoComplete="off"
             className="pr-9"
             id={apiKeyFieldId}
@@ -146,7 +161,6 @@ export function CredentialForm({
             placeholder={
               mode === "ai" ? "输入新的 API Key" : "输入新的搜索 API Key"
             }
-            required
             type={showPassword ? "text" : "password"}
           />
           <button
@@ -163,6 +177,11 @@ export function CredentialForm({
             )}
           </button>
         </div>
+        {validationError ? (
+          <p className="text-xs font-normal text-destructive">
+            {validationError}
+          </p>
+        ) : null}
       </div>
 
       <div className="grid gap-2 text-xs font-bold text-muted-foreground">

@@ -1,5 +1,20 @@
 ## 2026-07-10
 
+### fix:凭证表单客户端校验 + 搜索凭证测试连接
+
+- Cause: (1) 提交 API Key 时，React Server Action 的 `<form action={serverAction}>` 绕过浏览器原生 `required` 属性校验，空值直达服务端 `readRequiredField` 后才报错"请补全必填内容后再提交"；(2) 搜索凭证 tab 缺少"测试连接"功能，与 AI 凭证 tab 不对称。
+- Changed:
+  - `apps/web/src/components/ui/input.tsx`：从普通函数组件改为 `React.forwardRef`，支持 `ref` 转发。
+  - `apps/web/src/app/admin/settings/credential-form.tsx`：新增 `apiKeyRef`（`useRef<HTMLInputElement>`）+ `validationError` 状态 + `handleSubmit` 客户端前置校验：API Key 为空时 `preventDefault()` + 红色文字提示 + 自动聚焦；移除 `required` HTML 属性（避免浏览器原生校验与 Server Action 冲突）。
+  - `packages/db/src/repositories.ts`：新增 `testSearchCredential(prisma, scope)` 函数，按 `provider`（brave → `GET /res/v1/web/search` + `X-Subscription-Token` / serpapi → `GET /search?api_key=...` / tavily → `POST /search` + body）调用对应 API 验证 Key 有效性，10s 超时，`custom` 或不支持的 provider 返回"暂不支持自动测试"提示。
+  - `packages/db/src/index.ts`：导出 `testSearchCredential`。
+  - `apps/web/src/app/actions.ts`：新增 `testSearchCredentialAction` Server Action（OWNER/ADMIN 守卫，调用 `testSearchCredential`，按 `result.ok` 设置 notice/error）。
+  - `apps/web/src/app/admin/settings/page.tsx`：搜索凭证 tab 增加"测试连接"按钮（Zap 图标，ghost 样式），导入 `testSearchCredentialAction`。
+  - `docs/L3-modules.md`：更新 `input.tsx` 描述（forwardRef）、`testSearchCredential` 函数条目、`credential-form.tsx` 描述（客户端校验）、`actions.ts` 描述（testSearchCredentialAction）、`page.tsx` 描述（搜索测试连接）、调用链（测试连接链路更新）。
+- Files: `apps/web/src/components/ui/input.tsx`, `apps/web/src/app/admin/settings/credential-form.tsx`, `packages/db/src/repositories.ts`, `packages/db/src/index.ts`, `apps/web/src/app/actions.ts`, `apps/web/src/app/admin/settings/page.tsx`, `docs/L3-modules.md`, `AGENTS_CHANGELOGS.md`.
+- Verification: `pnpm --filter @wangchao/web typecheck` ✓（预存 Prisma client 未生成问题不影响本次改动）, `pnpm --filter @wangchao/web lint` ✓, `pnpm --filter @wangchao/db exec tsc --noEmit` 因 Prisma client 未生成为预存错误。
+- Notes / Risk: (1) 客户端校验仅检查 API Key 非空，服务端 `readRequiredField` 仍保留为防御性校验；(2) `testSearchCredential` 对 Brave/SerpAPI/Tavily 做真实 API 调用，需配置了有效的搜索 Key 的测试连接才会成功；(3) `custom` 走"暂不支持自动测试"分支，不会抛错。
+
 ## 2026-07-10
 
 ### feat:API 配置页面体验优化 - Tabs 布局、密码显隐、Provider 下拉、测试连接、清除凭证

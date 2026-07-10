@@ -1315,3 +1315,43 @@ export async function testAiCredentialAction(formData: FormData): Promise<void> 
   revalidatePath("/admin/settings");
   redirect(actionRedirectHref("/admin/settings", type, message));
 }
+
+export async function testSearchCredentialAction(formData: FormData): Promise<void> {
+  let message = "搜索凭证连接测试成功。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to test credentials.");
+    }
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      testSearchCredential,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    const result = await testSearchCredential(prisma, { organizationId: workspace.organizationId });
+    message = result.message;
+    type = result.ok ? "notice" : "error";
+  } catch (error) {
+    logActionError("testSearchCredentialAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/admin/settings");
+  redirect(actionRedirectHref("/admin/settings", type, message));
+}

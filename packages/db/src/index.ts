@@ -59,6 +59,7 @@ export {
   recordMarkdownExport,
   markItemFiltered,
   testAiCredential,
+  testSearchCredential,
   updateDashboardEventState,
   updateSourceGovernanceStatus,
   updateTopic,

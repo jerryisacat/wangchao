@@ -2482,6 +2482,75 @@ export async function testAiCredential(
   }
 }
 
+export async function testSearchCredential(
+  prisma: PrismaClient,
+  scope: TenantScope,
+): Promise<CredentialTestResult> {
+  const credentials = await getDecryptedCredentials(prisma, scope);
+  const search = credentials?.search;
+  if (!search) {
+    return { ok: false, message: "未配置搜索凭证，请先保存再测试。" };
+  }
+
+  const { apiKey, provider } = search;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    let response: Response;
+
+    if (provider === "brave") {
+      response = await fetch(
+        "https://api.search.brave.com/res/v1/web/search?q=test&count=1",
+        {
+          headers: { "X-Subscription-Token": apiKey },
+          method: "GET",
+          signal: controller.signal,
+        },
+      );
+    } else if (provider === "serpapi") {
+      response = await fetch(
+        `https://serpapi.com/search?api_key=${encodeURIComponent(apiKey)}&q=test&num=1`,
+        { method: "GET", signal: controller.signal },
+      );
+    } else if (provider === "tavily") {
+      response = await fetch("https://api.tavily.com/search", {
+        headers: { "Content-Type": "application/json" },
+        method: "POST",
+        body: JSON.stringify({
+          api_key: apiKey,
+          query: "test",
+          max_results: 1,
+        }),
+        signal: controller.signal,
+      });
+    } else {
+      return {
+        ok: false,
+        message: `暂不支持对 "${provider}" 进行自动连接测试，请手动验证 API Key。`,
+      };
+    }
+
+    if (response.ok) {
+      return { ok: true, message: "搜索凭证连接测试成功。" };
+    }
+    return {
+      ok: false,
+      message: `连接失败：HTTP ${response.status} ${response.statusText}`.trim(),
+    };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      return { ok: false, message: "连接超时，请检查网络或 Provider 设置是否正确。" };
+    }
+    return {
+      ok: false,
+      message: `连接错误：${error instanceof Error ? error.message : String(error)}`,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 export async function getDecryptedCredentials(
   prisma: PrismaClient,
   scope: TenantScope,
