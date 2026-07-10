@@ -1,5 +1,28 @@
 ## 2026-07-10
 
+### refactor:迁移表单到 shadcn Input/Label/Textarea primitives（Issue #16）
+
+- Cause: `Input`、`Label`、`Textarea` 三个 shadcn primitives 已存在于 `apps/web/src/components/ui/`，但被 0 个页面使用。`topics/new` 和 `admin/settings` 仍使用 raw `<input>` / `<textarea>` / `<label>` + 手写 CSS 类（`.topic-form`、`.candidate-form`、`.topic-name-input`），是"声称完成但实际没落地"的技术债。
+- Changed:
+  - `apps/web/src/app/topics/new/page.tsx`：`<label>` -> `<Label htmlFor>`、`<input>` -> `<Input>`、`<textarea>` -> `<Textarea>`；表单容器 `topic-form` -> `grid gap-3`；label+input 组包裹为 `grid gap-2 text-muted-foreground text-xs font-bold`；`topicName` Input 通过 className 保留大字号（`min-h-16 border-2 text-[clamp(1.25rem,3vw,2rem)] font-black`）。
+  - `apps/web/src/app/admin/settings/page.tsx`：两个表单（AI 凭证、搜索凭证）共 6 个字段全部从 raw `<label>`+`<input>` 迁移到 `<Label>`+`<Input>`；表单容器 `candidate-form` -> Tailwind 等价类 `grid gap-3 border border-border rounded-md bg-[#0f0f13] p-4`；保留所有 `name`/`type`/`required`/`placeholder`/`autoComplete`/`defaultValue` 属性。
+  - `globals.css` 中的 `.topic-form`/`.candidate-form` CSS 块保留不动，因为 `sources/page.tsx` 和 `topics/[topicId]/edit/page.tsx` 仍引用。
+- Files: `apps/web/src/app/topics/new/page.tsx`, `apps/web/src/app/admin/settings/page.tsx`.
+- Verification: `pnpm --filter @wangchao/web typecheck` ✓, `pnpm --filter @wangchao/web build` ✓, `pnpm typecheck` ✓ (7/7), `pnpm lint` ✓ (7/7), `pnpm test` ✓ (7/7), `pnpm build` ✓ (7/7), `git diff --check` ✓.
+- Notes / Risk: `sources/page.tsx` 的 `candidate-form` 和 `topics/[topicId]/edit/page.tsx` 的 `topic-form` 未迁移，留作后续。`Label` 是 `"use client"` 组件，在 Server Component 页面中导入无问题（Next.js 自动处理 client boundary）。
+
+### test:补齐 AI Adapter 测试覆盖（Issue #12）
+
+- Cause: `packages/ai` 的测试覆盖不足，`OpenAiCompatibleAdapter` 的 retry、timeout、JSON mode fallback、错误处理路径，以及 parser 的复杂输入边界均缺少 fixture 覆盖。
+- Changed:
+  - 新增 `packages/ai/src/adapter.fixtures.ts`，导出 `runAdapterFixtures()`，覆盖 12 个场景：标准响应、output_text fallback、空 choices、multi-choice 取 `choices[0]`、4xx 不可重试、5xx 重试后成功、429 重试后成功、maxRetries 耗尽、非 JSON 错误体、AbortError 重试后失败、JSON mode fallback、JSON mode 记忆。
+  - 在 `packages/ai/src/parser.fixtures.ts` 的 `runParserFixtures()` 末尾追加 8 个 parser 边界测试：嵌套对象、root array 拒绝、markdown fence 包裹、截断 JSON、夹带解释文本、think 标签+markdown fence 混合、trailing comma 修复、unquoted key 修复。
+  - 修改 `packages/ai/src/openai-compatible.ts` 使 `!response.ok` 分支能处理非 JSON 错误体：先 `try { await response.json() }`，失败则 `catch { await response.text() }`，将文本作为 `AiHttpError` 的 body。
+  - `packages/ai/package.json` 的 test script 末尾追加 `adapter.fixtures.js` 执行。
+- Files: `packages/ai/src/adapter.fixtures.ts`（新增）, `packages/ai/src/parser.fixtures.ts`, `packages/ai/src/openai-compatible.ts`, `packages/ai/package.json`, `docs/L3-modules.md`, `AGENTS_CHANGELOGS.md`.
+- Verification: `pnpm --filter @wangchao/ai test` ✓（5 个 fixture 文件全部通过）, `pnpm --filter @wangchao/ai typecheck` ✓, `git diff --check` ✓.
+- Notes / Risk: `openai-compatible.ts` 的改动是最小改动：仅影响 `!response.ok` 分支的错误体读取逻辑，成功路径不受影响。`AiHttpError` 仍未导出，测试通过 `(error as any).status` 访问。`@wangchao/web` 的 typecheck/test 失败是预存问题（`.next/types` 生成文件冲突），与本次改动无关。
+
 ### fix:修复 Worker Cron 部署后 prisma.organization.upsert() crash
 
 - Cause: commit `dc0cbb5`（Admin 后台 API Key 配置）在 `Organization` model 新增了 `subscription Subscription?` relation 和 migration `0006`，但 Railway 的 worker 和 source-discovery cron 服务没有 predeploy 步骤。当 GitHub 自动同步同时触发 web 和 worker 部署时，worker 在 web 的 migration 完成前就启动并调用 `prisma.organization.upsert()`，Prisma 7.x WASM query compiler 因数据库 schema 与 client schema 不匹配而抛出 `Invalid invocation`（错误信息被截断），导致 worker crash。此外 worker 的 catch 块仅输出 `error.message`，Prisma 7.x driver adapter 模式下错误信息不完整，增加了排查难度。

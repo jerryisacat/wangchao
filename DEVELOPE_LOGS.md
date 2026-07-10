@@ -4,6 +4,17 @@
 
 ## 2026-07-10
 
+### Issue #12：AI Adapter 测试补齐 + Issue #16：前端表单 primitives 迁移
+
+- Phase: Cross-phase / Phase 6 (AI adapter) + Phase 3 (前端组件)
+- Scope: #12 在 `packages/ai` 新增 `adapter.fixtures.ts`，覆盖 12 个 adapter 场景（标准响应、output_text fallback、空 choices、multi-choice、4xx/5xx/429 错误重试、maxRetries 耗尽、非 JSON 错误体、AbortError、JSON mode fallback 和记忆）；在 `parser.fixtures.ts` 追加 8 个 parser 边界测试；修改 `openai-compatible.ts` 使 `!response.ok` 分支能处理非 JSON 错误体。#16 将 `topics/new` 和 `admin/settings` 两个表单页从 raw HTML 控件迁移到 shadcn `Input`/`Label`/`Textarea` primitives。
+- Alignment: 符合 `REFACTOR_PLAN.md` Phase 6 的 AI adapter 测试覆盖要求和 Phase 3 的前端组件标准化要求。`AiHttpError` 非 JSON 错误体修复符合 AGENTS.md §12 "LLM 输出一律视为不可信输入"原则。表单迁移保留了 Server Action FormData field name，不改变提交行为。
+- Missing: `sources/page.tsx` 的 `candidate-form` 和 `topics/[topicId]/edit/page.tsx` 的 `topic-form` 未迁移（留作后续）。`AiHttpError` 仍未导出，测试通过 `(error as any).status` 访问。`globals.css` 中 `.topic-form`/`.candidate-form` CSS 块保留（仍被其他页面引用）。
+- Bugs: 无已知 bug。
+- Fixes: 修复 `openai-compatible.ts` 在 provider 返回非 JSON 错误体（如纯文本 "Internal Server Error"）时抛出 SyntaxError 而非 `AiHttpError` 的问题。
+- Verification: `pnpm typecheck` ✓ (7/7), `pnpm lint` ✓ (7/7), `pnpm test` ✓ (7/7), `pnpm build` ✓ (7/7), `git diff --check` ✓.
+- Follow-up: 迁移 `sources/page.tsx` 和 `topics/[topicId]/edit/page.tsx` 表单；考虑导出 `AiHttpError` 供调用方做更精确的错误分类；考虑补充 streaming 支持边界文档。
+
 ### Phase 12 前置：Admin 后台 API Key 凭证管理
 
 - Phase: Phase 12 (商业化基础) 前置 - 凭证管理基础设施

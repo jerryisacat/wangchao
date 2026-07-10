@@ -154,9 +154,12 @@ OpenAI-compatible LLM adapter、响应解析、source recommendation。
 | `packages/ai/src/openai-compatible.ts` | OpenAI-compatible Chat Completions adapter。 |
 | `packages/ai/src/event-extraction.ts` | 事件抽取 prompt、严格 JSON 解析、entities/followUpSuggestion 抽取和 deterministic fallback。 |
 | `packages/ai/src/event-extraction.fixtures.ts` | Event extraction fixture 测试。 |
-| `packages/ai/src/parser.fixtures.ts` | Parser fixture 测试。 |
+| `packages/ai/src/parser.fixtures.ts` | Parser fixture 测试，覆盖 sanitize/extract/parse/repair/validate 边界。 |
+| `packages/ai/src/adapter.fixtures.ts` | OpenAI-compatible adapter fixture 测试，覆盖 retry、timeout、JSON mode fallback 和非 JSON 错误体处理。 |
 | `packages/ai/src/source-recommendation.ts` | 候选信源推荐 prompt、严格 JSON 解析、推荐理由 sanitize、0-1 相关性评分和 deterministic fallback。 |
 | `packages/ai/src/source-recommendation.fixtures.ts` | Source recommendation fixture 测试。 |
+| `packages/ai/src/semantic-dedup.ts` | 语义去重 prompt 和严格 JSON 解析。 |
+| `packages/ai/src/semantic-dedup.fixtures.ts` | Semantic dedup fixture 测试。 |
 
 ### 规则
 

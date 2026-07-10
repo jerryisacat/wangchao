@@ -91,11 +91,17 @@ export class OpenAiCompatibleAdapter {
         signal: controller.signal,
       });
 
-      const raw = (await response.json()) as ChatCompletionsResponse;
-
       if (!response.ok) {
-        throw new AiHttpError(response.status, raw);
+        let errorBody: unknown;
+        try {
+          errorBody = await response.json();
+        } catch {
+          errorBody = await response.text();
+        }
+        throw new AiHttpError(response.status, errorBody);
       }
+
+      const raw = (await response.json()) as ChatCompletionsResponse;
 
       const content =
         raw.choices?.[0]?.message?.content ?? raw.output_text ?? "";

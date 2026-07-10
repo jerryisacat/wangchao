@@ -7,6 +7,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBanner } from "@/components/common/status-banner";
 
@@ -78,39 +80,46 @@ export default async function AdminSettingsPage({
                 </span>
               ) : null}
             </div>
-            <form action={upsertAiCredentialAction} className="candidate-form">
-              <label>
-                <span>API Key</span>
-                <input
+            <form
+              action={upsertAiCredentialAction}
+              className="grid gap-3 border border-border rounded-md bg-[#0f0f13] p-4"
+            >
+              <div className="grid gap-2 text-muted-foreground text-xs font-bold">
+                <Label htmlFor="aiApiKey">API Key</Label>
+                <Input
+                  autoComplete="off"
+                  id="aiApiKey"
                   name="aiApiKey"
                   placeholder="输入新的 API Key"
                   required
                   type="password"
-                  autoComplete="off"
                 />
-              </label>
-              <label>
-                <span>Base URL</span>
-                <input
+              </div>
+              <div className="grid gap-2 text-muted-foreground text-xs font-bold">
+                <Label htmlFor="aiBaseUrl">Base URL</Label>
+                <Input
+                  id="aiBaseUrl"
                   name="aiBaseUrl"
                   placeholder="https://api.openai.com/v1"
                   type="url"
                 />
-              </label>
-              <label>
-                <span>Provider</span>
-                <input
+              </div>
+              <div className="grid gap-2 text-muted-foreground text-xs font-bold">
+                <Label htmlFor="aiProvider">Provider</Label>
+                <Input
+                  id="aiProvider"
                   name="aiProvider"
                   placeholder="openai / custom"
                 />
-              </label>
-              <label>
-                <span>模型</span>
-                <input
+              </div>
+              <div className="grid gap-2 text-muted-foreground text-xs font-bold">
+                <Label htmlFor="aiModel">模型</Label>
+                <Input
+                  id="aiModel"
                   name="aiModel"
                   placeholder="gpt-4o-mini"
                 />
-              </label>
+              </div>
               <Button size="sm" type="submit" variant="primary">
                 <KeyRound aria-hidden="true" size={14} />
                 保存 AI 凭证
@@ -142,25 +151,30 @@ export default async function AdminSettingsPage({
                 </span>
               ) : null}
             </div>
-            <form action={upsertSearchCredentialAction} className="candidate-form">
-              <label>
-                <span>API Key</span>
-                <input
+            <form
+              action={upsertSearchCredentialAction}
+              className="grid gap-3 border border-border rounded-md bg-[#0f0f13] p-4"
+            >
+              <div className="grid gap-2 text-muted-foreground text-xs font-bold">
+                <Label htmlFor="searchApiKey">API Key</Label>
+                <Input
+                  autoComplete="off"
+                  id="searchApiKey"
                   name="searchApiKey"
                   placeholder="输入新的搜索 API Key"
                   required
                   type="password"
-                  autoComplete="off"
                 />
-              </label>
-              <label>
-                <span>Provider</span>
-                <input
+              </div>
+              <div className="grid gap-2 text-muted-foreground text-xs font-bold">
+                <Label htmlFor="searchProvider">Provider</Label>
+                <Input
+                  defaultValue="brave"
+                  id="searchProvider"
                   name="searchProvider"
                   placeholder="brave"
-                  defaultValue="brave"
                 />
-              </label>
+              </div>
               <Button size="sm" type="submit" variant="secondary">
                 <Search aria-hidden="true" size={14} />
                 保存搜索凭证
