@@ -1,0 +1,33 @@
+"use client";
+
+import { RefreshCw } from "lucide-react";
+import { useTransition } from "react";
+import { runFetchCycleAction } from "@/app/actions";
+import { Button } from "@/components/ui/button";
+
+export function FetchRefreshButton() {
+  const [isPending, startTransition] = useTransition();
+
+  function handleRefresh() {
+    startTransition(async () => {
+      await runFetchCycleAction();
+    });
+  }
+
+  return (
+    <Button
+      aria-label="手动刷新抓取最新情报"
+      disabled={isPending}
+      onClick={handleRefresh}
+      size="sm"
+      variant="secondary"
+    >
+      <RefreshCw
+        aria-hidden="true"
+        className={isPending ? "animate-spin" : ""}
+        size={14}
+      />
+      <span>{isPending ? "刷新中…" : "刷新"}</span>
+    </Button>
+  );
+}

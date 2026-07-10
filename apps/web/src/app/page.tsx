@@ -5,6 +5,7 @@ import { StatusBanner } from "@/components/common/status-banner";
 import { PageHeader } from "@/components/common/page-header";
 import { TopicFilter } from "@/components/intelligence/topic-filter";
 import { IntelligenceFeed } from "@/components/intelligence/intelligence-feed";
+import { FetchRefreshButton } from "@/components/intelligence/fetch-refresh-button";
 import { getTopicSourceWorkspace } from "@/lib/topic-source-data";
 
 export const dynamic = "force-dynamic";
@@ -64,6 +65,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
             type="search"
           />
         </form>
+        <FetchRefreshButton />
       </PageHeader>
 
       {notice ? (

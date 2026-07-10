@@ -455,6 +455,68 @@ async function runSourceDiscoveryFromDashboard() {
   });
 }
 
+export async function runFetchCycleAction(): Promise<void> {
+  let message = "手动抓取已完成。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    const result = await runFetchCycleFromDashboard();
+    if (result.fetchedSources > 0 || result.failedSources > 0) {
+      const parts: string[] = [];
+      if (result.fetchedSources > 0) {
+        parts.push(`抓取 ${result.fetchedSources} 个信源`);
+      }
+      if (result.insertedOrUpdatedItems > 0) {
+        parts.push(`收录 ${result.insertedOrUpdatedItems} 条新信息`);
+      }
+      if (result.createdOrUpdatedEvents > 0) {
+        parts.push(`生成 ${result.createdOrUpdatedEvents} 个情报事件`);
+      }
+      if (result.failedSources > 0) {
+        parts.push(
+          `${result.failedSources} 个信源抓取失败，可前往信源管理查看详情`,
+        );
+      }
+      message = `刷新完成：${parts.join("，")}。`;
+    } else {
+      message = "刷新完成，暂无新内容。";
+    }
+  } catch (error) {
+    logActionError("runFetchCycleAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/");
+  redirect(actionRedirectHref("/", type, message));
+}
+
+async function runFetchCycleFromDashboard() {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("Database connection is required to run fetch cycle.");
+  }
+
+  const {
+    assertMembershipRole,
+    ensureDefaultWorkspace,
+    getPrismaClient,
+  } = await import("@wangchao/db");
+  const { runFetchCycle } = await import("@wangchao/worker");
+  const prisma = getPrismaClient();
+  const workspace = await ensureDefaultWorkspace(prisma);
+
+  await assertMembershipRole(
+    prisma,
+    {
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
+    },
+    ["OWNER", "ADMIN", "MEMBER"],
+  );
+
+  return runFetchCycle();
+}
+
 export async function updateSourceGovernanceAction(
   formData: FormData,
 ): Promise<void> {
