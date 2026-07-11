@@ -313,7 +313,7 @@ AI parser fixture test
 Playwright single-topic smoke test
 ```
 
-正式发布流程以 GitHub 自动同步到 Railway 为目标：Web、Worker Cron、Source Discovery Cron 和 Railway Postgres 必须有清晰的环境变量、health check、日志、备份、回滚和 smoke 验证说明，并同步 `docs/L4-operations.md` / `docs/deployment.md`。新增部署相关能力时，默认服务于 GitHub → Railway 主路径，并优先复用 Railway 平台能力；除非用户明确要求，不新增其他平台的一等部署说明。
+正式发布流程以 GitHub 自动同步到 Railway 为目标：Web、Worker Cron、Source Discovery Cron 和 Railway Postgres 必须有清晰的环境变量、health check、日志、备份、回滚和 smoke 验证说明，并同步 `docs/L4-operations.md` / `docs/deployment.md` / `docs/railway-runbook.md`。新增部署相关能力时，默认服务于 GitHub → Railway 主路径，并优先复用 Railway 平台能力；除非用户明确要求，不新增其他平台的一等部署说明。
 
 ## 14. 每轮任务结束前必须检查
 

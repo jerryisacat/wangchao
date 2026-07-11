@@ -4,6 +4,17 @@
 
 ## 2026-07-11
 
+### Wave 3：Railway 运维闭环（#19 + #20 + #21 + #22 + #23 + #24 + #15 + #3）
+
+- Phase: Phase 13 (GitHub → Railway 部署运维)
+- Scope: Worker 结构化日志（cycle-start/cycle-end JSON with type/duration/status/counters）；GitHub→Railway 主路径文档固化（`railway up` 降级为紧急 fallback）；Railway 运维 runbook（Cron 观测、排障、Postgres backup/PITR、migration 前检查、forward-compatible 原则、发布验证、HTTP smoke、回滚策略、环境变量矩阵、secret 最小化暴露）；Turborepo filtered build 脚本（可选优化，保留完整构建为安全默认）；HTTP smoke 脚本（无 Chromium 依赖）；GitHub Actions CI workflow（lint/typecheck/build/test/db validate）。
+- Alignment: 符合 `REFACTOR_PLAN.md` Phase 13 和 `AGENTS.md` §5.1（GitHub → Railway 主路径）、§12（安全与隐私）、§13（测试验证发布）。三个 Railway service 的 Config as Code 保持 service-level 独立 config，root `railway.json` 仅用于 `railway up` fallback。环境变量矩阵明确 `DATABASE_URL` 通过 service reference 注入，AI/Search secret 按 service 最小化暴露。
+- Missing: Worker Cron 和 Source Discovery Cron 需在 Railway dashboard 确认 cron 已启用（代码和 config 就绪，需运维操作）。Postgres backup 频率和保留期需在 Railway dashboard 确认。恢复演练需执行一次并记录。集中错误上报（Sentry 等）未接入。Playwright smoke 未在 CI 中运行（需 Chromium + Postgres）。Railpack filtered build 尚未在 Railway staging 验证 runtime `dist/` 完整性，暂不切换。
+- Bugs: 无已知 bug。Worker stdout 输出格式从 pretty JSON 变为单行 JSON per event，下游如有解析需适配。
+- Fixes: Worker 入口重写为结构化日志，每次 cycle 输出 `cycle-start` + `cycle-end` 两行 JSON，包含 cycle type、timestamp、durationMs、status 和全部计数器。Worker entry 从直接 `process.stdout.write(JSON.stringify(result, null, 2))` 变为 `emitStructuredLogEnd(cycleType, startTime, status, { result })`。
+- Verification: `pnpm typecheck` ✓（7/7）, `pnpm lint` ✓（7/7）, `pnpm test` ✓（7/7）, `pnpm build` ✓（7/7）, `git diff --check` ✓。`node scripts/http-smoke-check.mjs` ✓（6/6 build artifacts）。`pnpm railway:build:web` ✓（6 tasks）。`pnpm railway:build:worker` ✓（5 tasks）。
+- Follow-up: 在 Railway dashboard 中为 Worker Cron 和 Source Discovery Cron 启用 cron job（§2.2 步骤）。确认 Postgres backup 频率/保留期（§4.1）。执行一次恢复演练（§4.4）。在 Railway staging 验证 filtered build runtime `dist/` 完整性后切换 build command（§1.5）。后续考虑在 CI 中加入 Playwright smoke（需 Chromium + Postgres service）。
+
 ### Wave 2：简报/导出/时间线（#28 + #8 + #4）
 
 - Phase: Cross-phase / Phase 7 (情报管线) + Phase 8 (Dashboard MVP) + Phase 10 (简报导出)

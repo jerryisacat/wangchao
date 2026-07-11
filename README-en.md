@@ -54,6 +54,7 @@ docs/
   L3-modules.md        L3 module details, key files, call chains
   L4-operations.md     L4 commands, env vars, deployment, testing
   deployment.md        Deployment and operations guide
+  railway-runbook.md   Railway ops runbook (Cron, backup, rollback, CI/CD)
 ```
 
 ## Quick Start
@@ -132,6 +133,7 @@ Wangchao's code structure docs are organized by L0-L4 layers to help AI and huma
 - `docs/L3-modules.md`: **L3 module details**, key files and call chains per package.
 - `docs/L4-operations.md`: **L4 operations**, commands, env vars, deployment, testing.
 - `docs/deployment.md`: deployment, health checks, logging, and rollback guidance.
+- `docs/railway-runbook.md`: Railway ops runbook (GitHub auto-deploy, Cron observation, Postgres backup/PITR, release verification, rollback, env var matrix, CI/CD).
 
 ## Contributing & Customization
 

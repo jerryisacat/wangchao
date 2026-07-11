@@ -195,6 +195,50 @@ export function describeWorker(): string {
   return "Wangchao worker";
 }
 
+type WorkerCycleType = "fetch" | "source-discovery" | "health";
+
+interface StructuredLogStart {
+  event: "cycle-start";
+  cycle: WorkerCycleType;
+  timestamp: string;
+}
+
+interface StructuredLogEnd {
+  event: "cycle-end";
+  cycle: WorkerCycleType;
+  timestamp: string;
+  durationMs: number;
+  status: "ok" | "degraded" | "error";
+  [key: string]: unknown;
+}
+
+function emitStructuredLogStart(cycle: WorkerCycleType): number {
+  const log: StructuredLogStart = {
+    cycle,
+    event: "cycle-start",
+    timestamp: new Date().toISOString(),
+  };
+  process.stdout.write(`${JSON.stringify(log)}\n`);
+  return Date.now();
+}
+
+function emitStructuredLogEnd(
+  cycle: WorkerCycleType,
+  startTime: number,
+  status: "ok" | "degraded" | "error",
+  metrics: Record<string, unknown>,
+): void {
+  const log: StructuredLogEnd = {
+    cycle,
+    durationMs: Date.now() - startTime,
+    event: "cycle-end",
+    status,
+    timestamp: new Date().toISOString(),
+    ...metrics,
+  };
+  process.stdout.write(`${JSON.stringify(log)}\n`);
+}
+
 export async function runWorkerHealthCheck(): Promise<WorkerHealthCheckResult> {
   const database = await checkWorkerDatabase();
   const status = database.status === "down" ? "degraded" : "ok";
@@ -1670,21 +1714,35 @@ async function checkWorkerDatabase(): Promise<{
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
-  const command = process.argv.includes("--health")
+  const isHealth = process.argv.includes("--health");
+  const isSourceDiscovery = process.argv.includes("--source-discovery");
+  const cycleType: WorkerCycleType = isHealth
+    ? "health"
+    : isSourceDiscovery
+      ? "source-discovery"
+      : "fetch";
+
+  const startTime = emitStructuredLogStart(cycleType);
+
+  const command = isHealth
     ? runWorkerHealthCheck()
-    : process.argv.includes("--source-discovery")
+    : isSourceDiscovery
       ? runSourceDiscoveryCycle({ mode: "worker" })
       : runFetchCycle();
 
   command
     .then((result) => {
-      process.stdout.write(`${describeWorker()}\n`);
-      process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
       if ("status" in result && result.status === "degraded") {
+        emitStructuredLogEnd(cycleType, startTime, "degraded", { result });
         process.exitCode = 1;
+      } else {
+        emitStructuredLogEnd(cycleType, startTime, "ok", { result });
       }
     })
     .catch((error: unknown) => {
+      emitStructuredLogEnd(cycleType, startTime, "error", {
+        error: error instanceof Error ? error.message : String(error),
+      });
       process.stderr.write(
         `worker error: ${error instanceof Error ? error.message : String(error)}\n`,
       );

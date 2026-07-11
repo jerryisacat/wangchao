@@ -259,7 +259,7 @@ pnpm db:validate && pnpm db:generate && pnpm db:migrate && pnpm db:wait && pnpm 
 pnpm smoke:web
 ```
 
-完整命令、环境变量、部署、Docker Postgres、Railway 配置见 [docs/L4-operations.md](L4-operations.md)。
+完整命令、环境变量、部署、Docker Postgres、Railway 配置见 [docs/L4-operations.md](docs/L4-operations.md)。Railway 生产运维（GitHub 自动部署、Cron 观测、备份/回滚、环境变量矩阵、CI/CD）见 [docs/railway-runbook.md](docs/railway-runbook.md)。
 
 ---
 

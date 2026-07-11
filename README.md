@@ -176,6 +176,7 @@ docs/
   L4-operations.md        L4 命令、环境变量、部署、测试
   deployment.md            Railway 部署运维说明
   railway-deployment.md    Railway 部署完整指南
+  railway-runbook.md       Railway 运维 runbook（Cron、备份、回滚、环境变量矩阵、CI）
 ```
 
 ## 快速开始
@@ -270,6 +271,7 @@ curl -fsS http://127.0.0.1:3000/api/health
 - `FRONTEND.md`: 前端视觉语言、交互规则和页面组合规范。
 - `docs/deployment.md`: Railway 部署运维说明（健康检查、日志、备份、回滚）。
 - `docs/railway-deployment.md`: Railway 部署完整指南。
+- `docs/railway-runbook.md`: Railway 运维 runbook（GitHub 自动部署、Cron 观测、Postgres 备份/PITR、发布验证、回滚、环境变量矩阵、CI/CD）。
 - `AGENTS_CHANGELOGS.md`: AI Agent 工作审计日志。
 - `DEVELOPE_LOGS.md`: 分阶段开发审计和延期功能追踪。
 
