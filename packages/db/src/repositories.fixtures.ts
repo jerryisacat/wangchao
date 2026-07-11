@@ -6,9 +6,11 @@ import {
   failTaskRun,
   listBriefingsPage,
   listEventsForDailyBriefing,
+  listRecentFeedbackSignals,
   listSavedDashboardEvents,
   listSourceGovernanceReport,
   mergeSemanticEvents,
+  recordCategoryPreferenceFeedback,
   updateDashboardEventState,
   upsertIntelligenceEventFromItem,
 } from "./repositories.js";
@@ -16,6 +18,7 @@ import {
 export async function runRepositoryFixtures(): Promise<void> {
   await verifySavedPagination();
   await verifyReadPreservesSavedState();
+  await verifyCategoryFeedbackIsPersistedAndLearned();
   await verifyDailyBriefingWindowFilter();
   await verifyDailyBriefingUpsert();
   await verifyBriefingHistoryPagination();
@@ -23,6 +26,69 @@ export async function runRepositoryFixtures(): Promise<void> {
   await verifySourceGovernanceMetricsUseActiveEventLinks();
   await verifyFuzzyEventMatchUpdatesExistingEvent();
   await verifySemanticMergeClearsArchivedMatchKeys();
+}
+
+async function verifyCategoryFeedbackIsPersistedAndLearned(): Promise<void> {
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const prisma = {
+    feedbackEvent: {
+      create: async (args: unknown) => {
+        calls.push({ args, method: "feedbackEvent.create" });
+        return {};
+      },
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "feedbackEvent.findMany" });
+        return [
+          {
+            event: {
+              category: "AI",
+              primaryItem: {
+                source: { name: "Source One" },
+                sourceId: "source-1",
+              },
+            },
+            kind: "CATEGORY_UP",
+            topicId: "topic-1",
+            value: 2,
+          },
+        ];
+      },
+    },
+    intelligenceEvent: {
+      findFirstOrThrow: async () => ({
+        category: "AI",
+        id: "event-1",
+        primaryItemId: "item-1",
+        topicId: "topic-1",
+      }),
+    },
+  } as unknown as PrismaClient;
+
+  await recordCategoryPreferenceFeedback(prisma, {
+    action: "up",
+    eventId: "event-1",
+    organizationId: "org-1",
+    userId: "user-1",
+  });
+  const [signal] = await listRecentFeedbackSignals(prisma, {
+    organizationId: "org-1",
+    userId: "user-1",
+  });
+
+  const createData = readRecord(
+    readArgsByName(calls, "feedbackEvent.create").data,
+    "categoryFeedback.create.data",
+  );
+  assert(createData.kind === "CATEGORY_UP", "Category-up must use its dedicated feedback kind.");
+  assert(createData.value === 2, "Category-up must persist a positive preference value.");
+  const findArgs = readArgsByName(calls, "feedbackEvent.findMany");
+  const where = readRecord(findArgs.where, "feedbackSignals.where");
+  const kind = readRecord(where.kind, "feedbackSignals.where.kind");
+  const kinds = kind.in as unknown[];
+  assert(kinds.includes("CATEGORY_UP"), "Preference learning must query category-up feedback.");
+  assert(kinds.includes("CATEGORY_DOWN"), "Preference learning must query category-down feedback.");
+  assert(signal?.kind === "CATEGORY_UP", "Category feedback must reach the learning signal mapper.");
+  assert(signal?.category === "AI", "Category feedback must retain the event category.");
 }
 
 async function verifySavedPagination(): Promise<void> {

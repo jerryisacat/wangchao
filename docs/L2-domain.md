@@ -61,7 +61,7 @@ REJECTED ──approve────> ACTIVE (重新审核)
 规则：
 - worker fetch 和 daily briefing 默认只使用 `ACTIVE` sources。
 - `CANDIDATE`/`MUTED`/`REJECTED` 不得进入正式抓取和简报。
-- approve/reject/mute 通过 `FeedbackEvent`（`SOURCE_APPROVE`/`SOURCE_REJECT`）给偏好和质量报告留下信号。
+- approve/reject/mute 通过 `FeedbackEvent`（`SOURCE_APPROVE`/`SOURCE_REJECT`）留下管理员治理审计；它们不直接进入个人 `PreferenceMemory`，不能冒充 SPEC 的 `source_good/source_bad` 用户反馈。
 - 状态动作必须写 `SourceObservation` 保留可追溯 evidence。
 
 ### Item 状态机
@@ -158,10 +158,10 @@ create/start ──> RUNNING
 | `SAVE` | 用户收藏 | 提升相关 category/source 权重 |
 | `DISMISS` | 用户忽略 | 降低相关权重 |
 | `EXPORT` | 用户导出 | 正反馈，提升相关权重 |
-| `SOURCE_APPROVE` | 批准信源 | 信源质量报告正信号 |
-| `SOURCE_REJECT` | 拒绝信源 | 信源质量报告负信号 |
-| `CATEGORY_UP` | 用户提升类别 | 提升该 category 权重 |
-| `CATEGORY_DOWN` | 用户降低类别 | 降低该 category 权重 |
+| `SOURCE_APPROVE` | 管理员批准信源 | 治理审计；不直接进入个人偏好 |
+| `SOURCE_REJECT` | 管理员拒绝信源 | 治理审计；不直接进入个人偏好 |
+| `CATEGORY_UP` | 详情页“多关注这类” | 只提升当前 Topic 的 category 权重，不改变事件状态/source 权重 |
+| `CATEGORY_DOWN` | 详情页“少关注这类” | 只降低当前 Topic 的 category 权重，不改变事件状态/source 权重 |
 
 ## 领域术语表
 
@@ -169,7 +169,7 @@ create/start ──> RUNNING
 |------|------|
 | **Topic Profile** | 主题的机器可读画像，包含 keywords/entities/include_scope/exclude_scope/importance_rules/digest_style。新建主题时由 `buildTopicProfile()` 生成初稿，用户可编辑。 |
 | **Gravity Score** | 情报事件的综合排序分。由 `calculateGravityScore()` 基于 importance、time、source quality 等因子计算，Dashboard 排序的基础分。 |
-| **Preference Memory** | 按主题学到的用户偏好，以 `PreferenceMemory(key/value/confidence/explanation)` 存储。`SAVE/EXPORT` 提升权重，`READ` 轻微提升，`DISMISS` 降低。 |
+| **Preference Memory** | 按主题学到的用户偏好，以 `PreferenceMemory(key/value/confidence/explanation)` 存储。`SAVE/EXPORT` 提升权重，`READ` 轻微提升，`DISMISS` 降低；`CATEGORY_UP/DOWN` 显式调整当前 Topic 的类别。归纳时以 `topicId + key` 隔离。 |
 | **Source Observation** | 信源质量观测快照，记录 hitRate/noiseRate/duplicateRate 等指标，作为信源治理审核证据。 |
 | **Event Hash** | 情报事件去重哈希。当前由标题和 URL 生成，配合 `topicId + eventHash` 做幂等 upsert。 |
 | **Content Hash** | Item 内容哈希，用于跨源重复检测。 |

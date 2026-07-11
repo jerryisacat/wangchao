@@ -27,7 +27,7 @@ pnpm worker:source-discovery
 pnpm smoke:web
 ```
 
-`pnpm test` 会实际执行 `packages/core`、`packages/ai`、`packages/sources` 和 `packages/db` 的编译后 fixture；`packages/db` fixture 当前覆盖收藏集合、Daily Briefing、TaskRun 生命周期，以及标题模糊合并和 SourceObservation 指标口径，而不是只做 TypeScript 编译。
+`pnpm test` 会实际执行 `packages/core`、`packages/ai`、`packages/sources` 和 `packages/db` 的编译后 fixture；core/db fixture 当前覆盖收藏集合、Daily Briefing、TaskRun 生命周期、标题模糊合并、SourceObservation 指标口径，以及 category feedback 写入/读取和同名 category 的跨 Topic 隔离，而不是只做 TypeScript 编译。
 
 多来源或治理指标变更后，应在临时 Postgres 验证：同标题不同 URL 最终只有一个未归档 IntelligenceEvent；最新 Item 为 PRIMARY/ANALYZED，旧 Item 为 SECONDARY/DUPLICATE；source report 的 hit/noise/duplicate 与唯一 active event 数和 fixture 数据一致。
 
@@ -156,7 +156,7 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 ## 测试与验证入口
 
-- `pnpm smoke:web` 运行 Playwright smoke tests；默认单 worker 启动 `@wangchao/web` production server，避免真实 Server Action 与外部 RSS 验证并行互相干扰，因此需要先完成 `pnpm build`，并提供可用 `DATABASE_URL`。如已有服务可用，可设置 `PLAYWRIGHT_BASE_URL` 跳过内置 webServer。用例覆盖搜索/筛选、情报详情、收藏取消、主题创建/管理、Admin Tabs/客户端校验；`tests/smoke/responsive.spec.ts` 额外覆盖 11 个页面在 320/375/414/768/1024/1440px 下的超框、44px 触达目标和主按钮对比度。
+- `pnpm smoke:web` 运行 Playwright smoke tests；默认单 worker 启动 `@wangchao/web` production server，避免真实 Server Action 与外部 RSS 验证并行互相干扰，因此需要先完成 `pnpm build`，并提供可用 `DATABASE_URL`。如已有服务可用，可设置 `PLAYWRIGHT_BASE_URL` 跳过内置 webServer。用例覆盖搜索/筛选、情报详情（含忽略与 category up/down 入口）、收藏取消、主题创建/管理、Admin Tabs/客户端校验；`tests/smoke/responsive.spec.ts` 额外覆盖应用页面在 320/375/414/768/1024/1440px 下的超框、44px 触达目标和主按钮对比度。
 - `apps/web/src/app/api/health/route.ts` 是 Web health endpoint，返回 web service 状态和数据库检查结果。
 - `apps/worker/src/index.ts --health` 是 worker health check 入口，可通过根脚本 `pnpm worker:health` 调用。
 - `docs/deployment.md` 记录当前 Railway 部署顺序、环境变量、服务配置、日志、备份和回滚策略。

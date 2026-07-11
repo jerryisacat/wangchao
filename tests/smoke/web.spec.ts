@@ -127,6 +127,9 @@ test("first intelligence card opens a stable detail page", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "情报详情" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Markdown" })).toBeVisible();
   await expect(page.getByRole("link", { name: "返回情报流" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "忽略此条" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "多关注这类" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "少关注这类" })).toBeVisible();
 
   const detailOriginalLink = page.getByRole("link", { name: "原文" });
   if (cardOriginalHref) {

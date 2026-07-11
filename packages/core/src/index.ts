@@ -32,7 +32,13 @@ export interface RelevanceDecision {
 
 export interface FeedbackSignal {
   category?: string | null;
-  kind: "READ" | "SAVE" | "DISMISS" | "EXPORT";
+  kind:
+    | "READ"
+    | "SAVE"
+    | "DISMISS"
+    | "EXPORT"
+    | "CATEGORY_UP"
+    | "CATEGORY_DOWN";
   sourceId?: string | null;
   sourceName?: string | null;
   topicId: string;
@@ -298,7 +304,8 @@ export function generatePreferenceDeltas(
     const keys = preferenceKeysForSignal(signal);
 
     for (const key of keys) {
-      const existing = grouped.get(key) ?? {
+      const groupKey = `${signal.topicId}\u0000${key}`;
+      const existing = grouped.get(groupKey) ?? {
         score: 0,
         signalCount: 0,
         topicId: signal.topicId,
@@ -306,13 +313,14 @@ export function generatePreferenceDeltas(
       };
       existing.score += weight;
       existing.signalCount += 1;
-      grouped.set(key, existing);
+      grouped.set(groupKey, existing);
     }
   }
 
   return Array.from(grouped.entries())
     .filter(([, group]) => Math.abs(group.score) >= 1)
-    .map(([key, group]) => {
+    .map(([groupKey, group]) => {
+      const key = groupKey.slice(groupKey.indexOf("\u0000") + 1);
       const normalizedWeight = Number(
         Math.max(-4, Math.min(4, group.score)).toFixed(2),
       );
@@ -529,6 +537,10 @@ export function preferenceKeysForEvent(input: {
 }
 
 function preferenceKeysForSignal(signal: FeedbackSignal): string[] {
+  if (signal.kind === "CATEGORY_UP" || signal.kind === "CATEGORY_DOWN") {
+    return signal.category ? [`category:${signal.category}`] : [];
+  }
+
   return preferenceKeysForEvent({
     category: signal.category,
     sourceId: signal.sourceId,
@@ -542,6 +554,10 @@ function feedbackSignalWeight(signal: FeedbackSignal): number {
   }
 
   if (signal.kind === "SAVE" || signal.kind === "EXPORT") {
+    return 2;
+  }
+
+  if (signal.kind === "CATEGORY_UP") {
     return 2;
   }
 

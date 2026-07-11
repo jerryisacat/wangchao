@@ -3,6 +3,7 @@ import {
   createUtcDayRange,
   createIntelligenceEventDraft,
   evaluateRelevance,
+  generatePreferenceDeltas,
 } from "./index.js";
 
 export function runCoreFixtures(): void {
@@ -13,6 +14,54 @@ export function runCoreFixtures(): void {
   testRuleFallbackSummaryFallsBackToTitle();
   testCreateIntelligenceEventDraftUsesCleanSummary();
   testCreateIntelligenceEventDraftReturnsNullForIrrelevant();
+  testPreferenceDeltasKeepTopicsIsolated();
+  testCategoryFeedbackOnlyChangesCategoryWeight();
+}
+
+function testPreferenceDeltasKeepTopicsIsolated(): void {
+  const deltas = generatePreferenceDeltas([
+    {
+      category: "AI",
+      kind: "SAVE",
+      sourceId: null,
+      topicId: "topic-1",
+    },
+    {
+      category: "AI",
+      kind: "DISMISS",
+      sourceId: null,
+      topicId: "topic-2",
+    },
+  ]);
+
+  assert(deltas.length === 2, "The same category in two topics must create two deltas.");
+  const first = deltas.find((delta) => delta.topicId === "topic-1");
+  const second = deltas.find((delta) => delta.topicId === "topic-2");
+  assert(first?.value.weight === 2, "Topic 1 must retain its positive signal.");
+  assert(second?.value.weight === -2, "Topic 2 must retain its negative signal.");
+}
+
+function testCategoryFeedbackOnlyChangesCategoryWeight(): void {
+  const deltas = generatePreferenceDeltas([
+    {
+      category: "AI",
+      kind: "CATEGORY_UP",
+      sourceId: "source-1",
+      topicId: "topic-1",
+    },
+    {
+      category: "AI",
+      kind: "CATEGORY_DOWN",
+      sourceId: "source-2",
+      topicId: "topic-2",
+    },
+  ]);
+
+  assert(deltas.length === 2, "Category feedback must produce one category delta per topic.");
+  assert(
+    deltas.every((delta) => delta.key === "category:AI"),
+    "Explicit category feedback must not also change source preference.",
+  );
 }
 
 function testUtcDayRangeUsesStableBoundaries(): void {

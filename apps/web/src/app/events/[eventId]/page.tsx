@@ -4,13 +4,18 @@ import {
   Check,
   CircleAlert,
   Download,
+  EyeOff,
   ExternalLink,
   Sparkles,
   ThumbsDown,
+  ThumbsUp,
 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { updateDashboardEventStateAction } from "@/app/actions";
+import {
+  updateCategoryPreferenceAction,
+  updateDashboardEventStateAction,
+} from "@/app/actions";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBanner } from "@/components/common/status-banner";
 import { Badge } from "@/components/ui/badge";
@@ -177,8 +182,36 @@ export default async function EventDetailPage({
                   value="dismiss"
                   variant="secondary"
                 >
+                  <EyeOff aria-hidden="true" size={14} />
+                  忽略此条
+                </Button>
+              </form>
+              <form action={updateCategoryPreferenceAction}>
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <Button
+                  name="action"
+                  size="sm"
+                  type="submit"
+                  value="up"
+                  variant="secondary"
+                >
+                  <ThumbsUp aria-hidden="true" size={14} />
+                  多关注这类
+                </Button>
+              </form>
+              <form action={updateCategoryPreferenceAction}>
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <Button
+                  name="action"
+                  size="sm"
+                  type="submit"
+                  value="down"
+                  variant="secondary"
+                >
                   <ThumbsDown aria-hidden="true" size={14} />
-                  减少这类
+                  少关注这类
                 </Button>
               </form>
               <Button asChild size="sm" variant="primary">

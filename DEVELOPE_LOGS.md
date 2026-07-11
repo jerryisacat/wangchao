@@ -4,6 +4,17 @@
 
 ## 2026-07-11
 
+### SPEC/README 实现一致性审计 Round 6：类别反馈与 Topic 偏好隔离
+
+- Phase: Cross-phase / Phase 8 Dashboard + Phase 9 feedback learning
+- Scope: 核对 FeedbackKind 八个枚举是否都有真实入口/消费，PreferenceMemory 是否按 Topic 隔离，以及 README 所述“反馈影响下一轮排序”是否形成可执行闭环。
+- Alignment: `CATEGORY_UP/DOWN` 现由详情页真实写入、规则归纳、即时 upsert 并参与 Dashboard 权重；显式类别反馈只改变 category，事件状态与 source preference 保持独立。所有 delta 按 `topicId + key` 分组，符合 SPEC 的 topic preference 边界和可解释要求。
+- Missing: source_good/bad、score_too_high/low、track/mute entity、note，LLM 归纳、时间衰减、历史/编辑和 Worker relevance 应用仍由 #7 追踪；`SOURCE_APPROVE/REJECT` 当前用于治理审计而非 PreferenceMemory 归纳，不把其含义臆测为个人来源偏好。
+- Bugs: `CATEGORY_UP/DOWN` 只有 schema/docs 无入口无查询；跨 Topic 同名 category 共享一个归纳 Map key，可能抵消信号并写入错误 topic；详情页“减少这类”实际执行的是 dismiss，文案混淆事件状态与类别偏好。
+- Fixes: 新增 category up/down Server Action/repository/UI 与用量审计，学习链读取并只生成 category delta；复合分组隔离 Topic；dismiss 改名“忽略此条”；补 core/db fixtures、Playwright 入口断言和分层文档。
+- Verification: db validate、全仓 typecheck/lint/test/build、Playwright test discovery 和 diff check 全部通过；core/db fixture 与 UI 契约覆盖范围、Turbopack 沙箱重跑说明见同日 `AGENTS_CHANGELOGS.md`。
+- Follow-up: 下一轮继续沿 SPEC/README 反查主题画像编辑、分析输入与保存契约，或深挖 export/briefing 的承诺边界；#7 保持 open 直至其增强验收标准完整满足。
+
 ### SPEC/README 实现一致性审计 Round 5：信源质量指标与工作区审计
 
 - Phase: Cross-phase / Phase 7 event dedupe + Phase 11 source governance + Phase 12 usage boundary

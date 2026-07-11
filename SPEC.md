@@ -405,6 +405,8 @@ LLM/规则归纳为 preference delta
 因为你连续 3 次将“普通航线开通”标记为不感兴趣，系统已降低该子方向权重。
 ```
 
+当前 TypeScript 主路径已落实基础闭环：READ/SAVE/DISMISS/EXPORT 与详情页的“多关注这类 / 少关注这类”都会写入原始 `FeedbackEvent`；后两者分别使用 `CATEGORY_UP` / `CATEGORY_DOWN`，只调整当前 Topic 下对应 category 的权重，不连带修改 source 偏好。规则归纳结果即时写入可解释的 `PreferenceMemory` 并影响 Dashboard 排序。同名 category 的信号必须按 `topicId` 隔离，不能跨主题抵消或合并。更丰富的 source/score/entity/note 反馈、衰减、历史编辑和 Worker 分析阶段应用仍属于后续增强范围。
+
 ### 5.7 知识库导出与沉淀
 
 导出功能应优先面向 Obsidian/Markdown，但保留 PDF 路径。

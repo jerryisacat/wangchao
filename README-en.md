@@ -15,7 +15,7 @@ The current product path is a TypeScript monorepo for a personal intelligence wo
 | Area | Status |
 |---|---|
 | Main stack | TypeScript, pnpm, Turborepo, Next.js App Router, Prisma, Postgres, Node.js worker |
-| Web | Topic/RSS form, intelligence feed, event detail, read/save/dismiss actions, user-scoped paginated saved collection, paginated briefing history/export with TaskRun audit, preference memory, source governance, OWNER/ADMIN workspace membership and 30-day usage audit, `/api/health` |
+| Web | Topic/RSS form, intelligence feed, event detail, read/save/dismiss plus category up/down feedback, user-scoped paginated saved collection, paginated briefing history/export with TaskRun audit, topic-isolated preference memory, source governance, OWNER/ADMIN workspace membership and 30-day usage audit, `/api/health` |
 | Worker | RSS fetch, item writes, LLM-first analysis with deterministic fallback, durable TaskRun outcomes, preference learning, UTC-windowed idempotent daily briefing, source quality observation, `--health` |
 | Database | Prisma schema, versioned migrations, seed, workspace models, TaskRun, UsageEvent |
 
@@ -117,6 +117,7 @@ Development is organized by `AGENTS.md` and `REFACTOR_PLAN.md`. After each phase
 - The current edition is designed for a personal workspace, with the default workspace identity configured through environment variables.
 - The worker handles fetching, analysis, and briefing generation; the deployment platform is responsible for scheduled execution.
 - The intelligence pipeline currently favors explainable rules. `packages/ai` keeps the OpenAI-compatible boundary for deeper semantic extraction and briefing rewrites.
+- Category up/down feedback changes only the matching category inside the current topic; preference signals with the same category name remain isolated across topics before they affect Dashboard ranking.
 
 ## Reference Docs
 

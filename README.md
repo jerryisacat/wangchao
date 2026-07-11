@@ -94,7 +94,7 @@
 
 ## 用户的反馈如何影响系统
 
-每条情报支持：已读 / 收藏 / 忽略 / 导出。每个动作都会同时写 `IntelligenceEvent` 状态、`UserItemState` 和 `FeedbackEvent`，作为偏好学习的信号。
+每条情报支持：已读 / 收藏 / 忽略 / 导出；详情页另外提供“多关注这类 / 少关注这类”。状态动作会同步写 `IntelligenceEvent`、`UserItemState` 和 `FeedbackEvent`，category 偏好动作则只写 `CATEGORY_UP` / `CATEGORY_DOWN` 反馈，不会误改事件状态或来源权重。
 
 “已保存”页面直接按当前用户的 `UserItemState.saved=true` 分页查询完整收藏集合，不依赖首页最多 30 条情报的加载结果；标记已读不会取消收藏，只有显式“取消收藏”才移出集合，而且不会被记录为负反馈。
 
@@ -102,6 +102,8 @@
 SAVE / EXPORT  →  提升 category / source 权重（+2 信号）
 READ           →  轻微提升（+0.5）
 DISMISS        →  降低权重（-2）
+CATEGORY_UP    →  只提升当前主题下的 category 权重（+2）
+CATEGORY_DOWN  →  只降低当前主题下的 category 权重（-2）
 ```
 
 Worker 的 `runPreferenceLearningCycle()` 把这些信号归纳成 `PreferenceMemory`，每条都带可解释的 `explanation`，例如：
@@ -110,7 +112,7 @@ Worker 的 `runPreferenceLearningCycle()` 把这些信号归纳成 `PreferenceMe
 3 feedback signals increased the category preference for keyword:C919.
 ```
 
-Dashboard 在渲染时读取 `PreferenceMemory`，对 `gravityScore` 应用权重乘子（0.4× ~ 1.6×）。你多次忽略某类内容后，该类内容会明显降权。
+Dashboard 在渲染时读取 `PreferenceMemory`，对 `gravityScore` 应用权重乘子（0.4× ~ 1.6×）。偏好按 `topicId + key` 隔离，同名 category 不会跨主题互相抵消；你多次忽略或明确降低某类内容后，该类内容会明显降权。
 
 ## 当前阶段
 

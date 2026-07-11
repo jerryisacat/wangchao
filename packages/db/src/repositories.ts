@@ -167,7 +167,13 @@ type DashboardEventQueryResult = Prisma.IntelligenceEventGetPayload<{
 
 export interface FeedbackSignalRecord {
   category: string | null;
-  kind: "READ" | "SAVE" | "DISMISS" | "EXPORT";
+  kind:
+    | "READ"
+    | "SAVE"
+    | "DISMISS"
+    | "EXPORT"
+    | "CATEGORY_UP"
+    | "CATEGORY_DOWN";
   sourceId: string | null;
   sourceName: string | null;
   topicId: string;
@@ -272,6 +278,12 @@ export interface UpdateDashboardEventStateInput {
   action: DashboardEventAction;
   eventId: string;
   organizationId: string;
+  userId: string;
+}
+
+export interface RecordCategoryPreferenceFeedbackInput extends TenantScope {
+  action: "up" | "down";
+  eventId: string;
   userId: string;
 }
 
@@ -1773,7 +1785,14 @@ export async function listRecentFeedbackSignals(
       organizationId: scope.organizationId,
       userId: scope.userId,
       kind: {
-        in: ["READ", "SAVE", "DISMISS", "EXPORT"],
+        in: [
+          "READ",
+          "SAVE",
+          "DISMISS",
+          "EXPORT",
+          "CATEGORY_UP",
+          "CATEGORY_DOWN",
+        ],
       },
     },
     include: {
@@ -1805,6 +1824,44 @@ export async function listRecentFeedbackSignals(
     topicId: event.topicId,
     value: event.value,
   }));
+}
+
+export async function recordCategoryPreferenceFeedback(
+  prisma: PrismaClient,
+  input: RecordCategoryPreferenceFeedbackInput,
+) {
+  const event = await prisma.intelligenceEvent.findFirstOrThrow({
+    where: {
+      id: input.eventId,
+      organizationId: input.organizationId,
+    },
+    select: {
+      category: true,
+      id: true,
+      primaryItemId: true,
+      topicId: true,
+    },
+  });
+
+  if (!event.category) {
+    throw new Error("This event has no category to update.");
+  }
+
+  return prisma.feedbackEvent.create({
+    data: {
+      organizationId: input.organizationId,
+      topicId: event.topicId,
+      userId: input.userId,
+      eventId: event.id,
+      itemId: event.primaryItemId,
+      kind: input.action === "up" ? "CATEGORY_UP" : "CATEGORY_DOWN",
+      value: input.action === "up" ? 2 : -2,
+      metadata: {
+        category: event.category,
+        source: "event-detail-category-preference",
+      },
+    },
+  });
 }
 
 export async function upsertPreferenceMemory(

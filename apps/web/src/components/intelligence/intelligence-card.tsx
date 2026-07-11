@@ -117,15 +117,15 @@ export function IntelligenceCard({
           <input name="eventId" type="hidden" value={event.eventId} />
           <input name="returnTo" type="hidden" value="/" />
           <button
-            aria-label="减少这类"
+            aria-label="忽略此条"
             className="icon-action"
             name="action"
-            title="减少这类"
+            title="忽略此条"
             type="submit"
             value="dismiss"
           >
             <ThumbsDown aria-hidden="true" size={14} />
-            <span>减少</span>
+            <span>忽略</span>
           </button>
         </form>
         {itemUrl ? (

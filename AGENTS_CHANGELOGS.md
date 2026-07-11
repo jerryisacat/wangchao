@@ -1,5 +1,13 @@
 ## 2026-07-11
 
+### fix:第六轮 SPEC/README 实现审计 — 补齐类别反馈并隔离跨主题偏好
+
+- Cause: Prisma 与 L2 已声明 `CATEGORY_UP/CATEGORY_DOWN`，但 Web 没有写入入口、偏好查询也不读取，属于枚举与文档壳。进一步反查 `generatePreferenceDeltas()` 发现归纳 Map 只用 `category:*`/`source:*` 作 key，没有带 `topicId`；两个 Topic 共享同名 category 时，正负反馈会互相抵消并把结果错误写给首个 Topic，违反 SPEC 的按主题偏好边界。
+- Changed: 情报详情新增“多关注这类 / 少关注这类”，与“忽略此条”明确分离；新增 tenant-scoped category feedback repository 与 Server Action，写 `CATEGORY_UP/DOWN` 后即时刷新 PreferenceMemory 和 UsageEvent，不修改事件状态，也不连带修改 source 权重。学习查询纳入两类信号；core 对显式类别反馈只生成 category key，并以 `topicId + key` 复合分组隔离同名类别。首页旧“减少”改为准确的“忽略”。同时纠正文档边界：管理员 `SOURCE_APPROVE/REJECT` 是治理审计，不冒充尚未实现的个人 `source_good/source_bad` 偏好。
+- Files: `packages/core/src/index.ts`, `packages/core/src/index.fixtures.ts`, `packages/db/src/repositories.ts`, `packages/db/src/repositories.fixtures.ts`, `packages/db/src/index.ts`, `apps/web/src/app/actions.ts`, `apps/web/src/app/events/[eventId]/page.tsx`, `apps/web/src/components/intelligence/intelligence-card.tsx`, `tests/smoke/web.spec.ts`, `SPEC.md`, `README.md`, `README-en.md`, `CODEGUIDE.md`, `docs/L2-domain.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `FRONTEND.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification: `pnpm db:validate` ✓，`pnpm typecheck` ✓（7/7），`pnpm lint` ✓（7/7），`pnpm test` ✓（7/7），`pnpm build` ✓（7/7；沙箱内 Turbopack 因禁止绑定内部端口失败，按规则在沙箱外重跑后完整通过），`pnpm exec playwright test --list` ✓（16 tests），`git diff --check` ✓。core fixture 覆盖同名 category 跨 Topic 正负信号不抵消、category 动作不生成 source delta；DB fixture 覆盖 tenant-scoped 写入及 learning query 纳入 `CATEGORY_UP/DOWN`；Playwright 契约覆盖详情页三种相互独立的“忽略 / 多关注 / 少关注”入口。
+- Notes / Risk: 更丰富的 source/score/entity/note 反馈、时间衰减、冲突历史、可编辑 UI 和 Worker relevance 阶段应用仍由既有 Issue #7 跟踪，本轮不重复建 Issue，也不声称该增强范围完成。当前规则按最近 100 条反馈重算，未改变该既有窗口。
+
 ### fix:第五轮 SPEC/README 实现审计 — 修正信源质量指标与工作区审计
 
 - Cause: `README.md` 承诺 Worker 会计算真实 hit/noise/duplicate 并提供工作区成员/用量审计。反查发现 `duplicateRate` 只统计 `Item.status='DUPLICATE'`，但任何代码都不会写该状态，因此重复率长期为 0；标题模糊匹配虽然找到已有事件，随后仍按新 eventHash upsert，会实际创建第二条事件，EventItem 主次角色也不完整。成员与用量虽在 `getTopicSourceWorkspace()` 每次读取，却没有任何页面渲染，属于性能开销和展示壳。

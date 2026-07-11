@@ -5,6 +5,10 @@ import { redirect } from "next/navigation";
 import seedSourcePack from "../../../../packages/db/seed-sources.json";
 import { defaultAiBaseUrl } from "./admin/settings/providers";
 
+type DatabaseClient = ReturnType<
+  (typeof import("@wangchao/db"))["getPrismaClient"]
+>;
+
 export async function createTopicAction(formData: FormData): Promise<void> {
   let message = "主题已创建。";
   let type: ActionRedirectType = "notice";
@@ -282,12 +286,9 @@ async function updateDashboardEventStateFromForm(formData: FormData) {
     assertMembershipRole,
     ensureDefaultWorkspace,
     getPrismaClient,
-    listRecentFeedbackSignals,
     recordUsageEvent,
     updateDashboardEventState,
-    upsertPreferenceMemory,
   } = await import("@wangchao/db");
-  const { generatePreferenceDeltas } = await import("@wangchao/core");
   const prisma = getPrismaClient();
   const workspace = await ensureDefaultWorkspace(prisma);
 
@@ -305,10 +306,107 @@ async function updateDashboardEventStateFromForm(formData: FormData) {
     organizationId: workspace.organizationId,
     userId: workspace.userId,
   });
-  const signals = await listRecentFeedbackSignals(prisma, {
+  await refreshPreferenceMemory(prisma, workspace);
+  await recordUsageEvent(prisma, {
+    metadata: {
+      action,
+      source: "dashboard-event-state",
+    },
+    organizationId: workspace.organizationId,
+    quantity: 1,
+    subjectId: eventId,
+    subjectType: "intelligence-event",
+    type: "WEB_ACTION",
+    unit: "action",
+    userId: workspace.userId,
+  });
+}
+
+export async function updateCategoryPreferenceAction(
+  formData: FormData,
+): Promise<void> {
+  const returnTo = readSafeReturnPath(formData, "returnTo") ?? "/";
+  let message = "类别偏好已更新。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    const action = readCategoryPreferenceAction(formData, "action");
+    await updateCategoryPreferenceFromForm(formData, action);
+    message =
+      action === "up"
+        ? "已增加这类情报的偏好权重。"
+        : "已降低这类情报的偏好权重。";
+  } catch (error) {
+    logActionError("updateCategoryPreferenceAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/");
+  revalidatePath("/preferences");
+  revalidatePath(returnTo);
+  redirect(actionRedirectHref(returnTo, type, message));
+}
+
+async function updateCategoryPreferenceFromForm(
+  formData: FormData,
+  action: "up" | "down",
+) {
+  const eventId = readRequiredField(formData, "eventId");
+
+  if (!process.env.DATABASE_URL) {
+    throw new Error("Database connection is required to update preferences.");
+  }
+
+  const {
+    assertMembershipRole,
+    ensureDefaultWorkspace,
+    getPrismaClient,
+    recordCategoryPreferenceFeedback,
+    recordUsageEvent,
+  } = await import("@wangchao/db");
+  const prisma = getPrismaClient();
+  const workspace = await ensureDefaultWorkspace(prisma);
+
+  await assertMembershipRole(
+    prisma,
+    {
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
+    },
+    ["OWNER", "ADMIN", "MEMBER"],
+  );
+  await recordCategoryPreferenceFeedback(prisma, {
+    action,
+    eventId,
     organizationId: workspace.organizationId,
     userId: workspace.userId,
   });
+  await refreshPreferenceMemory(prisma, workspace);
+  await recordUsageEvent(prisma, {
+    metadata: {
+      action: `category-${action}`,
+      source: "event-detail-category-preference",
+    },
+    organizationId: workspace.organizationId,
+    quantity: 1,
+    subjectId: eventId,
+    subjectType: "intelligence-event",
+    type: "WEB_ACTION",
+    unit: "action",
+    userId: workspace.userId,
+  });
+}
+
+async function refreshPreferenceMemory(
+  prisma: DatabaseClient,
+  workspace: { organizationId: string; userId: string },
+) {
+  const { listRecentFeedbackSignals, upsertPreferenceMemory } = await import(
+    "@wangchao/db"
+  );
+  const { generatePreferenceDeltas } = await import("@wangchao/core");
+  const signals = await listRecentFeedbackSignals(prisma, workspace);
   const deltas = generatePreferenceDeltas(signals);
 
   await Promise.all(
@@ -324,19 +422,6 @@ async function updateDashboardEventStateFromForm(formData: FormData) {
       }),
     ),
   );
-  await recordUsageEvent(prisma, {
-    metadata: {
-      action,
-      source: "dashboard-event-state",
-    },
-    organizationId: workspace.organizationId,
-    quantity: 1,
-    subjectId: eventId,
-    subjectType: "intelligence-event",
-    type: "WEB_ACTION",
-    unit: "action",
-    userId: workspace.userId,
-  });
 }
 
 export async function createCandidateSourceAction(
@@ -833,6 +918,19 @@ function readDashboardEventAction(
   }
 
   throw new Error(`${key} must be read, save, unsave, or dismiss.`);
+}
+
+function readCategoryPreferenceAction(
+  formData: FormData,
+  key: string,
+): "up" | "down" {
+  const value = readRequiredField(formData, key);
+
+  if (value === "up" || value === "down") {
+    return value;
+  }
+
+  throw new Error(`${key} must be up or down.`);
 }
 
 function readSourceGovernanceAction(

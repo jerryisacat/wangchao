@@ -157,10 +157,11 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 - 阅读状态、反馈和导出行为必须创建 durable 信号。
 - Dashboard 状态动作必须同时写 `IntelligenceEvent`、`UserItemState` 和 `FeedbackEvent`，为偏好学习保留信号。
 - Preference memory 必须可解释（保留 `explanation`）。
+- Preference delta 必须按 `topicId + key` 分组；同名 category 的反馈不得跨 Topic 抵消或合并。
 - Dashboard 排序使用 `gravityScore` 作为基础分，再应用 `PreferenceMemory` 权重；不得只记录反馈而不影响排序。
-- Preference learning 当前使用可解释规则：`SAVE/EXPORT` 提升 category/source 权重，`READ` 轻微提升，`DISMISS` 降低；后续可替换为 LLM 归纳，但必须保留可解释性。
+- Preference learning 当前使用可解释规则：`SAVE/EXPORT` 提升 category/source 权重，`READ` 轻微提升，`DISMISS` 降低；详情页 `CATEGORY_UP/DOWN` 只改变当前 Topic 的 category 权重。后续可替换为 LLM 归纳，但必须保留可解释性。
 - 单条情报导出应作为 `FeedbackEvent(kind='EXPORT')` 正反馈记录。
-- Source governance 状态动作必须写 `SourceObservation`；approve/reject/mute 还应记录可追溯 evidence 并通过 `FeedbackEvent` 给偏好和质量报告留下信号。
+- Source governance 状态动作必须写 `SourceObservation`；approve/reject/mute 还应记录可追溯 evidence 和 `FeedbackEvent` 作为管理员治理审计，但不得把管理员操作直接等同于个人 `source_good/source_bad` 偏好。后者进入 PreferenceMemory 前需要独立用户反馈入口。
 
 ### L1.7 幂等与去重
 
