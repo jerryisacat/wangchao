@@ -132,6 +132,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 
 - tenant-owned 数据必须预留 `organizationId`；user-specific state 必须预留 `userId`。
 - Topic/Source 写入必须先通过默认 organization/user 获取 `organizationId`/`userId`，再写入。
+- Topic mutation 的 Prisma `where` 必须同时包含 `topicId + organizationId`；不能只依赖 Server Action 先做 membership 检查。
 - `usage events` 记录 AI 调用、抓取、导出、简报生成等用量。
 - MVP 可以使用默认 user/organization，不阻塞核心体验；真实商业化前必须替换为正式 auth/session provider。
 - Prisma schema 和 migrations 进入版本控制；不直接手改生产数据库。schema 变更必须包含 migration、测试、查询层更新和文档更新。
@@ -144,6 +145,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 - 页面和 Markdown 导出只允许把 HTTP/HTTPS URL 渲染为外链。
 - 情报正文、摘要、解释和来源名称不得全大写；来源和原文链接必须使用真实 `<a>`，外链补 `target="_blank"` 和 `rel="noreferrer"`。
 - 日志不得输出密钥、认证 URL、敏感 headers。
+- Topic profile 表单按字符串数组边界校验（条数、单项长度、总长度）；Worker 通过 `buildTopicProfileContext()` 清洗 JSON 数组，并从 Topic 行读取当前 name/description，避免信任过期或畸形 profile 副本。
 
 ### L1.5 候选源隔离
 

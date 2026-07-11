@@ -1,5 +1,6 @@
 import {
   buildRuleFallbackSummary,
+  buildTopicProfileContext,
   createUtcDayRange,
   createIntelligenceEventDraft,
   evaluateRelevance,
@@ -16,6 +17,32 @@ export function runCoreFixtures(): void {
   testCreateIntelligenceEventDraftReturnsNullForIrrelevant();
   testPreferenceDeltasKeepTopicsIsolated();
   testCategoryFeedbackOnlyChangesCategoryWeight();
+  testTopicProfileContextUsesTopicIdentityAndSanitizesLists();
+}
+
+function testTopicProfileContextUsesTopicIdentityAndSanitizesLists(): void {
+  const context = buildTopicProfileContext(
+    {
+      entities: [" OpenAI ", "OpenAI", 42],
+      excludeScope: ["广告", ""],
+      importanceRules: ["官方优先"],
+      includeScope: ["模型发布"],
+      keywords: [" AI ", "AI", "Agent"],
+      name: "stale profile name",
+    },
+    {
+      description: " 关注模型基础设施 ",
+      name: " AI 基础设施 ",
+    },
+  );
+
+  assert(context.name === "AI 基础设施", "Topic name must come from the Topic row.");
+  assert(
+    context.description === "关注模型基础设施",
+    "Topic description must come from the Topic row.",
+  );
+  assert(context.keywords.join(",") === "AI,Agent", "Profile lists must be trimmed and deduplicated.");
+  assert(context.entities.join(",") === "OpenAI", "Non-string entities must be removed.");
 }
 
 function testPreferenceDeltasKeepTopicsIsolated(): void {

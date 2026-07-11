@@ -82,9 +82,12 @@ export interface PendingAnalysisItem {
   organizationId: string;
   publishedAt: Date | null;
   sourceId: string;
+  sourceName: string;
   summary: string | null;
   title: string;
   topicId: string;
+  topicDescription: string | null;
+  topicName: string;
   topicProfile: unknown;
   url: string;
 }
@@ -854,7 +857,10 @@ export async function updateTopic(
   }
 
   return prisma.topic.update({
-    where: { id: scope.topicId },
+    where: {
+      id: scope.topicId,
+      organizationId: scope.organizationId,
+    },
     data,
   });
 }
@@ -1288,8 +1294,15 @@ export async function listFetchedItemsForAnalysis(
       },
     },
     include: {
+      source: {
+        select: {
+          name: true,
+        },
+      },
       topic: {
         select: {
+          description: true,
+          name: true,
           profile: true,
         },
       },
@@ -1304,9 +1317,12 @@ export async function listFetchedItemsForAnalysis(
     organizationId: item.organizationId,
     publishedAt: item.publishedAt,
     sourceId: item.sourceId,
+    sourceName: item.source.name,
     summary: item.summary,
     title: item.title,
     topicId: item.topicId,
+    topicDescription: item.topic.description,
+    topicName: item.topic.name,
     topicProfile: item.topic.profile,
     url: item.url,
   }));

@@ -75,7 +75,7 @@ ANALYZED ──duplicate──────> DUPLICATE
 
 规则：
 - `markItemFiltered()` 必须保留原有 `rawMetadata`，只追加过滤原因，避免丢失 RSS 原始追溯信息。
-- 当前分析管线用 topic profile keywords 做 relevance/noise，用标题和 URL 生成 `eventHash`，用 `topicId + eventHash` 幂等 upsert 事件。
+- 当前分析管线用 topic profile keywords 做规则 relevance/noise；AI extraction 另外读取 entities/includeScope/excludeScope/importanceRules、当前 Source name，并从 Topic 行读取当前 name/description。标题和 URL 生成 `eventHash`，用 `topicId + eventHash` 幂等 upsert 事件。
 - 多来源合并：精确 event hash 或标题 hash + ±24h 命中已有事件时，直接按已有 event id 更新，不能按新 hash 再创建一条事件；旧 primary 的 `EventItem.role` 改为 `SECONDARY` 且 Item 进入 `DUPLICATE`，新 Item 成为 `PRIMARY/ANALYZED`。语义聚类同样把被合并事件的 Item 关联到保留事件并标记为 `DUPLICATE`；归档的被合并事件清空 eventHash/titleHash，避免未来新报道再次命中已归档行或被唯一键阻塞。
 
 ### IntelligenceEvent 状态机
@@ -167,7 +167,7 @@ create/start ──> RUNNING
 
 | 术语 | 定义 |
 |------|------|
-| **Topic Profile** | 主题的机器可读画像，包含 keywords/entities/include_scope/exclude_scope/importance_rules/digest_style。新建主题时由 `buildTopicProfile()` 生成初稿，用户可编辑。 |
+| **Topic Profile** | 主题的机器可读画像。当前已消费并可编辑 keywords/entities/includeScope/excludeScope/importanceRules；新建主题时由 `buildTopicProfile()` 生成初稿。languagePreferences/digestStyle 尚无稳定契约，由 Issue #30 跟踪。 |
 | **Gravity Score** | 情报事件的综合排序分。由 `calculateGravityScore()` 基于 importance、time、source quality 等因子计算，Dashboard 排序的基础分。 |
 | **Preference Memory** | 按主题学到的用户偏好，以 `PreferenceMemory(key/value/confidence/explanation)` 存储。`SAVE/EXPORT` 提升权重，`READ` 轻微提升，`DISMISS` 降低；`CATEGORY_UP/DOWN` 显式调整当前 Topic 的类别。归纳时以 `topicId + key` 隔离。 |
 | **Source Observation** | 信源质量观测快照，记录 hitRate/noiseRate/duplicateRate 等指标，作为信源治理审核证据。 |

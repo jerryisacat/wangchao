@@ -17,6 +17,7 @@ import {
   createIntelligenceEventDraft,
   createIntelligenceEventDraftFromExtraction,
   createUtcDayRange,
+  buildTopicProfileContext,
   evaluateRelevance,
   generatePreferenceDeltas,
   renderDailyBriefingMarkdown,
@@ -1288,6 +1289,8 @@ function buildExtractionInput(
     publishedAt?: Date | null;
     sourceId?: string | null;
     sourceName?: string | null;
+    topicDescription?: string | null;
+    topicName: string;
   },
   topicProfile: unknown,
 ): {
@@ -1309,22 +1312,10 @@ function buildExtractionInput(
     name: string;
   };
 } {
-  const profile = (topicProfile ?? {}) as Record<string, unknown>;
-  const keywords = Array.isArray(profile.keywords)
-    ? profile.keywords.filter((k): k is string => typeof k === "string")
-    : [];
-  const entities = Array.isArray(profile.entities)
-    ? profile.entities.filter((e): e is string => typeof e === "string")
-    : [];
-  const includeScope = Array.isArray(profile.includeScope)
-    ? profile.includeScope.filter((s): s is string => typeof s === "string")
-    : [];
-  const excludeScope = Array.isArray(profile.excludeScope)
-    ? profile.excludeScope.filter((s): s is string => typeof s === "string")
-    : [];
-  const importanceRules = Array.isArray(profile.importanceRules)
-    ? profile.importanceRules.filter((r): r is string => typeof r === "string")
-    : [];
+  const context = buildTopicProfileContext(topicProfile, {
+    description: item.topicDescription,
+    name: item.topicName,
+  });
 
   return {
     item: {
@@ -1335,15 +1326,7 @@ function buildExtractionInput(
       title: item.title,
       url: item.url,
     },
-    topic: {
-      description: (profile.description as string | null | undefined) ?? null,
-      entities,
-      excludeScope,
-      importanceRules,
-      includeScope,
-      keywords,
-      name: (profile.name as string | undefined) ?? "",
-    },
+    topic: context,
   };
 }
 

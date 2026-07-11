@@ -47,6 +47,11 @@ export default async function TopicEditPage({
   if (!topic) {
     notFound();
   }
+  const { buildTopicProfileContext } = await import("@wangchao/core");
+  const profile = buildTopicProfileContext(topic.profile, {
+    description: topic.description,
+    name: topic.name,
+  });
 
   return (
     <>
@@ -82,6 +87,7 @@ export default async function TopicEditPage({
                 className="topic-name-input"
                 name="topicName"
                 defaultValue={topic.name}
+                maxLength={120}
                 placeholder="我想关注 AI 基础设施"
                 required
               />
@@ -91,13 +97,66 @@ export default async function TopicEditPage({
               <textarea
                 name="topicDescription"
                 defaultValue={topic.description ?? ""}
+                maxLength={2_000}
                 placeholder="关注 AI 基础设施、模型供应商、Agent 平台和部署生态。"
                 rows={3}
               />
             </label>
+            <div className="topic-profile-fields">
+              <div className="topic-profile-heading">
+                <strong>主题画像</strong>
+                <span>这些字段会进入规则筛选、AI 事件抽取和信源发现。</span>
+              </div>
+              <label>
+                <span>关键词（必填，每行或逗号分隔）</span>
+                <textarea
+                  defaultValue={profile.keywords.join("\n")}
+                  maxLength={5_000}
+                  name="topicKeywords"
+                  required
+                  rows={4}
+                />
+              </label>
+              <label>
+                <span>关键实体（每行或逗号分隔）</span>
+                <textarea
+                  defaultValue={profile.entities.join("\n")}
+                  maxLength={5_000}
+                  name="topicEntities"
+                  rows={3}
+                />
+              </label>
+              <label>
+                <span>应覆盖范围（每行一项）</span>
+                <textarea
+                  defaultValue={profile.includeScope.join("\n")}
+                  maxLength={5_000}
+                  name="topicIncludeScope"
+                  rows={4}
+                />
+              </label>
+              <label>
+                <span>应排除范围（每行一项）</span>
+                <textarea
+                  defaultValue={profile.excludeScope.join("\n")}
+                  maxLength={5_000}
+                  name="topicExcludeScope"
+                  rows={4}
+                />
+              </label>
+              <label>
+                <span>重要性规则（每行一项）</span>
+                <textarea
+                  defaultValue={profile.importanceRules.join("\n")}
+                  maxLength={5_000}
+                  name="topicImportanceRules"
+                  rows={5}
+                />
+              </label>
+            </div>
             <div className="form-actions">
               <span>
-                修改名称或描述后保存即可。主题关键词会根据新内容自动重新匹配。
+                保存后，新抓取内容会使用更新后的画像；已有历史事件不会被重写。
               </span>
               <Button type="submit" variant="primary">
                 <Sparkles aria-hidden="true" size={16} />

@@ -4,6 +4,17 @@
 
 ## 2026-07-11
 
+### SPEC/README 实现一致性审计 Round 7：主题画像编辑与分析输入
+
+- Phase: Cross-phase / Phase 4 Topic management + Phase 6 AI adapter/parser
+- Scope: 验证创建时生成的 Topic Profile 是否可真实编辑、保存是否进入规则/发现/AI 消费路径、Topic identity 是否正确进入 extraction，以及 mutation 是否保留 tenant boundary。
+- Alignment: keywords/entities/include/exclude/importance 已具备可读取、可编辑、校验、持久化和 Worker 消费闭环；规则 relevance/source discovery 继续读取 keywords，AI extraction 读取完整画像与 Topic 当前 identity。更新由 membership + organization-scoped Prisma where 双层约束。
+- Missing: languagePreferences/digestStyle 没有任何数据契约或消费方，查重后新建 #30；不在本轮臆测结构。现有规则 fallback 只按 keywords 判定，不声称 include/exclude 已进入 deterministic scoring。
+- Bugs: 编辑页文案声称关键词自动重匹配但 Action 不更新 profile；AI extraction 从不存在的 profile.name/description 取值且声明的 sourceName 从未查询；updateTopic 只按 id 更新；空 description 不能清除。
+- Fixes: 增加五组画像编辑和输入边界；保留未知 JSON 字段；新增 tested context sanitizer；analysis query 读取 Topic identity；Worker 改用统一 context；update 加 organization scope；补 fixtures、UI 契约和分层文档。
+- Verification: db validate、全仓 typecheck/lint/test/build、Playwright discovery、desktop/mobile Topic 编辑、六宽度响应式矩阵、320px 视觉检查和 diff check 通过；临时 Postgres 数据流与环境型首次失败详情见同日 `AGENTS_CHANGELOGS.md`。
+- Follow-up: 下一轮可审计规则 relevance 的 include/exclude 语义、AI/规则结果一致性或继续深挖导出对象覆盖；#30 负责 language/digest 完整闭环。
+
 ### SPEC/README 实现一致性审计 Round 6：类别反馈与 Topic 偏好隔离
 
 - Phase: Cross-phase / Phase 8 Dashboard + Phase 9 feedback learning

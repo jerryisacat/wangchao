@@ -6,12 +6,14 @@ import {
   failTaskRun,
   listBriefingsPage,
   listEventsForDailyBriefing,
+  listFetchedItemsForAnalysis,
   listRecentFeedbackSignals,
   listSavedDashboardEvents,
   listSourceGovernanceReport,
   mergeSemanticEvents,
   recordCategoryPreferenceFeedback,
   updateDashboardEventState,
+  updateTopic,
   upsertIntelligenceEventFromItem,
 } from "./repositories.js";
 
@@ -19,6 +21,7 @@ export async function runRepositoryFixtures(): Promise<void> {
   await verifySavedPagination();
   await verifyReadPreservesSavedState();
   await verifyCategoryFeedbackIsPersistedAndLearned();
+  await verifyTopicUpdateAndAnalysisContextStayTenantScoped();
   await verifyDailyBriefingWindowFilter();
   await verifyDailyBriefingUpsert();
   await verifyBriefingHistoryPagination();
@@ -26,6 +29,77 @@ export async function runRepositoryFixtures(): Promise<void> {
   await verifySourceGovernanceMetricsUseActiveEventLinks();
   await verifyFuzzyEventMatchUpdatesExistingEvent();
   await verifySemanticMergeClearsArchivedMatchKeys();
+}
+
+async function verifyTopicUpdateAndAnalysisContextStayTenantScoped(): Promise<void> {
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const prisma = {
+    item: {
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "item.findMany" });
+        return [
+          {
+            fetchedAt: new Date("2026-07-11T00:00:00.000Z"),
+            id: "item-1",
+            organizationId: "org-1",
+            publishedAt: null,
+            sourceId: "source-1",
+            source: { name: "Source One" },
+            summary: "Summary",
+            title: "Title",
+            topic: {
+              description: "Current description",
+              name: "Current topic name",
+              profile: { keywords: ["AI"] },
+            },
+            topicId: "topic-1",
+            url: "https://example.com/item",
+          },
+        ];
+      },
+    },
+    topic: {
+      update: async (args: unknown) => {
+        calls.push({ args, method: "topic.update" });
+        return {};
+      },
+    },
+  } as unknown as PrismaClient;
+
+  await updateTopic(
+    prisma,
+    { organizationId: "org-1", topicId: "topic-1" },
+    {
+      name: "Updated topic",
+      profile: { keywords: ["AI", "Agent"] },
+    },
+  );
+  const [item] = await listFetchedItemsForAnalysis(prisma, {
+    organizationId: "org-1",
+  });
+
+  const updateArgs = readArgsByName(calls, "topic.update");
+  const updateWhere = readRecord(updateArgs.where, "topic.update.where");
+  assert(updateWhere.id === "topic-1", "Topic update must target the requested topic.");
+  assert(
+    updateWhere.organizationId === "org-1",
+    "Topic update must include the organization boundary.",
+  );
+  const findArgs = readArgsByName(calls, "item.findMany");
+  const include = readRecord(findArgs.include, "analysisItems.include");
+  const topic = readRecord(include.topic, "analysisItems.include.topic");
+  const select = readRecord(topic.select, "analysisItems.include.topic.select");
+  assert(select.name === true, "Analysis item query must load the current topic name.");
+  assert(
+    select.description === true,
+    "Analysis item query must load the current topic description.",
+  );
+  assert(item?.topicName === "Current topic name", "Analysis item must expose topic name.");
+  assert(item?.sourceName === "Source One", "Analysis item must expose source name.");
+  assert(
+    item?.topicDescription === "Current description",
+    "Analysis item must expose topic description.",
+  );
 }
 
 async function verifyCategoryFeedbackIsPersistedAndLearned(): Promise<void> {

@@ -174,4 +174,13 @@ test("topic management page lists topics and allows pause/resume", async ({ page
   await topicLinks.first().click();
   await expect(page).toHaveURL(/\/topics\/[^/?]+/);
   await expect(page.getByRole("heading", { name: firstTopicName! })).toBeVisible();
+
+  await page.getByRole("link", { name: "编辑" }).click();
+  await expect(page.getByRole("heading", { name: "编辑主题" })).toBeVisible();
+  await expect(page.getByText("主题画像", { exact: true })).toBeVisible();
+  await expect(page.getByLabel(/关键词（必填/)).not.toHaveValue("");
+  await expect(page.getByLabel(/关键实体/)).toBeVisible();
+  await expect(page.getByLabel(/应覆盖范围/)).toBeVisible();
+  await expect(page.getByLabel(/应排除范围/)).toBeVisible();
+  await expect(page.getByLabel(/重要性规则/)).toBeVisible();
 });

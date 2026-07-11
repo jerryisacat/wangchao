@@ -414,6 +414,29 @@ a:not([data-slot="button"]):hover {
   resize: vertical;
 }
 
+.topic-profile-fields {
+  display: grid;
+  gap: 12px;
+  margin-top: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+}
+
+.topic-profile-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.topic-profile-heading strong {
+  font-size: 15px;
+}
+
+.topic-profile-heading span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .candidate-form input:focus,
 .topic-form input:focus,
 .topic-form textarea:focus {

@@ -886,6 +886,42 @@ function readOptionalField(formData: FormData, key: string): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function readProfileListField(
+  formData: FormData,
+  key: string,
+  required = false,
+): string[] {
+  const rawValue = readOptionalField(formData, key);
+
+  if (rawValue.length > 5_000) {
+    throw new Error(`${key} is too long.`);
+  }
+
+  const values = Array.from(
+    new Set(
+      rawValue
+        .split(/[\n,，]/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  );
+
+  if (required && values.length === 0) {
+    throw new Error(`${key} is required.`);
+  }
+  if (values.length > 50 || values.some((value) => value.length > 160)) {
+    throw new Error(`${key} contains too many or overly long values.`);
+  }
+
+  return values;
+}
+
+function readJsonRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? { ...(value as Record<string, unknown>) }
+    : {};
+}
+
 function readSafeReturnPath(formData: FormData, key: string): string | null {
   const value = readOptionalField(formData, key);
   return value.startsWith("/") && !value.startsWith("//") ? value : null;
@@ -954,10 +990,15 @@ function readSourceGovernanceAction(
 export async function updateTopicAction(formData: FormData): Promise<void> {
   let message = "主题已更新。";
   let type: ActionRedirectType = "notice";
-  const topicId = readRequiredField(formData, "topicId");
-  const returnTo = readSafeReturnPath(formData, "returnTo") ?? `/topics/${topicId}`;
+  const topicId = readOptionalField(formData, "topicId");
+  const returnTo =
+    readSafeReturnPath(formData, "returnTo") ??
+    (topicId ? `/topics/${topicId}` : "/topics");
 
   try {
+    if (!topicId) {
+      throw new Error("topicId is required.");
+    }
     await updateTopicFromForm(formData);
   } catch (error) {
     logActionError("updateTopicAction", error);
@@ -966,15 +1007,29 @@ export async function updateTopicAction(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/topics");
-  revalidatePath(`/topics/${topicId}`);
+  if (topicId) {
+    revalidatePath(`/topics/${topicId}`);
+  }
   revalidatePath("/");
   redirect(actionRedirectHref(returnTo, type, message));
 }
 
 async function updateTopicFromForm(formData: FormData) {
   const topicId = readRequiredField(formData, "topicId");
-  const name = readOptionalField(formData, "topicName");
+  const name = readRequiredField(formData, "topicName");
   const description = readOptionalField(formData, "topicDescription");
+  const keywords = readProfileListField(formData, "topicKeywords", true);
+  const entities = readProfileListField(formData, "topicEntities");
+  const includeScope = readProfileListField(formData, "topicIncludeScope");
+  const excludeScope = readProfileListField(formData, "topicExcludeScope");
+  const importanceRules = readProfileListField(
+    formData,
+    "topicImportanceRules",
+  );
+
+  if (name.length > 120 || description.length > 2_000) {
+    throw new Error("Topic name or description is too long.");
+  }
 
   if (!process.env.DATABASE_URL) {
     throw new Error("Database connection is required to update topics.");
@@ -983,6 +1038,7 @@ async function updateTopicFromForm(formData: FormData) {
   const {
     assertMembershipRole,
     ensureDefaultWorkspace,
+    getTopicById,
     getPrismaClient,
     recordUsageEvent,
     updateTopic,
@@ -998,6 +1054,15 @@ async function updateTopicFromForm(formData: FormData) {
     },
     ["OWNER", "ADMIN"],
   );
+  const topic = await getTopicById(prisma, {
+    organizationId: workspace.organizationId,
+    topicId,
+  });
+
+  if (!topic) {
+    throw new Error("Topic not found in this workspace.");
+  }
+  const currentProfile = readJsonRecord(topic.profile);
 
   await updateTopic(
     prisma,
@@ -1006,8 +1071,17 @@ async function updateTopicFromForm(formData: FormData) {
       topicId,
     },
     {
-      ...(name ? { name } : {}),
-      ...(description !== "" ? { description } : {}),
+      description,
+      name,
+      profile: {
+        ...currentProfile,
+        entities,
+        excludeScope,
+        importanceRules,
+        includeScope,
+        keywords,
+        source: "topic-profile-editor",
+      },
     },
   );
 

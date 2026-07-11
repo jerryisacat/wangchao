@@ -104,6 +104,16 @@ export interface TopicProfileDraft {
   source: "topic-profile-generator";
 }
 
+export interface TopicProfileContext {
+  description: string | null;
+  entities: string[];
+  excludeScope: string[];
+  importanceRules: string[];
+  includeScope: string[];
+  keywords: string[];
+  name: string;
+}
+
 export interface TopicProfileInput {
   description?: string | null;
   name: string;
@@ -139,6 +149,26 @@ export function buildTopicProfile(input: TopicProfileInput): TopicProfileDraft {
     ],
     keywords,
     source: "topic-profile-generator",
+  };
+}
+
+export function buildTopicProfileContext(
+  profile: unknown,
+  topic: { description?: string | null; name: string },
+): TopicProfileContext {
+  const record =
+    profile && typeof profile === "object" && !Array.isArray(profile)
+      ? (profile as Record<string, unknown>)
+      : {};
+
+  return {
+    description: topic.description?.trim() || null,
+    entities: readProfileStringList(record.entities),
+    excludeScope: readProfileStringList(record.excludeScope),
+    importanceRules: readProfileStringList(record.importanceRules),
+    includeScope: readProfileStringList(record.includeScope),
+    keywords: readProfileStringList(record.keywords),
+    name: topic.name.trim(),
   };
 }
 
@@ -586,6 +616,22 @@ function escapeYaml(value: string): string {
 
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, " ").trim();
+}
+
+function readProfileStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0 && entry.length <= 160)
+        .slice(0, 50),
+    ),
+  );
 }
 
 function normalizeTitleForFuzzyMatch(title: string): string {

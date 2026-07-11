@@ -1,5 +1,13 @@
 ## 2026-07-11
 
+### fix:第七轮 SPEC/README 实现审计 — 落实主题画像编辑与 Worker 输入
+
+- Cause: SPEC 将 Topic Profile 定义为主题管理核心，既有编辑页却只保存 name/description，并用“关键词会自动重新匹配”文案伪装 profile 更新；实际 Server Action 不读写任何 profile 字段。Worker AI extraction 又从 profile JSON 读取 `name/description`，但 `buildTopicProfile()` 从未写这两个字段，导致模型长期收到空主题名/描述。`updateTopic()` 的 Prisma where 还只有 topic id，没有 organizationId 二次防线。
+- Changed: 主题编辑页新增 keywords、entities、includeScope、excludeScope、importanceRules 五组真实字段，服务端做必填、总长度、条数、单项长度与去重校验，保留未知 profile 字段并标记 editor source；description 现在可显式清空。新增 `buildTopicProfileContext()` 统一清洗并限制 JSON 数组，并始终使用 Topic 行的当前 name/description。待分析 Item 查询补齐这两个字段及此前只存在于输入类型、实际始终为空的 sourceName，Worker extraction 改用统一 context。`updateTopic()` 改为 topicId + organizationId 更新。修正文案与移动端表单规则。
+- Files: `packages/core/src/index.ts`, `packages/core/src/index.fixtures.ts`, `packages/db/src/repositories.ts`, `packages/db/src/repositories.fixtures.ts`, `apps/worker/src/index.ts`, `apps/web/src/app/actions.ts`, `apps/web/src/app/topics/[topicId]/edit/page.tsx`, `apps/web/src/app/globals.css`, `tests/smoke/web.spec.ts`, `SPEC.md`, `README.md`, `README-en.md`, `CODEGUIDE.md`, `docs/L2-domain.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `FRONTEND.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification: `pnpm db:validate` ✓，`pnpm typecheck` ✓（7/7），`pnpm lint` ✓（7/7），`pnpm test` ✓（7/7），`pnpm build` ✓（7/7，按已知 Turbopack 端口限制在沙箱外执行），`pnpm exec playwright test --list` ✓（16 tests），`git diff --check` ✓。临时 Postgres 16-alpine 实际执行 0001-0008 migrations，创建 Topic/Source/Item 后更新五组画像；`listFetchedItemsForAnalysis()` + `buildTopicProfileContext()` 返回当前 name/description 和完整新画像，错误 organizationId 更新被拒绝。production Web + 隔离 DB 下，Topic 管理/编辑 desktop 与 mobile 最终均通过；12 页面 × 6 宽度响应式矩阵通过。320px full-page 截图确认五组画像值、保存说明和按钮完整可见。首次 desktop 导航用例瞬态停留在详情页，单独重跑 1 passed；首次 Playwright 在沙箱内因 MachPort 权限失败，均与代码结果分开记录。`agent-browser` CLI 仍不在 PATH，按 skill fallback 到仓库 Playwright。
+- Notes / Risk: `language_preferences` 与 `digest_style` 完全没有代码契约；GitHub connector 用三组中英文关键词查重均为 0，已创建 Issue #30，要求从可版本化契约、UI 到 extraction/briefing 消费完整落地。既有 #9 已关闭且其核心 profile 编辑要求由本轮补实；本轮不猜测 #30 的 JSON 结构。
+
 ### fix:第六轮 SPEC/README 实现审计 — 补齐类别反馈并隔离跨主题偏好
 
 - Cause: Prisma 与 L2 已声明 `CATEGORY_UP/CATEGORY_DOWN`，但 Web 没有写入入口、偏好查询也不读取，属于枚举与文档壳。进一步反查 `generatePreferenceDeltas()` 发现归纳 Map 只用 `category:*`/`source:*` 作 key，没有带 `topicId`；两个 Topic 共享同名 category 时，正负反馈会互相抵消并把结果错误写给首个 Topic，违反 SPEC 的按主题偏好边界。
