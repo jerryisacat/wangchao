@@ -771,6 +771,48 @@ a:not([data-slot="button"]):hover {
   gap: 8px;
 }
 
+.briefing-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.briefing-period-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.briefing-period-tabs > a {
+  display: inline-flex;
+  min-height: 44px;
+  min-width: 44px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-strong);
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 12px;
+  text-decoration: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.briefing-period-tabs > a:hover {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.briefing-period-tabs > a[data-active="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
 .tenant-card span {
   color: var(--muted-foreground);
   font-size: 11px;

@@ -1,5 +1,13 @@
 ## 2026-07-11
 
+### feat:Wave 2 简报/导出/时间线 — 周报月报周期生成、主题时间线、批量导出、Obsidian-friendly 文件名
+
+- Cause: Issues #28、#8、#4 描述了简报和导出的三个能力缺口：Worker 只生成 DAILY 简报，没有 WEEKLY/MONTHLY 周期报告；没有主题时间线页面；导出缺少 Obsidian-friendly 文件名和批量导出路径。
+- Changed: (1) **#28 周报/月报**：`packages/core` 新增 `createUtcWeekRange()`/`createUtcMonthRange()`/`renderPeriodBriefingMarkdown()`；`packages/db` 新增 `createPeriodBriefing()`（支持任意 `BriefingPeriod` 的幂等 upsert）和 `listTimelineEvents()`（按 `occurredAt` 倒序分页查询主题事件）；Worker 新增 `runPeriodBriefingCycle()` 在每次 fetch cycle 中同时生成周报和月报，使用 `@@unique([topicId, period, rangeStart])` 约束保证幂等。(2) **#28 主题时间线**：新增 `getTopicTimeline()` 数据函数和 `apps/web/src/app/topics/[topicId]/timeline/page.tsx` 页面，按 `occurredAt` 时间倒序展示主题所有事件（含 merged sources），主题详情页新增"时间线"入口。(3) **#8 Obsidian-friendly 导出**：简报导出文件名改为 `{date}-{period}-{slug}.md` 格式便于 Obsidian 排序。(4) **#8 批量导出**：新增 `apps/web/src/app/exports/topics/[topicId]/route.ts` 批量导出主题 Top 100 事件为单个 Markdown，记录 `ExportEvent` 审计；主题详情页新增"批量导出"按钮。(5) **#8 简报去重**：已由 `@@unique([topicId, period, rangeStart])` + `upsert` 保证，无需额外代码。(6) **简报中心增强**：简报列表页新增按 DAILY/WEEKLY/MONTHLY 周期筛选（≥44px touch target）。
+- Files: `packages/core/src/index.ts`（`createUtcWeekRange`、`createUtcMonthRange`、`PeriodBriefingInput`、`renderPeriodBriefingMarkdown`）, `packages/db/src/repositories.ts`（`CreatePeriodBriefingInput`、`BriefingPeriod`、`TimelineEventRecord`、`createPeriodBriefing`、`listTimelineEvents`、`listBriefingsPage` period filter）, `packages/db/src/index.ts`（新 exports）, `apps/worker/src/index.ts`（`runPeriodBriefingCycle`）, `apps/web/src/app/briefings/page.tsx`（周期筛选 tabs）, `apps/web/src/app/topics/[topicId]/page.tsx`（时间线 + 批量导出入口）, `apps/web/src/app/topics/[topicId]/timeline/page.tsx`（新）, `apps/web/src/app/exports/briefings/[briefingId]/route.ts`（Obsidian 文件名）, `apps/web/src/app/exports/topics/[topicId]/route.ts`（新，批量导出）, `apps/web/src/lib/topic-source-data.ts`（`getTopicTimeline`、`TimelineEventSummary`、`TimelinePage`、`getBriefingsPage` period filter）, `apps/web/src/app/globals.css`（`.briefing-filters`、`.briefing-period-tabs`）, `AGENTS_CHANGELOGS.md`, `DEVELOPE_LOGS.md`。
+- Verification: `pnpm typecheck` ✓（7/7）, `pnpm lint` ✓（7/7）, `pnpm test` ✓（7/7）, `pnpm build` ✓（7/7）, `git diff --check` ✓。Playwright `web.spec.ts` ✓（8 pass / 6 skip，skip 原因为 seed 数据无 events/briefings/saved）。`responsive.spec.ts` 仍有 pre-existing failure（top-nav 控件 <44px，与本次改动无关）。
+- Notes / Risk: 周报/月报在每次 Worker fetch cycle 自动生成（同一周期窗口幂等 upsert），不额外调度。时间线查询使用 `occurredAt` 而非 `createdAt`，更准确反映事件发生时间。批量导出限制 Top 100 事件避免过大文件。PDF 导出继续后置。
+
 ### feat:Wave 1 核心信息管线增强 — 原文全文抓取、语言/简报偏好消费链、手动重新生成摘要
 
 - Cause: Issues #26、#30、#27 描述了情报管线的三个关键缺口：AI 摘要只依赖 RSS feed 片段而非原文全文；Topic Profile 的 `languagePreferences` 和 `digestStyle` 没有数据契约或消费方；用户无法手动触发摘要重新生成。这三个缺口直接影响摘要质量、多语言支持和用户控制力。

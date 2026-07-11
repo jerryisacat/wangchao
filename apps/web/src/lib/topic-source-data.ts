@@ -345,6 +345,7 @@ export async function getWorkspaceAudit(): Promise<WorkspaceAudit> {
 export async function getBriefingsPage(
   requestedPage: number,
   pageSize = 20,
+  periodFilter?: "DAILY" | "WEEKLY" | "MONTHLY",
 ): Promise<BriefingsPage> {
   if (!process.env.DATABASE_URL) {
     throw new Error(
@@ -358,7 +359,7 @@ export async function getBriefingsPage(
   const workspace = await ensureDefaultWorkspace(prisma);
   const result = await listBriefingsPage(
     prisma,
-    { organizationId: workspace.organizationId },
+    { organizationId: workspace.organizationId, period: periodFilter },
     requestedPage,
     pageSize,
   );
@@ -485,5 +486,76 @@ function toDashboardEventSummary(
     topicName: event.topicName,
     updatedAt: event.updatedAt.toISOString(),
     userSaved: event.userSaved,
+  };
+}
+
+export interface TimelineEventSummary {
+  category: string | null;
+  entities: string[];
+  eventId: string;
+  explanation: string | null;
+  followUpSuggestion: string | null;
+  mergeReason: string | null;
+  occurredAt: string | null;
+  score: number;
+  secondarySources: Array<{ sourceName: string; url: string | null }>;
+  sourceName: string | null;
+  sourceUrl: string | null;
+  summary: string;
+  title: string;
+  url: string | null;
+}
+
+export interface TimelinePage {
+  events: TimelineEventSummary[];
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  total: number;
+}
+
+export async function getTopicTimeline(
+  topicId: string,
+  requestedPage: number,
+  requestedPageSize = 50,
+): Promise<TimelinePage> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not configured. Set DATABASE_URL to connect to Postgres.",
+    );
+  }
+
+  const { ensureDefaultWorkspace, getPrismaClient, listTimelineEvents } =
+    await import("@wangchao/db");
+  const prisma = getPrismaClient();
+  const workspace = await ensureDefaultWorkspace(prisma);
+  const result = await listTimelineEvents(
+    prisma,
+    { organizationId: workspace.organizationId, topicId },
+    requestedPage,
+    requestedPageSize,
+  );
+
+  return {
+    events: result.events.map((event) => ({
+      category: event.category,
+      entities: event.entities,
+      eventId: event.eventId,
+      explanation: event.explanation,
+      followUpSuggestion: event.followUpSuggestion,
+      mergeReason: event.mergeReason,
+      occurredAt: event.occurredAt?.toISOString() ?? null,
+      score: event.score,
+      secondarySources: event.secondarySources,
+      sourceName: event.sourceName,
+      sourceUrl: event.sourceUrl,
+      summary: event.summary,
+      title: event.title,
+      url: event.url,
+    })),
+    page: result.page,
+    pageCount: result.pageCount,
+    pageSize: result.pageSize,
+    total: result.total,
   };
 }

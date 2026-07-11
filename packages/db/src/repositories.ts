@@ -217,6 +217,8 @@ export interface BriefingEventRecord {
   }>;
 }
 
+export interface TimelineEventRecord extends BriefingEventRecord {}
+
 export interface DashboardBriefingRecord {
   briefingId: string;
   generatedAt: Date;
@@ -310,6 +312,12 @@ export interface CreateDailyBriefingInput extends TopicScope {
   rangeStart: Date;
   title: string;
 }
+
+export interface CreatePeriodBriefingInput extends CreateDailyBriefingInput {
+  period: BriefingPeriod;
+}
+
+export type BriefingPeriod = "DAILY" | "WEEKLY" | "MONTHLY";
 
 export interface RecordMarkdownExportInput extends TenantScope {
   briefingId?: string;
@@ -2039,16 +2047,113 @@ export async function listEventsForDailyBriefing(
   });
 }
 
+export async function listTimelineEvents(
+  prisma: PrismaClient,
+  scope: TenantScope & {
+    rangeEnd?: Date;
+    rangeStart?: Date;
+    topicId: string;
+  },
+  requestedPage = 1,
+  requestedPageSize = 50,
+): Promise<{ events: TimelineEventRecord[]; page: number; pageCount: number; pageSize: number; total: number }> {
+  const pageSize = Math.max(1, Math.min(200, Math.trunc(requestedPageSize) || 50));
+  const where: Prisma.IntelligenceEventWhereInput = {
+    organizationId: scope.organizationId,
+    topicId: scope.topicId,
+    status: { in: ["UNREAD", "READ", "SAVED"] },
+    primaryItem: { source: { status: "ACTIVE" } },
+  };
+  if (scope.rangeStart || scope.rangeEnd) {
+    where.occurredAt = {};
+    if (scope.rangeStart) where.occurredAt.gte = scope.rangeStart;
+    if (scope.rangeEnd) where.occurredAt.lt = scope.rangeEnd;
+  }
+
+  const total = await prisma.intelligenceEvent.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(pageCount, Math.max(1, Math.trunc(requestedPage) || 1));
+
+  const events = await prisma.intelligenceEvent.findMany({
+    where,
+    include: {
+      topic: { select: { name: true } },
+      eventItems: { select: { itemId: true, role: true } },
+      primaryItem: {
+        select: {
+          url: true,
+          source: { select: { name: true, url: true } },
+        },
+      },
+    },
+    orderBy: [{ occurredAt: "desc" }, { gravityScore: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+  });
+
+  const allSecondaryIds = events.flatMap(
+    (e) => (e.eventItems ?? []).filter((ei) => ei.role === "SECONDARY").map((ei) => ei.itemId),
+  );
+  const secondaryItems = allSecondaryIds.length > 0
+    ? await prisma.item.findMany({
+        where: { id: { in: allSecondaryIds } },
+        select: { id: true, source: { select: { name: true, url: true } } },
+      })
+    : [];
+  const secondarySourceMap = new Map(
+    secondaryItems.map((item) => [item.id, { sourceName: item.source.name, url: item.source.url }]),
+  );
+
+  return {
+    events: events.map((event) => {
+      const secondarySources: Array<{ sourceName: string; url: string | null }> = [];
+      for (const ei of (event.eventItems ?? []).filter((ei) => ei.role === "SECONDARY")) {
+        const info = secondarySourceMap.get(ei.itemId);
+        if (info) secondarySources.push(info);
+      }
+      return {
+        eventId: event.id,
+        title: event.title,
+        summary: event.summary,
+        category: event.category,
+        entities: event.entities ?? [],
+        explanation: event.explanation,
+        followUpSuggestion: event.followUpSuggestion,
+        mergeReason: event.mergeReason,
+        occurredAt: event.occurredAt,
+        score: event.score,
+        secondarySources,
+        sourceName: event.primaryItem?.source.name ?? null,
+        sourceUrl: event.primaryItem?.source.url ?? null,
+        topicId: event.topicId,
+        topicName: event.topic.name,
+        url: event.primaryItem?.url ?? null,
+      };
+    }),
+    page,
+    pageCount,
+    pageSize,
+    total,
+  };
+}
+
 export async function createDailyBriefing(
   prisma: PrismaClient,
   input: CreateDailyBriefingInput,
+) {
+  return createPeriodBriefing(prisma, { ...input, period: "DAILY" });
+}
+
+export async function createPeriodBriefing(
+  prisma: PrismaClient,
+  input: CreatePeriodBriefingInput,
 ) {
   const eventReferences = input.eventIds.map((id) => ({ id }));
 
   return prisma.briefing.upsert({
     where: {
       topicId_period_rangeStart: {
-        period: "DAILY",
+        period: input.period,
         rangeStart: input.rangeStart,
         topicId: input.topicId,
       },
@@ -2067,7 +2172,7 @@ export async function createDailyBriefing(
     create: {
       organizationId: input.organizationId,
       topicId: input.topicId,
-      period: "DAILY",
+      period: input.period,
       title: input.title,
       content: input.content,
       generatedAt: input.generatedAt,
@@ -2084,7 +2189,7 @@ export async function createDailyBriefing(
 
 export async function listBriefingsPage(
   prisma: PrismaClient,
-  scope: TenantScope,
+  scope: TenantScope & { period?: "DAILY" | "WEEKLY" | "MONTHLY" },
   requestedPage = 1,
   requestedPageSize = 20,
 ): Promise<DashboardBriefingPage> {
@@ -2092,6 +2197,9 @@ export async function listBriefingsPage(
   const where: Prisma.BriefingWhereInput = {
     organizationId: scope.organizationId,
   };
+  if (scope.period) {
+    where.period = scope.period;
+  }
   const total = await prisma.briefing.count({ where });
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(

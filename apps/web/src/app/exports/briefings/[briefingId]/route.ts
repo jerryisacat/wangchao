@@ -41,6 +41,11 @@ export async function GET(_request: Request, context: BriefingRouteContext) {
     return new Response("Briefing not found.", { status: 404 });
   }
 
+  const briefingWithDates = await prisma.briefing.findFirst({
+    where: { id: briefingId, organizationId: workspace.organizationId },
+    select: { period: true, rangeStart: true, generatedAt: true },
+  });
+
   const taskRun = await createTaskRun(prisma, {
     input: {
       briefingId: briefing.id,
@@ -52,7 +57,7 @@ export async function GET(_request: Request, context: BriefingRouteContext) {
   });
 
   try {
-    const fileName = `${slugify(briefing.title)}.md`;
+    const fileName = buildBriefingFileName(briefing.title, briefingWithDates ?? undefined);
     await recordMarkdownExport(prisma, {
       briefingId: briefing.id,
       contentHash: createContentHash(briefing.markdown),
@@ -96,10 +101,19 @@ function markdownResponse(markdown: string, fileName: string): Response {
   });
 }
 
-function slugify(value: string): string {
-  return value
+function buildBriefingFileName(
+  title: string,
+  meta?: { period: string; rangeStart: Date; generatedAt: Date } | null,
+): string {
+  const slug = title
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 80) || "wangchao-briefing";
+    .slice(0, 60) || "wangchao-briefing";
+  if (meta) {
+    const datePart = meta.rangeStart.toISOString().slice(0, 10);
+    const periodTag = meta.period.toLowerCase();
+    return `${datePart}-${periodTag}-${slug}.md`;
+  }
+  return `${slug}.md`;
 }

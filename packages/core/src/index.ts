@@ -159,6 +159,31 @@ export function createUtcDayRange(value: Date): DateRange {
   return { rangeEnd, rangeStart };
 }
 
+export function createUtcWeekRange(value: Date): DateRange {
+  const dayStart = new Date(
+    Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()),
+  );
+  const dayOfWeek = dayStart.getUTCDay();
+  const offsetToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const rangeStart = new Date(dayStart);
+  rangeStart.setUTCDate(dayStart.getUTCDate() + offsetToMonday);
+  const rangeEnd = new Date(rangeStart);
+  rangeEnd.setUTCDate(rangeStart.getUTCDate() + 7);
+
+  return { rangeEnd, rangeStart };
+}
+
+export function createUtcMonthRange(value: Date): DateRange {
+  const rangeStart = new Date(
+    Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), 1),
+  );
+  const rangeEnd = new Date(
+    Date.UTC(value.getUTCFullYear(), value.getUTCMonth() + 1, 1),
+  );
+
+  return { rangeEnd, rangeStart };
+}
+
 export function buildTopicProfile(input: TopicProfileInput): TopicProfileDraft {
   const keywords = extractTopicTerms(`${input.name}\n${input.description ?? ""}`);
   const entities = keywords
@@ -601,6 +626,104 @@ export function renderDailyBriefingMarkdown(input: DailyBriefingInput): string {
   }
 
   lines.push("## Follow Up", "", "- [ ] Mark reviewed events as read", "- [ ] Export important single events into the knowledge base");
+
+  return `${lines.filter((line): line is string => line !== undefined).join("\n")}\n`;
+}
+
+export interface PeriodBriefingInput {
+  digestStyle?: DigestStyle;
+  events: MarkdownEventInput[];
+  generatedAt: Date;
+  period: "WEEKLY" | "MONTHLY";
+  preferences?: Array<{
+    explanation: string;
+    key: string;
+    weight: number;
+  }>;
+  rangeEnd: Date;
+  rangeStart: Date;
+  topicName: string;
+}
+
+export function renderPeriodBriefingMarkdown(input: PeriodBriefingInput): string {
+  const style = input.digestStyle ?? DEFAULT_DIGEST_STYLE;
+  const maxEvents = Math.max(style.maxEvents, 15);
+  const topEvents = input.events.slice(0, maxEvents);
+  const periodLabel = input.period === "WEEKLY" ? "Weekly" : "Monthly";
+  const periodZh = input.period === "WEEKLY" ? "周报" : "月报";
+  const rangeFormatter = new Intl.DateTimeFormat("zh-CN", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "UTC",
+    year: "numeric",
+  });
+
+  const lines: Array<string | undefined> = [
+    "---",
+    `title: ${escapeYaml(`${input.topicName} ${periodLabel} Briefing`)}`,
+    `created: ${input.generatedAt.toISOString()}`,
+    `topic: ${escapeYaml(input.topicName)}`,
+    `period: ${input.period}`,
+    `range_start: ${input.rangeStart.toISOString()}`,
+    `range_end: ${input.rangeEnd.toISOString()}`,
+    "format: wangchao-period-briefing",
+    "---",
+    "",
+    `# ${input.topicName} ${periodZh}`,
+    "",
+    `${rangeFormatter.format(input.rangeStart)} – ${rangeFormatter.format(new Date(input.rangeEnd.getTime() - 1))}`,
+    "",
+    `Generated at ${input.generatedAt.toISOString()}.`,
+    "",
+  ];
+
+  if (topEvents.length === 0) {
+    lines.push("本周期内没有符合条件的情报事件。", "");
+  } else {
+    lines.push("## 本周期重点事件", "");
+
+    if (style.structure === "compact") {
+      lines.push(
+        ...topEvents.flatMap((event, index) => [
+          `${index + 1}. **${event.title}** — ${event.summary}`,
+          event.url ? `   - Original: ${event.url}` : undefined,
+          "",
+        ]),
+      );
+    } else {
+      lines.push(
+        ...topEvents.flatMap((event, index) => [
+          `### ${index + 1}. ${event.title}`,
+          "",
+          event.summary,
+          "",
+          `- Score: ${Math.round(event.score)}`,
+          `- Category: ${event.category ?? "general"}`,
+          `- Source: ${event.sourceName ?? "Unknown source"}`,
+          ...(event.secondarySources && event.secondarySources.length > 0
+            ? event.secondarySources.map((s) => `- Also reported by: ${s.sourceName}`)
+            : []),
+          event.url ? `- Original: ${event.url}` : undefined,
+          event.explanation ? `- Why it matters: ${event.explanation}` : undefined,
+          "",
+        ]),
+      );
+    }
+  }
+
+  if (style.structure !== "compact" && input.preferences && input.preferences.length > 0) {
+    lines.push(
+      "## Learned Preferences",
+      "",
+      ...input.preferences.slice(0, 8).flatMap((preference) => [
+        `- ${preference.key}: ${preference.weight >= 0 ? "+" : ""}${preference.weight}`,
+        `  - ${preference.explanation}`,
+      ]),
+      "",
+    );
+  }
+
+  lines.push("## Follow Up", "", "- [ ] Review key events and archive processed items", "- [ ] Export important events into the knowledge base");
 
   return `${lines.filter((line): line is string => line !== undefined).join("\n")}\n`;
 }

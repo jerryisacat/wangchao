@@ -15,8 +15,8 @@ The current product path is a TypeScript monorepo for a personal intelligence wo
 | Area | Status |
 |---|---|
 | Main stack | TypeScript, pnpm, Turborepo, Next.js App Router, Prisma, Postgres, Node.js worker |
-| Web | Topic creation plus editable keywords/entities/include/exclude/importance profile, intelligence feed, event detail, read/save/dismiss plus category up/down feedback, user-scoped paginated saved collection, paginated briefing history/export with TaskRun audit, topic-isolated preference memory, source governance, OWNER/ADMIN workspace membership and 30-day usage audit, `/api/health` |
-| Worker | RSS fetch, item writes, LLM-first analysis with deterministic fallback, durable TaskRun outcomes, preference learning, UTC-windowed idempotent daily briefing, source quality observation, `--health` |
+| Web | Topic creation plus editable keywords/entities/include/exclude/importance profile, intelligence feed, event detail, read/save/dismiss plus category up/down feedback, user-scoped paginated saved collection, topic timeline, paginated briefing center (daily/weekly/monthly filter), single/briefing/batch Markdown export (Obsidian-friendly filenames), topic-isolated preference memory, source governance, OWNER/ADMIN workspace membership and 30-day usage audit, `/api/health` |
+| Worker | RSS fetch, item writes, full-text article extraction, LLM-first analysis with deterministic fallback, durable TaskRun outcomes, preference learning, UTC-windowed idempotent daily/weekly/monthly briefing, source quality observation, `--health` |
 | Database | Prisma schema, versioned migrations, seed, workspace models, TaskRun, UsageEvent |
 
 The personal edition has been verified on Railway with Web + Postgres. The worker can run one processing cycle; platform scheduling still needs to be enabled.

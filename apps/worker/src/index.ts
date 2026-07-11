@@ -17,11 +17,14 @@ import {
   createIntelligenceEventDraft,
   createIntelligenceEventDraftFromExtraction,
   createUtcDayRange,
+  createUtcMonthRange,
+  createUtcWeekRange,
   buildTopicProfileContext,
   DEFAULT_DIGEST_STYLE,
   evaluateRelevance,
   generatePreferenceDeltas,
   renderDailyBriefingMarkdown,
+  renderPeriodBriefingMarkdown,
   type AiEventExtraction,
   type RelevanceDecision,
 } from "@wangchao/core";
@@ -29,6 +32,7 @@ import {
   completeTaskRun,
   createCandidateRssSource,
   createDailyBriefing,
+  createPeriodBriefing,
   createSourceDiscoveryTaskRun,
   createSourceFetchTaskRun,
   createTaskRun,
@@ -46,6 +50,7 @@ import {
   listRecentActiveSourcePagesForDiscovery,
   listRecentFeedbackSignals,
   listSourceGovernanceReport,
+  listTimelineEvents,
   listTopicsForSourceDiscovery,
   markItemFiltered,
   mergeSemanticEvents,
@@ -137,6 +142,8 @@ export interface WorkerFetchCycleResult {
   failedSources: number;
   filteredItems: number;
   generatedBriefings: number;
+  generatedMonthlyBriefings: number;
+  generatedWeeklyBriefings: number;
   insertedOrUpdatedItems: number;
   lastError?: unknown;
   recordedSourceObservations: number;
@@ -219,6 +226,8 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     fetchedSources: 0,
     filteredItems: 0,
     generatedBriefings: 0,
+    generatedMonthlyBriefings: 0,
+    generatedWeeklyBriefings: 0,
     insertedOrUpdatedItems: 0,
     recordedSourceObservations: 0,
     updatedPreferenceMemories: 0,
@@ -295,6 +304,40 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
       organizationId: workspace.organizationId,
       quantity: result.generatedBriefings,
       subjectType: "daily-briefing-cycle",
+      type: "BRIEFING",
+      unit: "briefing",
+      userId: workspace.userId,
+    });
+  }
+  result.generatedWeeklyBriefings = await runPeriodBriefingCycle(
+    prisma,
+    workspace.organizationId,
+    workspace.userId,
+    "WEEKLY",
+  );
+  if (result.generatedWeeklyBriefings > 0) {
+    await recordUsageEvent(prisma, {
+      metadata: { source: "worker-weekly-briefing-cycle" },
+      organizationId: workspace.organizationId,
+      quantity: result.generatedWeeklyBriefings,
+      subjectType: "weekly-briefing-cycle",
+      type: "BRIEFING",
+      unit: "briefing",
+      userId: workspace.userId,
+    });
+  }
+  result.generatedMonthlyBriefings = await runPeriodBriefingCycle(
+    prisma,
+    workspace.organizationId,
+    workspace.userId,
+    "MONTHLY",
+  );
+  if (result.generatedMonthlyBriefings > 0) {
+    await recordUsageEvent(prisma, {
+      metadata: { source: "worker-monthly-briefing-cycle" },
+      organizationId: workspace.organizationId,
+      quantity: result.generatedMonthlyBriefings,
+      subjectType: "monthly-briefing-cycle",
       type: "BRIEFING",
       unit: "briefing",
       userId: workspace.userId,
@@ -917,6 +960,120 @@ async function runDailyBriefingCycle(
   return generatedBriefings;
 }
 
+async function runPeriodBriefingCycle(
+  prisma: ReturnType<typeof getPrismaClient>,
+  organizationId: string,
+  userId: string,
+  period: "WEEKLY" | "MONTHLY",
+): Promise<number> {
+  const topics = await listActiveTopics(prisma, { organizationId });
+  let generatedBriefings = 0;
+
+  for (const topic of topics) {
+    const generatedAt = new Date();
+    const { rangeEnd, rangeStart } =
+      period === "WEEKLY"
+        ? createUtcWeekRange(generatedAt)
+        : createUtcMonthRange(generatedAt);
+
+    const taskRun = await createTaskRun(prisma, {
+      input: {
+        period,
+        rangeEnd: rangeEnd.toISOString(),
+        rangeStart: rangeStart.toISOString(),
+      },
+      organizationId,
+      topicId: topic.id,
+      type: "BRIEFING_GENERATION",
+    });
+
+    try {
+      const timelineResult = await listTimelineEvents(
+        prisma,
+        { organizationId, rangeEnd, rangeStart, topicId: topic.id },
+        1,
+        100,
+      );
+      const events = timelineResult.events;
+
+      if (events.length === 0) {
+        await completeTaskRun(prisma, taskRun.id, {
+          eventCount: 0,
+          outcome: "skipped-no-events",
+          period,
+        });
+        continue;
+      }
+
+      const preferences = (
+        await listPreferenceMemoryForDashboard(prisma, { organizationId, userId })
+      )
+        .filter((preference) => preference.topicId === topic.id)
+        .map((preference) => ({
+          explanation: preference.explanation,
+          key: preference.key,
+          weight: preference.weight,
+        }));
+
+      const context = buildTopicProfileContext(topic.profile, {
+        description: topic.description,
+        name: topic.name,
+      });
+
+      const markdown = renderPeriodBriefingMarkdown({
+        digestStyle: context.digestStyle ?? DEFAULT_DIGEST_STYLE,
+        events: events.map((event) => ({
+          category: event.category,
+          explanation: event.explanation,
+          occurredAt: event.occurredAt,
+          score: event.score,
+          sourceName: event.sourceName,
+          sourceUrl: event.sourceUrl,
+          summary: event.summary,
+          title: event.title,
+          url: event.url,
+        })),
+        generatedAt,
+        period,
+        preferences,
+        rangeEnd,
+        rangeStart,
+        topicName: topic.name,
+      });
+      const titleSuffix = period === "WEEKLY" ? "Weekly Briefing" : "Monthly Briefing";
+      const briefing = await createPeriodBriefing(prisma, {
+        content: markdown,
+        eventIds: events.map((event) => event.eventId),
+        generatedAt,
+        markdown,
+        metadata: {
+          contentHash: createContentHash(markdown),
+          mode: "explainable-rules",
+          period,
+        },
+        organizationId,
+        period,
+        rangeEnd,
+        rangeStart,
+        title: `${topic.name} ${titleSuffix}`,
+        topicId: topic.id,
+      });
+      await completeTaskRun(prisma, taskRun.id, {
+        briefingId: briefing.id,
+        eventCount: events.length,
+        outcome: "upserted",
+        period,
+      });
+      generatedBriefings += 1;
+    } catch (error) {
+      await failTaskRun(prisma, taskRun.id, error);
+      throw error;
+    }
+  }
+
+  return generatedBriefings;
+}
+
 async function runSourceGovernanceObservationCycle(
   prisma: ReturnType<typeof getPrismaClient>,
   organizationId: string,
@@ -977,6 +1134,8 @@ async function fetchSourceWithRetries(
     fetchedSources: 0,
     filteredItems: 0,
     generatedBriefings: 0,
+    generatedMonthlyBriefings: 0,
+    generatedWeeklyBriefings: 0,
     insertedOrUpdatedItems: 0,
     lastError,
     recordedSourceObservations: 0,
@@ -1026,6 +1185,8 @@ async function fetchSourceAttempt(
       fetchedSources: 1,
       filteredItems: 0,
       generatedBriefings: 0,
+      generatedMonthlyBriefings: 0,
+      generatedWeeklyBriefings: 0,
       insertedOrUpdatedItems: writtenItems.length,
       recordedSourceObservations: 0,
       updatedPreferenceMemories: 0,
@@ -1042,6 +1203,8 @@ async function fetchSourceAttempt(
       fetchedSources: 0,
       filteredItems: 0,
       generatedBriefings: 0,
+      generatedMonthlyBriefings: 0,
+      generatedWeeklyBriefings: 0,
       insertedOrUpdatedItems: 0,
       lastError: error,
       recordedSourceObservations: 0,

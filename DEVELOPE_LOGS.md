@@ -4,6 +4,16 @@
 
 ## 2026-07-11
 
+### Wave 2：简报/导出/时间线（#28 + #8 + #4）
+
+- Phase: Cross-phase / Phase 7 (情报管线) + Phase 8 (Dashboard MVP) + Phase 10 (简报导出)
+- Scope: 实现周报/月报周期性简报生成（Worker cycle + 幂等 + Markdown renderer）、主题时间线页面（`listTimelineEvents` + Web UI）、Obsidian-friendly 导出文件名、主题批量导出、简报中心周期筛选 tabs。Playwright smoke 在 Docker Postgres 环境中跑通 `web.spec.ts`（8 pass / 6 skip）。
+- Alignment: 符合 `SPEC.md` 5.7（主题时间线）、5.8（周报/月报）、7.5（周期性简报）和 `REFACTOR_PLAN.md` Phase 8/10。简报生成在 Worker 边界内执行；时间线查询只使用 ACTIVE source 产生的正式事件；导出记录 `ExportEvent` 审计。
+- Missing: PDF 导出继续后置（由后续 Issue 跟踪）；Obsidian Local REST API 未实现（当前仅文件名优化）；`responsive.spec.ts` 有 pre-existing failure（top-nav 控件 <44px，需 CSS 修复，非本次改动引入）。
+- Bugs: 无已知 bug。周报/月报在每次 fetch cycle 自动生成（幂等 upsert），Worker 调度频率变化不影响正确性。
+- Fixes: 无。
+- Verification: `pnpm typecheck` ✓（7/7）, `pnpm lint` ✓（7/7）, `pnpm test` ✓（7/7）, `pnpm build` ✓（7/7）, `git diff --check` ✓。Playwright `web.spec.ts` ✓（8 pass / 6 skip）。
+
 ### Wave 1：核心信息管线增强（#26 + #30 + #27）
 
 - Phase: Cross-phase / Phase 5 (Worker 抓取) + Phase 6 (AI adapter) + Phase 7 (情报管线) + Phase 10 (简报)

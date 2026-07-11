@@ -17,11 +17,16 @@ interface BriefingsPageProps {
 
 export default async function BriefingsPage({ searchParams }: BriefingsPageProps) {
   const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
-  const briefingPage = await getBriefingsPage(readPage(resolvedSearchParams.page));
+  const periodFilter = readPeriod(resolvedSearchParams.period);
+  const briefingPage = await getBriefingsPage(
+    readPage(resolvedSearchParams.page),
+    20,
+    periodFilter,
+  );
 
   return (
     <>
-      <PageHeader eyebrow="简报中心" title="今日简报">
+      <PageHeader eyebrow="简报中心" title="情报简报">
         <Button asChild size="sm" variant="ghost">
           <Link href="/">← 返回情报流</Link>
         </Button>
@@ -30,12 +35,20 @@ export default async function BriefingsPage({ searchParams }: BriefingsPageProps
       <div>
         <Card variant="work">
           <CardHeader>
-            <CardTitle>历史简报 · {briefingPage.total}</CardTitle>
+            <div className="briefing-filters">
+              <CardTitle>历史简报 · {briefingPage.total}</CardTitle>
+              <div className="briefing-period-tabs" aria-label="简报周期筛选">
+                <Link data-active={(!periodFilter).toString()} href="/briefings">全部</Link>
+                <Link data-active={(periodFilter === "DAILY").toString()} href="/briefings?period=DAILY">每日</Link>
+                <Link data-active={(periodFilter === "WEEKLY").toString()} href="/briefings?period=WEEKLY">每周</Link>
+                <Link data-active={(periodFilter === "MONTHLY").toString()} href="/briefings?period=MONTHLY">每月</Link>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {briefingPage.briefings.length === 0 ? (
               <EmptyState
-                description="生成每日简报后会出现在这里。"
+                description="生成简报后会出现在这里。Worker 完成分析周期后自动生成每日、每周和每月简报。"
                 icon={<FileText aria-hidden="true" size={18} />}
                 title="暂无简报"
               />
@@ -70,12 +83,12 @@ export default async function BriefingsPage({ searchParams }: BriefingsPageProps
                 <div className="briefing-pagination-actions">
                   {briefingPage.page > 1 ? (
                     <Button asChild size="sm" variant="ghost">
-                      <Link href={briefingPageHref(briefingPage.page - 1)}>上一页</Link>
+                      <Link href={briefingPageHref(briefingPage.page - 1, periodFilter)}>上一页</Link>
                     </Button>
                   ) : null}
                   {briefingPage.page < briefingPage.pageCount ? (
                     <Button asChild size="sm" variant="ghost">
-                      <Link href={briefingPageHref(briefingPage.page + 1)}>下一页</Link>
+                      <Link href={briefingPageHref(briefingPage.page + 1, periodFilter)}>下一页</Link>
                     </Button>
                   ) : null}
                 </div>
@@ -94,8 +107,20 @@ function readPage(value: string | string[] | undefined): number {
   return Number.isFinite(page) && page > 0 ? page : 1;
 }
 
-function briefingPageHref(page: number): string {
-  return page <= 1 ? "/briefings" : `/briefings?page=${page}`;
+function readPeriod(value: string | string[] | undefined): "DAILY" | "WEEKLY" | "MONTHLY" | undefined {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  if (rawValue === "DAILY" || rawValue === "WEEKLY" || rawValue === "MONTHLY") {
+    return rawValue;
+  }
+  return undefined;
+}
+
+function briefingPageHref(page: number, period?: "DAILY" | "WEEKLY" | "MONTHLY"): string {
+  const params = new URLSearchParams();
+  if (page > 1) params.set("page", String(page));
+  if (period) params.set("period", period);
+  const qs = params.toString();
+  return qs ? `/briefings?${qs}` : "/briefings";
 }
 
 function periodLabel(period: "DAILY" | "WEEKLY" | "MONTHLY"): string {

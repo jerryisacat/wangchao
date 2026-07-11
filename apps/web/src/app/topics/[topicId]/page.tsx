@@ -4,6 +4,7 @@ import {
   Check,
   CircleAlert,
   Clock3,
+  Download,
   FileText,
   Pause,
   Play,
@@ -73,6 +74,18 @@ export default async function TopicDetailPage({
         </Button>
         <Button asChild size="sm" variant="secondary">
           <Link href={`/topics/${topic.id}/edit`}>编辑</Link>
+        </Button>
+        <Button asChild size="sm" variant="secondary">
+          <Link href={`/topics/${topic.id}/timeline`}>
+            <Clock3 aria-hidden="true" size={14} />
+            <span>时间线</span>
+          </Link>
+        </Button>
+        <Button asChild size="sm" variant="secondary">
+          <Link href={`/exports/topics/${topic.id}`}>
+            <Download aria-hidden="true" size={14} />
+            <span>批量导出</span>
+          </Link>
         </Button>
       </PageHeader>
 

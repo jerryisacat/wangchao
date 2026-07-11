@@ -326,6 +326,10 @@ confidence 0.71
 - 来源链接保留。
 - Markdown 导出入口显著。
 - 不把简报正文做成全大写或巨型 typography。
+- **周期筛选**：简报中心页面顶部提供 DAILY/WEEKLY/MONTHLY 周期筛选 tabs（≥44px touch target），使用 `data-active` 属性标识当前选中项。
+- **Obsidian-friendly 文件名**：简报导出文件名格式为 `{date}-{period}-{slug}.md`（如 `2026-07-11-weekly-ai-infrastructure.md`），便于 Obsidian/文件系统排序。
+- **主题批量导出**：主题详情页提供"批量导出"按钮，下载主题 Top 100 事件为单个 Markdown 文件（`{date}-batch-{slug}.md`）。
+- **主题时间线**：主题详情页提供"时间线"入口，时间线页面按 `occurredAt` 倒序展示主题全部正式事件，包含 merged sources 信息。
 
 ### 5.9 管理后台设置
 
