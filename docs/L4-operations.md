@@ -157,6 +157,20 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 - `WANGCHAO_DEFAULT_ORGANIZATION_SLUG`、`WANGCHAO_DEFAULT_ORGANIZATION_NAME`、`WANGCHAO_DEFAULT_USER_EMAIL`、`WANGCHAO_DEFAULT_USER_NAME` 是当前个人版默认工作区/用户配置；真实商业化前必须替换为正式 auth/session provider。
 
+### Auth（Better Auth）
+
+- `BETTER_AUTH_SECRET` Required for auth。设置后激活 Better Auth（email/password + session），`middleware.ts` 保护需要认证的路由，未登录重定向到 `/login`。未设置时应用运行在兼容模式：`getSessionWorkspace()` fallback 到 `ensureDefaultWorkspace()`，使用默认 workspace/user，不要求登录。
+- `BETTER_AUTH_URL` Required for auth。Better Auth 的 base URL（如 `https://wangchao.jerryiscat.one`），用于 session callback URL 和邮件链接生成。
+- 当 `BETTER_AUTH_SECRET` 未设置时，`/login` 和 `/register` 页面不生效，应用直接使用默认 workspace，适合个人版和本地开发。
+
+### 支付（CCPayment + Stripe）
+
+- `CCPAYMENT_APP_ID` Optional。CCPayment 加密支付 provider 的 App ID。配置后启用 CCPayment 支付（创建订单、查询状态、webhook 签名验证）。未配置时支付功能不可用。
+- `CCPAYMENT_APP_SECRET` Optional。CCPayment App Secret，用于 webhook 签名验证。需在 `/admin/settings` CCPayment tab 中配置，webhook URL 为 `/api/billing/ccpayment/webhook`。
+- `STRIPE_SECRET_KEY` Optional（注释/预留）。Stripe 支付的 Secret Key。当前 `/api/billing/stripe/checkout` 和 `/api/billing/stripe/webhook` 为骨架实现，未配置时返回 placeholder。完整 Stripe 集成待后续阶段实现。
+- `STRIPE_WEBHOOK_SECRET` Optional（注释/预留）。Stripe webhook 签名验证 secret。
+- `STRIPE_PUBLISHABLE_KEY` Optional（注释/预留）。Stripe 前端 publishable key。
+
 ### Worker 抓取
 
 - `WANGCHAO_FETCH_CONCURRENCY` 控制每轮 worker 并发抓取 RSS source 数量，默认 `5`。
@@ -185,7 +199,7 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - `pnpm approve-builds --all` 已用于批准当前依赖链中的 `esbuild`、`sharp`、`prisma` 和 `@prisma/engines` 构建脚本，结果写入 `pnpm-workspace.yaml`。
 - Next.js web app 不使用 `next/font/google`，避免构建期访问外部字体网络。
 - 外部客户端、数据库、Redis 或 SDK 后续必须 lazy init，避免 `next build` 在缺少 runtime env 时失败。
-- 2026-07-06 已修复首版 migration 与 Prisma schema 的 `_BriefingEvents` 漂移；干净库已通过根命令 `pnpm db:migrate`，并生成 `_prisma_migrations` 记录。当前共 9 个 migration，最新为 `0009_delivery_report_feedback`（新增 DeliveryLog/Report 模型、Telegram 凭证字段、增强 FeedbackKind 枚举）。
+- 2026-07-06 已修复首版 migration 与 Prisma schema 的 `_BriefingEvents` 漂移；干净库已通过根命令 `pnpm db:migrate`，并生成 `_prisma_migrations` 记录。当前共 10 个 migration，最新为 `0010_subscription_plan_auth`（新增 Plan/SubscriptionStatus 枚举、PaymentInvoice/Account/Session 模型、Subscription 表扩展 BYOK/CCPayment/Stripe 字段）。
 - 2026-07-06 本地 Docker Postgres 已通过 `db:validate`、`db:generate`、`db:migrate`、`db:seed`、数据库写入 smoke test、Web `/api/health` 和 `worker:health`；浏览器创建主题 + RSS Server Action 已验证写入 Postgres。
 - 当前环境曾出现公网 RSS 抓取 `https://hnrss.org/newest?points=100` 失败并记录 `TaskRun(FAILED)`；后续个人使用前需要用真实可访问 RSS 复测，或手动使用离线 fixture source 验证 worker 闭环。
 - 2026-07-06 生产发现 `apps/web/src/app/page.tsx` 被 Next.js 静态预渲染，导致 Railway 上 `/api/health` database `ok` 但首页仍显示预览 fallback；已通过 `export const dynamic = "force-dynamic"` 修复，后续首页会读取运行时工作区数据。

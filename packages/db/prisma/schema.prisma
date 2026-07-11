@@ -115,6 +115,8 @@ model User {
   preferenceMemory PreferenceMemory[]
   exportEvents     ExportEvent[]
   usageEvents      UsageEvent[]
+  accounts         Account[]
+  sessions         Session[]
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 }
@@ -137,9 +139,23 @@ model Organization {
   usageEvents        UsageEvent[]
   deliveryLogs       DeliveryLog[]
   reports            Report[]
+  paymentInvoices    PaymentInvoice[]
   subscription       Subscription?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
+}
+
+enum Plan {
+  FREE
+  PLUS
+  PRO
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
 }
 
 enum DeliveryChannel {
@@ -162,15 +178,27 @@ enum ReportStatus {
 }
 
 model Subscription {
-  id             String @id @default(cuid())
-  organizationId String @unique
+  id             String             @id @default(cuid())
+  organizationId String             @unique
 
-  // AI 凭证（OpenAI-compatible）
+  // 订阅计划
+  plan             Plan             @default(FREE)
+  status           SubscriptionStatus @default(ACTIVE)
+  isSelfHosted     Boolean          @default(false)
+
+  // AI 凭证（系统级 official AI — Free 和 Pro 使用）
   aiEncryptedKey String? // AES-256-GCM 密文
   aiBaseUrl      String? // endpoint URL
   aiProvider     String? // openai / custom 等
   aiKeyHint      String? // 脱敏显示，如 "sk-...xyz"
   aiModel        String? // 模型名
+
+  // Per-user BYOK（Plus 必填，Pro 可选）
+  byokEncryptedKey String? // AES-256-GCM 密文
+  byokBaseUrl      String? // 用户自定义 endpoint
+  byokProvider     String? // openai / anthropic / custom
+  byokKeyHint      String? // 脱敏显示
+  byokModel        String? // 模型名
 
   // 搜索凭证（Brave Search 等）
   searchEncryptedKey String? // AES-256-GCM 密文
@@ -182,6 +210,21 @@ model Subscription {
   telegramBotTokenHint      String? // 脱敏显示
   telegramChatId            String? // 目标 Chat ID（非密文）
   telegramEnabled           Boolean  @default(false)
+
+  // CCPayment 加密支付
+  ccpaymentAppId           String? // CCPayment APP ID（非密文）
+  ccpaymentEncryptedSecret String? // AES-256-GCM 密文
+  ccpaymentSecretHint      String? // 脱敏显示
+
+  // Stripe（骨架，暂不启用真实支付）
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+
+  // 订阅周期
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  canceledAt         DateTime?
+  metadata           Json?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt    DateTime     @default(now())
@@ -576,4 +619,56 @@ model Report {
 
   @@index([organizationId, status])
   @@index([organizationId, createdAt])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  providerId        String
+  accountId         String
+  refreshToken      String?
+  accessToken       String?
+  expiresAt         DateTime?
+  password          String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([userId, providerId])
+  @@index([providerId, accountId])
+}
+
+model Session {
+  id          String   @id @default(cuid())
+  userId      String
+  token       String   @unique
+  expiresAt   DateTime
+  ipAddress   String?
+  userAgent   String?
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model PaymentInvoice {
+  id             String   @id @default(cuid())
+  organizationId String
+  plan           Plan
+  amount         Float
+  currency       String   @default("USD")
+  status         String   @default("PENDING") // PENDING / PAID / EXPIRED / FAILED
+  provider       String   @default("ccpayment") // ccpayment / stripe
+  providerOrderId String?
+  invoiceUrl     String?
+  periodStart    DateTime?
+  periodEnd      DateTime?
+  metadata       Json?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([organizationId, status])
+  @@index([provider, providerOrderId])
 }

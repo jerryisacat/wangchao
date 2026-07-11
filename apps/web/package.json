@@ -19,6 +19,7 @@
     "@wangchao/db": "workspace:*",
     "@wangchao/sources": "workspace:*",
     "@wangchao/worker": "workspace:*",
+    "better-auth": "^1.6.23",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.562.0",

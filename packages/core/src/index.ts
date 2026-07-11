@@ -1,3 +1,5 @@
+export * from "./quota.js";
+
 export interface IntelligenceInputItem {
   id: string;
   title: string;

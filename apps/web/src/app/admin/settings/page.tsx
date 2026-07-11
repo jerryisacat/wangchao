@@ -1,14 +1,31 @@
-import { Activity, Check, CircleAlert, KeyRound, MessageCircle, Search, Trash2 } from "lucide-react";
+import {
+  Activity,
+  Check,
+  CircleAlert,
+  Coins,
+  KeyRound,
+  MessageCircle,
+  Search,
+  Server,
+  Trash2,
+} from "lucide-react";
 import Link from "next/link";
 import {
   deleteAiCredentialAction,
+  deleteByokCredentialAction,
+  deleteCcpaymentCredentialAction,
   deleteSearchCredentialAction,
   deleteTelegramCredentialAction,
   listAiModelsAction,
   testAiCredentialAction,
+  testByokCredentialAction,
+  testCcpaymentCredentialAction,
   testSearchCredentialAction,
   testTelegramCredentialAction,
+  toggleSelfHostedModeAction,
   upsertAiCredentialAction,
+  upsertByokCredentialAction,
+  upsertCcpaymentCredentialAction,
   upsertSearchCredentialAction,
   upsertTelegramCredentialAction,
 } from "@/app/actions";
@@ -18,7 +35,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBanner } from "@/components/common/status-banner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ByokCredentialForm } from "./byok-form";
+import { CcpaymentCredentialForm } from "./ccpayment-form";
 import { CredentialForm } from "./credential-form";
+import { SelfHostedToggleForm } from "./self-hosted-form";
 import { TelegramCredentialForm } from "./telegram-form";
 
 export const dynamic = "force-dynamic";
@@ -55,6 +75,21 @@ export default async function AdminSettingsPage({
   const { getTelegramCredentialView } = await import("@wangchao/db");
   const telegramCredential = await getTelegramCredentialView(prisma, {
     organizationId: workspace.organizationId,
+  });
+
+  const subscription = await prisma.subscription.findUnique({
+    where: { organizationId: workspace.organizationId },
+    select: {
+      plan: true,
+      isSelfHosted: true,
+      byokKeyHint: true,
+      byokBaseUrl: true,
+      byokProvider: true,
+      byokModel: true,
+      ccpaymentAppId: true,
+      ccpaymentSecretHint: true,
+      updatedAt: true,
+    },
   });
 
   const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
@@ -107,6 +142,18 @@ export default async function AdminSettingsPage({
           <TabsTrigger value="telegram">
             <MessageCircle aria-hidden="true" size={14} />
             Telegram 投递
+          </TabsTrigger>
+          <TabsTrigger value="byok">
+            <KeyRound aria-hidden="true" size={14} />
+            BYOK
+          </TabsTrigger>
+          <TabsTrigger value="ccpayment">
+            <Coins aria-hidden="true" size={14} />
+            CCPayment
+          </TabsTrigger>
+          <TabsTrigger value="advanced">
+            <Server aria-hidden="true" size={14} />
+            高级
           </TabsTrigger>
         </TabsList>
 
@@ -322,6 +369,195 @@ export default async function AdminSettingsPage({
               <p className="credential-note">
                 配置后，系统每日简报生成完成后会自动发送到指定 Telegram Chat。
                 Bot Token 加密存储，不会明文显示。未配置或禁用时不影响 Web/Markdown 简报。
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="byok">
+          <Card variant="work">
+            <CardHeader>
+              <CardTitle>
+                <span className="inline-flex items-center gap-2">
+                  <KeyRound aria-hidden="true" size={16} />
+                  BYOK 凭证
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4 rounded-md border border-border bg-surface p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <Badge
+                    variant={subscription?.byokKeyHint ? "success" : "muted"}
+                  >
+                    {subscription?.byokKeyHint ? "已配置" : "未配置"}
+                  </Badge>
+                  <Badge variant="muted">
+                    {subscription?.plan ?? "FREE"}
+                  </Badge>
+                </div>
+                {subscription?.byokKeyHint ? (
+                  <dl className="grid gap-1.5 text-xs">
+                    <div className="flex gap-2">
+                      <dt className="w-16 shrink-0 text-muted-foreground">
+                        Key
+                      </dt>
+                      <dd className="break-all font-mono text-muted-foreground">
+                        {subscription.byokKeyHint}
+                      </dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="w-16 shrink-0 text-muted-foreground">
+                        端点
+                      </dt>
+                      <dd className="break-all font-mono text-muted-foreground">
+                        {subscription.byokBaseUrl ?? "未设置"}
+                      </dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="w-16 shrink-0 text-muted-foreground">
+                        模型
+                      </dt>
+                      <dd className="break-all font-mono text-muted-foreground">
+                        {subscription.byokModel ?? "未设置"}
+                      </dd>
+                    </div>
+                  </dl>
+                ) : null}
+              </div>
+
+              <p className="credential-note">
+                {subscription?.plan === "PLUS"
+                  ? "Plus 计划要求必填 BYOK，AI 调用使用你自己的 Key（不限量）。"
+                  : subscription?.plan === "PRO"
+                    ? "Pro 计划可选 BYOK。配置后用量 ≥80% 时优先使用 BYOK，失败再 fallback 官方 AI。"
+                    : "BYOK 在 Plus 计划为必填，Pro 计划为可选。升级后可在此配置。"}
+              </p>
+
+              <div className="mt-3">
+                <ByokCredentialForm
+                  currentBaseUrl={subscription?.byokBaseUrl ?? null}
+                  currentModel={subscription?.byokModel ?? null}
+                  currentProvider={subscription?.byokProvider ?? null}
+                  formAction={upsertByokCredentialAction}
+                  testAction={testByokCredentialAction}
+                />
+              </div>
+
+              {subscription?.byokKeyHint ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <form action={deleteByokCredentialAction}>
+                    <Button size="sm" type="submit" variant="danger">
+                      <Trash2 aria-hidden="true" size={14} />
+                      清除 BYOK 凭证
+                    </Button>
+                  </form>
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ccpayment">
+          <Card variant="work">
+            <CardHeader>
+              <CardTitle>
+                <span className="inline-flex items-center gap-2">
+                  <Coins aria-hidden="true" size={16} />
+                  CCPayment 凭证
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4 rounded-md border border-border bg-surface p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <Badge
+                    variant={
+                      subscription?.ccpaymentAppId ? "success" : "muted"
+                    }
+                  >
+                    {subscription?.ccpaymentAppId ? "已配置" : "未配置"}
+                  </Badge>
+                </div>
+                {subscription?.ccpaymentAppId ? (
+                  <dl className="grid gap-1.5 text-xs">
+                    <div className="flex gap-2">
+                      <dt className="w-16 shrink-0 text-muted-foreground">
+                        App ID
+                      </dt>
+                      <dd className="break-all font-mono text-muted-foreground">
+                        {subscription.ccpaymentAppId}
+                      </dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="w-16 shrink-0 text-muted-foreground">
+                        Secret
+                      </dt>
+                      <dd className="break-all font-mono text-muted-foreground">
+                        {subscription.ccpaymentSecretHint}
+                      </dd>
+                    </div>
+                  </dl>
+                ) : null}
+              </div>
+
+              <CcpaymentCredentialForm
+                currentAppId={subscription?.ccpaymentAppId ?? null}
+                formAction={upsertCcpaymentCredentialAction}
+                testAction={testCcpaymentCredentialAction}
+              />
+
+              {subscription?.ccpaymentAppId ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <form action={deleteCcpaymentCredentialAction}>
+                    <Button size="sm" type="submit" variant="danger">
+                      <Trash2 aria-hidden="true" size={14} />
+                      清除凭证
+                    </Button>
+                  </form>
+                </div>
+              ) : null}
+
+              <p className="credential-note">
+                配置后用户可通过加密货币支付升级订阅计划。App Secret 加密存储，不会明文显示。
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="advanced">
+          <Card variant="work">
+            <CardHeader>
+              <CardTitle>
+                <span className="inline-flex items-center gap-2">
+                  <Server aria-hidden="true" size={16} />
+                  自用模式
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4 rounded-md border border-border bg-surface p-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">
+                    {subscription?.isSelfHosted
+                      ? "自用模式已开启"
+                      : "自用模式未开启"}
+                  </span>
+                  <Badge
+                    variant={subscription?.isSelfHosted ? "success" : "muted"}
+                  >
+                    {subscription?.isSelfHosted ? "已开启" : "未开启"}
+                  </Badge>
+                </div>
+              </div>
+
+              <SelfHostedToggleForm
+                currentEnabled={subscription?.isSelfHosted ?? false}
+                formAction={toggleSelfHostedModeAction}
+              />
+
+              <p className="credential-note">
+                仅 OWNER 或 ADMIN 可操作。开启后跳过所有配额检查，隐藏定价页与支付入口。
               </p>
             </CardContent>
           </Card>

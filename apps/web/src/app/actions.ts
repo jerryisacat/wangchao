@@ -858,6 +858,33 @@ function toUserActionError(error: unknown): string {
     return "请输入 Telegram Chat ID。";
   }
 
+  if (error instanceof Error && error.message === "BYOK_API_KEY_MISSING") {
+    return "请输入 BYOK API Key。";
+  }
+
+  if (error instanceof Error && error.message === "BYOK_BASE_URL_MISSING") {
+    return "请填写 BYOK Base URL。";
+  }
+
+  if (error instanceof Error && error.message === "CCPAYMENT_APP_ID_MISSING") {
+    return "请输入 CCPayment App ID。";
+  }
+
+  if (error instanceof Error && error.message === "CCPAYMENT_APP_SECRET_MISSING") {
+    return "请输入 CCPayment App Secret。";
+  }
+
+  if (error instanceof Error && error.message === "CCPAYMENT_APP_ID_MISSING") {
+    return "请输入 CCPayment App ID。";
+  }
+
+  if (
+    error instanceof Error &&
+    error.message === "CCPAYMENT_APP_SECRET_MISSING"
+  ) {
+    return "请输入 CCPayment App Secret。";
+  }
+
   if (error instanceof Error && error.message === "AI_BASE_URL_INVALID") {
     return "AI Base URL 必须是有效的 HTTP 或 HTTPS 地址。";
   }
@@ -1970,6 +1997,165 @@ export async function testTelegramCredentialAction(
   }
 }
 
+export async function upsertCcpaymentCredentialAction(
+  formData: FormData,
+): Promise<void> {
+  let message = "CCPayment 凭证已更新。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to configure credentials.");
+    }
+
+    const appId = readOptionalField(formData, "ccpaymentAppId");
+    if (!appId) {
+      throw new Error("CCPAYMENT_APP_ID_MISSING");
+    }
+    const appSecret = readOptionalField(formData, "ccpaymentAppSecret");
+    if (!appSecret) {
+      throw new Error("CCPAYMENT_APP_SECRET_MISSING");
+    }
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      recordUsageEvent,
+      upsertCcpaymentCredential,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    await upsertCcpaymentCredential(
+      prisma,
+      { organizationId: workspace.organizationId },
+      { appId, appSecret },
+    );
+
+    await recordUsageEvent(prisma, {
+      metadata: { source: "admin-settings-ccpayment" },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectType: "subscription",
+      type: "WEB_ACTION",
+      unit: "credential-update",
+      userId: workspace.userId,
+    });
+  } catch (error) {
+    logActionError("upsertCcpaymentCredentialAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/admin/settings");
+  redirect(actionRedirectHref("/admin/settings", type, message));
+}
+
+export async function deleteCcpaymentCredentialAction(
+  formData: FormData,
+): Promise<void> {
+  let message = "CCPayment 凭证已清除。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to manage credentials.");
+    }
+
+    const {
+      assertMembershipRole,
+      deleteCcpaymentCredential,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      recordUsageEvent,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    await deleteCcpaymentCredential(prisma, {
+      organizationId: workspace.organizationId,
+    });
+
+    await recordUsageEvent(prisma, {
+      metadata: { source: "admin-settings-ccpayment" },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectType: "subscription",
+      type: "WEB_ACTION",
+      unit: "credential-delete",
+      userId: workspace.userId,
+    });
+  } catch (error) {
+    logActionError("deleteCcpaymentCredentialAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/admin/settings");
+  redirect(actionRedirectHref("/admin/settings", type, message));
+}
+
+export async function testCcpaymentCredentialAction(
+  formData: FormData,
+): Promise<{ message: string; ok: boolean }> {
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to test credentials.");
+    }
+
+    const appId = readOptionalField(formData, "ccpaymentAppId");
+    if (!appId) {
+      return { message: "请输入 CCPayment App ID 后再测试。", ok: false };
+    }
+    const appSecret = readOptionalField(formData, "ccpaymentAppSecret");
+    if (!appSecret) {
+      return { message: "请输入 CCPayment App Secret 后再测试。", ok: false };
+    }
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      testCcpaymentCredential,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    return testCcpaymentCredential({ appId, appSecret });
+  } catch (error) {
+    logActionError("testCcpaymentCredentialAction", error);
+    return { message: toUserActionError(error), ok: false };
+  }
+}
+
 export async function createReportAction(formData: FormData): Promise<void> {
   const question = readRequiredField(formData, "reportQuestion");
   let message = "专题报告生成请求已提交。";
@@ -2204,4 +2390,271 @@ export async function recordEnhancedFeedbackAction(
   revalidatePath(returnTo);
   revalidatePath("/preferences");
   redirect(actionRedirectHref(returnTo, type, message));
+}
+
+export async function upsertByokCredentialAction(
+  formData: FormData,
+): Promise<void> {
+  let message = "BYOK 凭证已更新。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to configure credentials.");
+    }
+
+    const apiKey = readOptionalField(formData, "byokApiKey");
+    if (!apiKey) {
+      throw new Error("BYOK_API_KEY_MISSING");
+    }
+    const baseUrl = readOptionalField(formData, "byokBaseUrl");
+    if (!baseUrl) {
+      throw new Error("BYOK_BASE_URL_MISSING");
+    }
+    const provider = readOptionalField(formData, "byokProvider");
+    const model = readOptionalField(formData, "byokModel");
+
+    const parsed = new URL(baseUrl);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      throw new Error("AI_BASE_URL_INVALID");
+    }
+
+    const {
+      assertMembershipRole,
+      encryptCredential,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      maskKeyHint,
+      recordUsageEvent,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    const encryptionKey = process.env.ENCRYPTION_KEY!;
+    const encryptedKey = encryptCredential(apiKey, encryptionKey);
+    const keyHint = maskKeyHint(apiKey);
+
+    await prisma.subscription.upsert({
+      where: { organizationId: workspace.organizationId },
+      update: {
+        byokEncryptedKey: encryptedKey,
+        byokKeyHint: keyHint,
+        byokBaseUrl: baseUrl,
+        byokProvider: provider || null,
+        byokModel: model || null,
+      },
+      create: {
+        organizationId: workspace.organizationId,
+        byokEncryptedKey: encryptedKey,
+        byokKeyHint: keyHint,
+        byokBaseUrl: baseUrl,
+        byokProvider: provider || null,
+        byokModel: model || null,
+      },
+    });
+
+    await recordUsageEvent(prisma, {
+      metadata: { source: "admin-settings-byok" },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectType: "subscription",
+      type: "WEB_ACTION",
+      unit: "credential-update",
+      userId: workspace.userId,
+    });
+  } catch (error) {
+    logActionError("upsertByokCredentialAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/admin/settings");
+  redirect(actionRedirectHref("/admin/settings", type, message));
+}
+
+export async function deleteByokCredentialAction(
+  formData: FormData,
+): Promise<void> {
+  let message = "BYOK 凭证已清除。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to manage credentials.");
+    }
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      recordUsageEvent,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    await prisma.subscription.upsert({
+      where: { organizationId: workspace.organizationId },
+      update: {
+        byokEncryptedKey: null,
+        byokKeyHint: null,
+        byokBaseUrl: null,
+        byokProvider: null,
+        byokModel: null,
+      },
+      create: {
+        organizationId: workspace.organizationId,
+      },
+    });
+
+    await recordUsageEvent(prisma, {
+      metadata: { source: "admin-settings-byok" },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectType: "subscription",
+      type: "WEB_ACTION",
+      unit: "credential-delete",
+      userId: workspace.userId,
+    });
+  } catch (error) {
+    logActionError("deleteByokCredentialAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/admin/settings");
+  redirect(actionRedirectHref("/admin/settings", type, message));
+}
+
+export async function testByokCredentialAction(
+  formData: FormData,
+): Promise<{ message: string; ok: boolean }> {
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to test credentials.");
+    }
+
+    const apiKey = readOptionalField(formData, "byokApiKey");
+    if (!apiKey) {
+      return { message: "请输入 BYOK API Key 后再测试。", ok: false };
+    }
+    const baseUrl = readOptionalField(formData, "byokBaseUrl");
+    if (!baseUrl) {
+      return { message: "请填写 Base URL 后再测试。", ok: false };
+    }
+
+    const parsed = new URL(baseUrl);
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return { message: "请输入有效的 HTTP 或 HTTPS Base URL。", ok: false };
+    }
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      testAiCredential,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    return testAiCredential({ apiKey, baseUrl });
+  } catch (error) {
+    logActionError("testByokCredentialAction", error);
+    return { message: toUserActionError(error), ok: false };
+  }
+}
+
+export async function toggleSelfHostedModeAction(
+  formData: FormData,
+): Promise<void> {
+  let message = "自用模式已更新。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to toggle self-hosted mode.");
+    }
+
+    const enabledValue = readOptionalField(formData, "enabled");
+    const enabled = enabledValue === "true";
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      recordUsageEvent,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    await prisma.subscription.upsert({
+      where: { organizationId: workspace.organizationId },
+      update: { isSelfHosted: enabled },
+      create: {
+        organizationId: workspace.organizationId,
+        isSelfHosted: enabled,
+      },
+    });
+
+    await recordUsageEvent(prisma, {
+      metadata: {
+        action: enabled ? "enable-self-hosted" : "disable-self-hosted",
+        source: "admin-settings",
+      },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectType: "subscription",
+      type: "WEB_ACTION",
+      unit: "action",
+      userId: workspace.userId,
+    });
+
+    message = enabled
+      ? "已开启自用模式，所有配额检查已跳过。"
+      : "已关闭自用模式，恢复正常配额检查。";
+  } catch (error) {
+    logActionError("toggleSelfHostedModeAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/admin/settings");
+  revalidatePath("/pricing");
+  revalidatePath("/usage");
+  redirect(actionRedirectHref("/admin/settings", type, message));
 }

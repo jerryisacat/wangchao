@@ -1,10 +1,12 @@
 # Wangchao
 
-[中文](README.md) | [MIT License](LICENSE)
+[中文](README.md) | [Website](https://wangchao.jerryiscat.one) | [MIT License](LICENSE)
 
 `Wangchao` is a theme-driven AI intelligence system. Users create topics, the system manages sources around those topics, fetches public information, generates intelligence events, learns from feedback, and exports dashboard views and Markdown briefings.
 
 The current product path is a TypeScript monorepo for a personal intelligence workspace.
+
+> **Don't want to self-deploy?** You can use our hosted platform directly: **[wangchao.jerryiscat.one](https://wangchao.jerryiscat.one)** — up and running out of the box, no server, database, or worker configuration required. Of course, if you prefer full control over your data and environment, you can always self-deploy following the guide below.
 
 > **This is an open-source project (MIT License).** Code, docs, data models, worker pipeline, and frontend are all public. Commercialization only covers server costs — buying the maintainer a coffee, not a product storyline.
 >
@@ -58,6 +60,8 @@ docs/
 ```
 
 ## Quick Start
+
+> 💡 **Tip**: If self-deployment feels like too much hassle, you can use our hosted platform directly: **[wangchao.jerryiscat.one](https://wangchao.jerryiscat.one)** — just sign up and start using it, no infrastructure to manage. The instructions below are for users who want to self-deploy and customize.
 
 You need Node.js, pnpm, and Postgres.
 

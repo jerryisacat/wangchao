@@ -12,6 +12,7 @@ const mainLinks = [
   { href: "/reports", label: "专题报告" },
   { href: "/saved", label: "已保存" },
   { href: "/preferences", label: "偏好" },
+  { href: "/usage", label: "用量" },
 ] as const;
 
 interface TopNavProps {

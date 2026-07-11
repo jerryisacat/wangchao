@@ -13,7 +13,10 @@
 | `User` | 人类账户。当前个人版使用默认用户，不要求真实注册登录。 |
 | `Organization` | 租户和计费边界。当前个人版使用默认组织。 |
 | `Membership` | User-to-Organization 角色映射（OWNER/ADMIN/MEMBER）。 |
-| `Subscription` | Organization 的 1:1 凭证与订阅配置。存储 AES-256-GCM 加密的 AI/搜索 API Key 和 Telegram Bot Token，仅保留脱敏 `keyHint`/`botTokenHint`，不存明文。是 Phase 15 BYOK/订阅模型的前置实体，后续扩展 Plan/Stripe 字段。 |
+| `Subscription` | Organization 的 1:1 凭证与订阅配置。存储 AES-256-GCM 加密的 AI/搜索 API Key 和 Telegram Bot Token，仅保留脱敏 `keyHint`/`botTokenHint`，不存明文。已扩展 Plan/Stripe/CCPayment/BYOK 字段，是 BYOK + 订阅 + 配额模型的承载实体。 |
+| `PaymentInvoice` | 支付订单记录。跟踪 CCPayment 和 Stripe 支付，关联 organization 和 Subscription，含订单号、金额、币种、支付状态和 provider 元数据。 |
+| `Account` | Better Auth 兼容的 OAuth/account 记录。当前用于 email/password 认证，预留第三方 OAuth 扩展。 |
+| `Session` | Better Auth 兼容的会话记录。跟踪用户登录状态和过期时间。 |
 | `Topic` | 用户创建的情报主题，包含 topic profile、状态和 owner。 |
 | `Source` | RSS/Web 信源注册条目，带 candidate/active/muted/rejected 状态和质量分。 |
 | `Item` | worker 抓取并规范化后的原始条目。 |
@@ -150,6 +153,23 @@ PENDING ──skip────> SKIPPED
 - 投递成功写 `SENT` 和 `sentAt`；失败写 `FAILED` 和 `errorMessage`/`errorCode`；已投递或已跳过的记录不再重发。
 - Telegram 凭证未配置或未启用时，cycle 静默跳过，不创建 DeliveryLog。
 
+### Plan 枚举
+
+| 值 | 含义 |
+|------|------|
+| `FREE` | 免费层。基础主题/信源/AI调用/导出配额。 |
+| `PLUS` | Plus 层。更高配额，BYOK 必填（用户必须提供自己的 AI API Key）。 |
+| `PRO` | Pro 层。最高配额，BYOK 可选（可用平台提供的 AI Key）。 |
+
+### SubscriptionStatus 枚举
+
+| 值 | 含义 |
+|------|------|
+| `ACTIVE` | 订阅有效，配额正常应用。 |
+| `PAST_DUE` | 支付逾期，进入宽限期（当前仍允许使用，但提示续费）。 |
+| `CANCELED` | 用户主动取消，当前计费周期结束前仍可用。 |
+| `EXPIRED` | 订阅到期，降级为 FREE。 |
+
 ### FeedbackKind 枚举
 
 ### Subscription 凭证模型
@@ -179,10 +199,64 @@ PENDING ──skip────> SKIPPED
 - Admin 后台只展示 `aiKeyHint`/`searchKeyHint`，可新增或覆盖 Key，但不可查看明文。
 - Worker 运行时从 DB 读取并解密 Key → 注入 adapter → 调用完成后丢弃明文，不写入日志。
 - 环境变量（`AI_API_KEY`、`BRAVE_SEARCH_API_KEY` 等）仅作为 DB 未配置时的 fallback，不是主配置方式。
-- 当前 `Subscription` 只承载凭证；Phase 15 将在同一张表上扩展 Plan/Stripe/配额字段，演进为完整 BYOK + 订阅模型。
 - AI 模型列表（嗅探自 `GET /models`）为远端派生数据，不持久化到 `Subscription` 表；Admin 页面支持按需刷新并从下拉框选择模型，支持"自定义..."选项回退到自由输入。
 - AI 凭证连接测试在 `GET /models` 不可用时自动回退到 `POST /chat/completions`（最小 payload）兜底验证，确保 Azure、DeepSeek 等非标准 `/models` 端点的凭证也能正常测试。
 - 自定义 provider 可通过"手动确认" checkbox 跳过自动测试，但服务端仍校验 API Key 非空。
+- `Subscription` 已扩展为完整订阅模型：`plan`/`status`/`currentPeriodStart`/`currentPeriodEnd`/`canceledAt`/`metadata`，以及 per-user BYOK 字段（`byokEncryptedKey`/`byokKeyHint`/`byokBaseUrl`/`byokProvider`/`byokModel`）和支付 provider 字段（`ccpaymentOrderId`/`ccpaymentUserId`、`stripeCustomerId`/`stripeSubscriptionId`）。
+- 自用模式（`isSelfHosted=true`）跳过所有配额检查，适合自部署场景。
+
+### Subscription Plan 状态机
+
+```text
+FREE ──pay PLUS──> PLUS
+PLUS ──pay PRO───> PRO
+PLUS ──cancel────> FREE (周期结束)
+PRO ───cancel────> PLUS (周期结束)
+
+ACTIVE ──payment overdue──> PAST_DUE
+PAST_DUE ──grace period end> EXPIRED
+PAST_DUE ──payment success─> ACTIVE
+EXPIRED ──auto downgrade────> FREE
+CANCELED ──period end───────> FREE
+```
+
+规则：
+- 升级（FREE→PLUS→PRO）在支付确认后立即生效。
+- 降级在当前计费周期结束后生效，避免用户立即失去已付费权益。
+- `PAST_DUE` 给予宽限期，当前实现仍允许使用，但 UI 提示续费。
+- `EXPIRED` 触发自动降级为 `FREE`，`Subscription.status` 改为 `EXPIRED` 后由周期任务或下次访问时收敛为 `FREE`/`ACTIVE`。
+- 自用模式（`isSelfHosted=true`）跳过所有配额和支付状态检查，Plan 字段无意义。
+
+### BYOK 凭证生命周期
+
+```text
+(未配置) ──upsert──> ENCRYPTED (per-user AES-256-GCM)
+ENCRYPTED ──read──> 解密注入 adapter ──> 明文丢弃
+ENCRYPTED ──delete──> (未配置)
+ENCRYPTED ──test──> CredentialTestResult (不持久化)
+```
+
+规则：
+- BYOK 是 per-user（而非 per-org）凭证，存储在 `Subscription.byokEncryptedKey` + `byokKeyHint` + `byokBaseUrl`/`byokProvider`/`byokModel`。
+- Plus 计划 BYOK 必填（用户必须提供自己的 AI API Key）；Pro 计划 BYOK 可选（可用平台提供的 Key）。
+- BYOK 凭证使用 `ENCRYPTION_KEY` 做 AES-256-GCM 加密，Admin 展示 `byokKeyHint` 脱敏 hint，不返回明文。
+- Worker 运行时优先使用 BYOK（`shouldUseByok()` 判断），BYOK 未配置时 fallback 到组织级 AI 凭证。
+- BYOK 连接测试复用 `testAiCredential` 逻辑（`GET /models` + `chat/completions` 兜底），结果不写入 DB。
+
+### PaymentInvoice 状态机
+
+```text
+PENDING ──payment confirmed──> PAID
+PENDING ──timeout/expire──────> EXPIRED
+PENDING ──payment failed──────> FAILED
+PAID ────(触发 Plan 升级)─────> (关联 Subscription.plan 更新)
+```
+
+规则：
+- `PaymentInvoice` 关联 `organizationId` 和 `Subscription`，记录订单号（`orderId`）、金额（`amount`/`currency`）、provider（`ccpayment`/`stripe`）和 provider 元数据。
+- CCPayment webhook 签名验证通过后，幂等更新 invoice 状态为 `PAID`，并触发 `Subscription.plan` 升级。
+- 已 `PAID`/`EXPIRED`/`FAILED` 的 invoice 不再重复处理（幂等）。
+- Stripe webhook 在事件类型为 `checkout.session.completed` 时更新 invoice 状态。
 
 
 
@@ -232,7 +306,10 @@ Source Observation 指标口径：
 ```text
 Organization
   ├── Membership ── User
-  ├── Subscription (1:1, 凭证与订阅配置)
+  │                 └── Session (Better Auth)
+  │                 └── Account (Better Auth)
+  ├── Subscription (1:1, 凭证与订阅配置 + BYOK + Plan + 支付)
+  │     └── PaymentInvoice (1:N, 支付订单记录)
   ├── Topic
   │     ├── Source
   │     │     └── SourceObservation
@@ -266,3 +343,4 @@ Organization
 - `Subscription`: `organizationId` 唯一（1:1 with Organization）。
 - `PreferenceMemory`: `(topicId, userId, key)` 唯一。
 - `DeliveryLog`: `(briefingId, channel)` 唯一。
+- `PaymentInvoice`: `orderId` + `provider` 组合唯一（防止重复订单）。

@@ -1,5 +1,32 @@
 ## 2026-07-11
 
+### Batch 5: 商业化基础 — Auth + 订阅 + BYOK + CCPayment
+
+- Cause: 完成 #13 (Auth + RBAC + 租户隔离) 和 #14 (订阅 + 配额 + BYOK + 支付 + 用量仪表盘)
+- Changed:
+  - Better Auth 集成（email/password + session），未配置 BETTER_AUTH_SECRET 时兼容默认 workspace
+  - Plan/SubscriptionStatus 枚举 + isSelfHosted 自用模式开关
+  - Per-user BYOK 完整支持（加密存储/脱敏展示/Plus 必填/Pro 可选）
+  - 配额引擎（主题/信源/AI调用/导出，按 Plan 检查，自用模式跳过）
+  - CCPayment 加密支付完整集成（createInvoice + webhook 签名验证 + 幂等 + 订单确认）
+  - Stripe 骨架（checkout/webhook route，未配置时返回 placeholder）
+  - 前端：定价页、用量仪表盘、BYOK 设置、CCPayment 设置、自用模式开关、登录/注册页
+  - 顶部导航增加用量入口
+- Files: schema.prisma, 0010 migration, auth.ts/auth-client.ts/session.ts/middleware.ts, quota.ts, ccpayment.ts, extended-repositories.ts, pricing/usage/login/register pages, billing API routes, actions.ts, settings page + byok/ccpayment/self-hosted forms, top-nav.tsx, .env_example
+- Verification: typecheck, lint, test, build all pass
+- Notes: Auth 默认不启用（兼容模式）；CCPayment 需要配置 App ID/Secret 后可用；Stripe 仅骨架；配额引擎已实现但未接入 Worker analysis cycle（下一步）
+
+### docs:README 新增官网链接和托管平台提示
+
+- Cause: 需要在 README 中公布官网地址 `wangchao.jerryiscat.one`，并告知用户可以直接使用托管平台服务，无需自行部署
+- Changed:
+  - `README.md` 头部导航新增官网链接，在项目简介下方新增托管平台提示
+  - `README.md` 部署方式段新增提示，引导嫌麻烦的用户使用托管平台
+  - `README-en.md` 同步新增官网链接、托管平台提示和 Quick Start 段提示
+- Files: README.md, README-en.md
+- Verification: 文档变更，无代码改动
+- Notes: 无风险
+
 ### Batch 4: Telegram 投递 + 专题报告 + 反馈学习增强
 
 - Cause: 完成 #29 (Telegram 投递通道)、#17 (按需专题报告)、#7 (反馈学习增强)、#18 (首页导航)
