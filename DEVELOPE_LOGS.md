@@ -4,6 +4,28 @@
 
 ## 2026-07-11
 
+### Wave 1：核心信息管线增强（#26 + #30 + #27）
+
+- Phase: Cross-phase / Phase 5 (Worker 抓取) + Phase 6 (AI adapter) + Phase 7 (情报管线) + Phase 10 (简报)
+- Scope: 实现原文全文抓取（`fetchArticleContent` + readability）、Topic Profile 语言偏好与简报风格完整消费链（UI → 保存 → AI prompt → briefing renderer）、手动重新生成摘要（Server Action + UI + 频率限制）。
+- Alignment: 符合 `SPEC.md` 4.1（Topic Profile 七组字段）、5.4（AI 分析使用全文）、5.8（简报风格可控）和 `REFACTOR_PLAN.md` Phase 5/6/7。原文抓取在 Worker 边界内执行，不进入 request lifecycle；LLM 输出仍视为不可信输入；语言偏好和简报风格都有文档化的默认值和旧数据兼容策略。
+- Missing: Playwright smoke 未覆盖新增的"重新生成摘要"按钮（由 #4 跟踪）；原文抓取未做 robots.txt 尊重（当前仅做超时和内容长度限制）；`languagePreferences` 只支持 `zh-CN` 和 `en` 两种输出语言。
+- Bugs: 无已知 bug。
+- Fixes: 无。
+- Verification: `pnpm typecheck` ✓（7/7）, `pnpm lint` ✓（7/7）, `pnpm test` ✓（7/7）, `pnpm build` ✓（7/7）, `git diff --check` ✓。
+- Follow-up: Playwright smoke 覆盖（#4）；原文抓取 robots.txt 尊重可在后续迭代补充；更多输出语言选项可按需扩展。
+
+### SPEC/README 实现一致性审计 Round 8：画像范围的 deterministic relevance
+
+- Phase: Cross-phase / Phase 6 AI adapter fallback + Phase 7 intelligence pipeline
+- Scope: 验证用户可编辑的 entities/include/exclude/importance 是否在无 AI 和 AI 失败路径真正生效，规则原因是否持久化，以及 fallback event 是否保留实体。
+- Alignment: excludeScope 现在是明确最高优先级否决；keyword/entity/includeScope 是分开计分且可追溯的正信号；规则只做短语包含，不声称理解自然语言 importance。决策、TaskRun、Item filter metadata 和 Event explanation 形成完整证据链。
+- Missing: deterministic importance rule parser 不适合在无契约时臆测，当前 importanceRules 由 AI extraction 消费。#5 已关闭且 LLM relevance/extraction 主链路已存在；没有从本轮证据推导新的模糊“校准”Issue。
+- Bugs: profile 三组字段完全不进入 fallback；exclude 与关键词同时命中仍会创建事件；fallback entities 固定空数组；filtered Item/TaskRun 丢失具体 rule 或 LLM noiseReason；编辑页文案错误暗示所有字段进入所有阶段。
+- Fixes: 扩展 decision 信号、exclude veto、entity/include scoring、fallback category/entities/explanation、Web 中文解释与 Worker reason persistence；同步 SPEC/README 和 L1-L4/FRONTEND 边界。
+- Verification: db validate、全仓 typecheck/lint/test、主体修改后的全仓 build、Playwright discovery 和 diff check 通过；最终 helper/fixture 增量由 typecheck/lint/test 覆盖，二次根 build 因 Codex 使用额度门禁未启动，具体边界见同日 `AGENTS_CHANGELOGS.md`。
+- Follow-up: 下一轮可审计 Item contentHash/canonicalUrl 去重是否真实阻止重复写入，或导出对象覆盖；完全缺失项继续先查现有 #8/#28 等 Issues。
+
 ### SPEC/README 实现一致性审计 Round 7：主题画像编辑与分析输入
 
 - Phase: Cross-phase / Phase 4 Topic management + Phase 6 AI adapter/parser

@@ -6,6 +6,7 @@ import {
   Download,
   EyeOff,
   ExternalLink,
+  RefreshCw,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
@@ -13,6 +14,7 @@ import {
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  regenerateEventSummaryAction,
   updateCategoryPreferenceAction,
   updateDashboardEventStateAction,
 } from "@/app/actions";
@@ -212,6 +214,20 @@ export default async function EventDetailPage({
                 >
                   <ThumbsDown aria-hidden="true" size={14} />
                   少关注这类
+                </Button>
+              </form>
+              <form action={regenerateEventSummaryAction}>
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <Button
+                  name="action"
+                  size="sm"
+                  type="submit"
+                  value="regenerate"
+                  variant="secondary"
+                >
+                  <RefreshCw aria-hidden="true" size={14} />
+                  重新生成摘要
                 </Button>
               </form>
               <Button asChild size="sm" variant="primary">

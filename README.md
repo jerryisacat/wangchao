@@ -41,7 +41,7 @@
 
 1. **种子源**：部署时 seed 读取一个多主题信源列表（优先级：`WANGCHAO_SEED_SOURCE_NAME`+`WANGCHAO_SEED_SOURCE_URL` 旧单源模式 > `WANGCHAO_SEED_SOURCES_URL` > 仓库内 `packages/db/seed-sources.json`），把列表中的源直接创建为 `ACTIVE`。默认 `WANGCHAO_SEED_SOURCES_URL` 指向本仓库 raw link，拉取失败时 fallback 到随部署 bundle 的本地文件。re-seed 不会重置你在 UI 上改过的源状态或主题 profile。
 2. **新建主题自动候选源**：在"新增主题"页只填写主题名称和描述，Web 会生成初始 topic profile，并用 `packages/db/seed-sources.json` 匹配可验证 RSS/Atom。验证通过的源写入 `candidate` 观察池并记录 `SourceObservation.evidence`；即使没有候选源，主题也会创建成功。
-   主题创建后可在编辑页直接维护 keywords、entities、include/exclude scope 和 importance rules。保存后的值会进入后续规则筛选、信源发现与 AI 事件抽取；主题 name/description 从 Topic 当前记录传入 AI，不依赖可能过期的 profile 副本。
+   主题创建后可在编辑页直接维护 keywords、entities、include/exclude scope 和 importance rules。规则 fallback 使用关键词/实体/覆盖范围作正信号，并让排除范围优先否决；importance rules 只进入 AI 评分。关键词同时用于信源发现，完整画像进入 AI 事件抽取；主题 name/description 从 Topic 当前记录传入 AI，不依赖可能过期的 profile 副本。
 3. **候选源**：在"信源管理"页通过表单提交一个 RSS URL，或点击"发现新源"触发自动发现，进入 `candidate` 观察池。
 4. **批准 / 静音 / 拒绝**：在"信源管理"页对候选源执行治理动作，状态切换会写入 `SourceObservation` 和 `FeedbackEvent`，可追溯。
 5. **质量观测**：Worker 每轮抓取后按真实 Item ↔ EventItem 关系计算每个信源的 hit rate / noise rate / duplicate rate；primary/secondary 都计为有效命中，secondary 合并报道计入重复率，已归档旧事件不重复计数。快照写入 `SourceObservation`，作为后续治理决策依据。
@@ -87,7 +87,7 @@
 
 **关键设计点**：
 
-- 当前情报管线以**可解释规则**为主（关键词匹配 + 时间衰减 + 反馈权重），不依赖 LLM 调用即可跑通闭环。`packages/ai` 提供 OpenAI-compatible 边界，后续可接入更深的语义抽取和简报改写，但仍会保留可解释性和幂等写入。
+- 当前情报管线以**可解释规则**为主（关键词/实体/覆盖范围正信号 + 排除范围优先否决 + 时间衰减 + 反馈权重），不依赖 LLM 调用即可跑通闭环。规则判定会保存命中的 signals/noiseReason；`packages/ai` 提供 OpenAI-compatible 边界，后续可接入更深的语义抽取和简报改写，但仍会保留可解释性和幂等写入。
 - TaskRun 不是仅有 schema 的占位：抓取/发现、相关性、AI 事件抽取、简报和 Markdown 导出均记录 RUNNING → SUCCEEDED/FAILED；AI 请求失败后即使规则 fallback 让整轮继续，失败的 extraction TaskRun 和实际 AI_CALL 用量仍会保留。
 - Dashboard 主列表只展示 `UNREAD` 和 `SAVED` 事件，`READ` 和 `DISMISSED` 默认从主信息流隐藏。
 - Dashboard 排序 = `gravityScore` 基础分 × `PreferenceMemory` 权重。你的反馈会直接影响下一轮排序，不只是被记录。

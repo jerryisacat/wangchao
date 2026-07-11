@@ -1,3 +1,6 @@
+import { Readability } from "@mozilla/readability";
+import { parseHTML } from "linkedom";
+
 export type SourceKind = "rss" | "web";
 
 export {
@@ -28,6 +31,7 @@ export interface NormalizedSourceItem {
   author?: string;
   publishedAt?: Date;
   contentHash: string;
+  rawContent?: string;
   rawMetadata: Record<string, unknown>;
 }
 
@@ -165,6 +169,56 @@ export function parseRssFeed(xml: string): NormalizedSourceItem[] {
     .filter((item): item is NormalizedSourceItem => item !== null);
 }
 
+export interface FetchArticleOptions {
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  maxContentLength?: number;
+}
+
+export async function fetchArticleContent(
+  articleUrl: string,
+  options: FetchArticleOptions = {},
+): Promise<string | null> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  const maxContentLength = options.maxContentLength ?? 100_000;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetchImpl(articleUrl, {
+      headers: {
+        accept: "text/html, application/xhtml+xml",
+        "user-agent": "WangchaoWorker/1.0 Article fetcher",
+      },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const html = await response.text();
+    if (html.length > maxContentLength) {
+      return null;
+    }
+
+    const { document } = parseHTML(html);
+    const reader = new Readability(document);
+    const article = reader.parse();
+
+    if (!article?.textContent) {
+      return null;
+    }
+
+    return article.textContent.replace(/\s+/g, " ").trim().slice(0, 20_000);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function extractEntryXml(xml: string): string[] {
   const itemMatches = [...xml.matchAll(/<item\b[\s\S]*?<\/item>/gi)].map(
     (match) => match[0],
@@ -185,8 +239,9 @@ function parseEntry(entryXml: string): NormalizedSourceItem | null {
     return null;
   }
 
+  const encodedContent = firstText(entryXml, "content:encoded");
   const summary =
-    firstText(entryXml, "content:encoded") ??
+    encodedContent ??
     firstText(entryXml, "description") ??
     firstText(entryXml, "summary") ??
     firstText(entryXml, "content");
@@ -206,6 +261,7 @@ function parseEntry(entryXml: string): NormalizedSourceItem | null {
     author,
     publishedAt,
     contentHash: createContentHash(`${title}\n${canonicalUrl}\n${summary ?? ""}`),
+    rawContent: encodedContent ? stripHtml(encodedContent).slice(0, 20_000) : undefined,
     rawMetadata: {
       publishedText,
     },
@@ -278,6 +334,15 @@ function canonicalizeItemUrl(url: string): string {
     parsed.pathname = parsed.pathname.replace(/\/+$/, "");
   }
   return parsed.toString();
+}
+
+function stripHtml(value: string): string {
+  return value
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[a-z]+;/gi, " ")
+    .replace(/&#x?[0-9a-f]+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function createContentHash(value: string): string {

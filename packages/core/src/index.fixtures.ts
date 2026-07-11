@@ -15,9 +15,77 @@ export function runCoreFixtures(): void {
   testRuleFallbackSummaryFallsBackToTitle();
   testCreateIntelligenceEventDraftUsesCleanSummary();
   testCreateIntelligenceEventDraftReturnsNullForIrrelevant();
+  testExcludedScopeOverridesPositiveSignals();
+  testEntityAndIncludeScopeDriveExplainableFallback();
   testPreferenceDeltasKeepTopicsIsolated();
   testCategoryFeedbackOnlyChangesCategoryWeight();
   testTopicProfileContextUsesTopicIdentityAndSanitizesLists();
+}
+
+function testExcludedScopeOverridesPositiveSignals(): void {
+  const item = {
+    fetchedAt: new Date("2026-01-01"),
+    id: "excluded-item",
+    summary: "AI 平台招聘广告",
+    title: "OpenAI AI 平台招聘广告",
+    topicProfile: {
+      excludeScope: ["招聘广告"],
+      keywords: ["AI"],
+    },
+    url: "https://example.com/excluded",
+  };
+  const decision = evaluateRelevance(item);
+
+  assert(decision.isRelevant === false, "Exclude scope must override keyword matches.");
+  assert(decision.score === 0, "Excluded content must receive a zero relevance score.");
+  assert(
+    decision.matchedExcludeScopes.join(",") === "招聘广告",
+    "The exclusion reason must stay explainable.",
+  );
+  assert(
+    createIntelligenceEventDraft(item, decision) === null,
+    "Excluded content must not create an event draft.",
+  );
+}
+
+function testEntityAndIncludeScopeDriveExplainableFallback(): void {
+  const entityItem = {
+    fetchedAt: new Date("2026-01-01"),
+    id: "entity-item",
+    summary: "OpenAI 发布新产品。",
+    title: "产品发布",
+    topicProfile: {
+      entities: ["OpenAI"],
+      includeScope: ["供应链进展"],
+      keywords: ["not-present"],
+    },
+    url: "https://example.com/entity",
+  };
+  const entityDecision = evaluateRelevance(entityItem);
+  const entityDraft = createIntelligenceEventDraft(entityItem, entityDecision);
+
+  assert(entityDecision.isRelevant, "An entity match must pass deterministic relevance.");
+  assert(entityDecision.matchedEntities[0] === "OpenAI", "Entity match must be retained.");
+  assert(entityDraft?.category === "entity:OpenAI", "Entity-only fallback must explain its category.");
+  assert(entityDraft?.entities[0] === "OpenAI", "Fallback event must persist matched entities.");
+
+  const scopeDecision = evaluateRelevance({
+    ...entityItem,
+    id: "scope-item",
+    summary: "本周供应链进展汇总。",
+    topicProfile: {
+      entities: ["not-present"],
+      includeScope: ["供应链进展"],
+      keywords: ["also-not-present"],
+    },
+    url: "https://example.com/scope",
+  });
+
+  assert(scopeDecision.isRelevant, "An include-scope match must pass deterministic relevance.");
+  assert(
+    scopeDecision.matchedIncludeScopes[0] === "供应链进展",
+    "Include-scope match must stay explainable.",
+  );
 }
 
 function testTopicProfileContextUsesTopicIdentityAndSanitizesLists(): void {

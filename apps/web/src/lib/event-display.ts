@@ -65,9 +65,16 @@ function formatEventSummary(
 
 function formatEventExplanation(rawExplanation: string): string {
   const matchedKeywords = rawExplanation.match(/Matched topic keywords:\s*([^.]+)\./i)?.[1];
+  const matchedEntities = rawExplanation.match(/Matched topic entities:\s*([^.]+)\./i)?.[1];
+  const matchedIncludeScopes = rawExplanation.match(/Matched include scope:\s*([^.]+)\./i)?.[1];
+  const reasons = [
+    matchedKeywords ? `命中主题关键词：${matchedKeywords.trim()}` : null,
+    matchedEntities ? `命中关键实体：${matchedEntities.trim()}` : null,
+    matchedIncludeScopes ? `命中覆盖范围：${matchedIncludeScopes.trim()}` : null,
+  ].filter((reason): reason is string => reason !== null);
 
-  if (matchedKeywords) {
-    return `命中主题关键词：${matchedKeywords.trim()}`;
+  if (reasons.length > 0) {
+    return reasons.join("；");
   }
 
   if (/Matched default relevance threshold/i.test(rawExplanation)) {

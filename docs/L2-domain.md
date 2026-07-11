@@ -75,7 +75,7 @@ ANALYZED ──duplicate──────> DUPLICATE
 
 规则：
 - `markItemFiltered()` 必须保留原有 `rawMetadata`，只追加过滤原因，避免丢失 RSS 原始追溯信息。
-- 当前分析管线用 topic profile keywords 做规则 relevance/noise；AI extraction 另外读取 entities/includeScope/excludeScope/importanceRules、当前 Source name，并从 Topic 行读取当前 name/description。标题和 URL 生成 `eventHash`，用 `topicId + eventHash` 幂等 upsert 事件。
+- 当前规则 relevance 对 title/summary 做大小写不敏感的精确短语包含匹配：excludeScope 命中直接 FILTERED 且 score=0；keywords/entities/includeScope 是独立正信号。命中实体会进入 fallback IntelligenceEvent.entities，命中信号/noiseReason 会进入 decision/TaskRun/Item metadata。LLM 返回 isRelevant=false 时，其 noiseReason 同样写入 extraction/relevance TaskRun 和 Item metadata，不得被泛化文案覆盖。importanceRules 只由 AI extraction 消费；AI 另外读取当前 Source name 与 Topic 行的当前 name/description。标题和 URL 生成 `eventHash`，用 `topicId + eventHash` 幂等 upsert 事件。
 - 多来源合并：精确 event hash 或标题 hash + ±24h 命中已有事件时，直接按已有 event id 更新，不能按新 hash 再创建一条事件；旧 primary 的 `EventItem.role` 改为 `SECONDARY` 且 Item 进入 `DUPLICATE`，新 Item 成为 `PRIMARY/ANALYZED`。语义聚类同样把被合并事件的 Item 关联到保留事件并标记为 `DUPLICATE`；归档的被合并事件清空 eventHash/titleHash，避免未来新报道再次命中已归档行或被唯一键阻塞。
 
 ### IntelligenceEvent 状态机

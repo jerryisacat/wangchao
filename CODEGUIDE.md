@@ -146,6 +146,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 - 情报正文、摘要、解释和来源名称不得全大写；来源和原文链接必须使用真实 `<a>`，外链补 `target="_blank"` 和 `rel="noreferrer"`。
 - 日志不得输出密钥、认证 URL、敏感 headers。
 - Topic profile 表单按字符串数组边界校验（条数、单项长度、总长度）；Worker 通过 `buildTopicProfileContext()` 清洗 JSON 数组，并从 Topic 行读取当前 name/description，避免信任过期或畸形 profile 副本。
+- Deterministic relevance 只解释可可靠执行的短语规则：excludeScope 优先否决；keywords/entities/includeScope 提供正信号。importanceRules 是自然语言，只进入 AI prompt，不得用未定义启发式伪装成已执行。
 
 ### L1.5 候选源隔离
 
@@ -215,6 +216,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 |---|---|
 | `packages/db/prisma/migrations/0008_briefing_idempotency/migration.sql` | 清理历史重复简报并建立主题/周期/窗口唯一约束。 |
 | `packages/db/src/repositories.fixtures.ts` | Repository runtime fixtures，覆盖收藏、daily briefing、TaskRun、标题模糊合并和 SourceObservation 指标口径。 |
+| `apps/worker/src/index.fixtures.ts` | Worker runtime fixture，覆盖 rule/LLM filter reason 的选择优先级。 |
 | `apps/web/src/app/admin/usage/page.tsx` | OWNER/ADMIN 工作区成员与近 30 天用量审计页。 |
 | `apps/web/src/app/admin/settings/credential-form.tsx` | AI/搜索凭证表单，模型嗅探下拉、自定义 provider 手动确认、计费提示 |
 | `apps/web/src/app/admin/settings/providers.ts` | Provider 常量集中定义（`AI_PROVIDERS`/`SEARCH_PROVIDERS`/`defaultAiBaseUrl`），前后端统一数据源。 |

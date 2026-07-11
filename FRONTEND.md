@@ -493,7 +493,7 @@ Badge 用于状态，不用于装饰堆叠。
 7. 简报页：展示完整历史总数、周期、日期窗口和更新时间；分页入口在 320/375/414px 下不得横向挤压，Markdown 下载始终保持 44px 触达。
 8. 工作区审计：`/admin/usage` 只向 OWNER/ADMIN 展示成员和近 30 天分类型/单位用量；不得把不同单位强行相加。设置页提供明确入口，窄屏统计卡和双栏内容依次收敛为单列。
 9. 全站回归：`tests/smoke/responsive.spec.ts` 固化六档宽度、超框、触达目标和主按钮对比度检查。
-10. 主题画像编辑：`/topics/[topicId]/edit` 除名称/描述外，必须展示 keywords、entities、include/exclude scope 和 importance rules；列表型字段明确支持换行/逗号输入，保存提示说明只影响后续分析、不重写历史事件。移动端保持单列和 44px 表单触达。
+10. 主题画像编辑：`/topics/[topicId]/edit` 除名称/描述外，必须展示 keywords、entities、include/exclude scope 和 importance rules；列表型字段明确支持换行/逗号输入，并准确说明 keywords 用于发现、keyword/entity/scope 用于规则与 AI、importance rules 仅用于 AI，不能用笼统文案暗示所有字段被所有阶段消费。保存提示说明只影响后续分析、不重写历史事件。移动端保持单列和 44px 表单触达。
 
 后续继续强化 `新增主题`、`信源管理`、`今日简报` 和 `已保存` 的页面级移动端细节。
 

@@ -124,7 +124,7 @@ topic:
 
 用户可以确认或修改。
 
-当前 TypeScript 主路径的 V1 落地方式是：新建主题页只要求用户填写主题名称和描述；后端先生成包含 `keywords`、`entities`、`includeScope`、`excludeScope` 和 `importanceRules` 的初始 topic profile，再用内置信源包 `packages/db/seed-sources.json` 匹配候选 RSS/Atom。主题编辑页可读取并修改上述五组画像字段；保存使用 tenant-scoped update，后续规则筛选、信源发现和 AI event extraction 读取更新后的画像，同时 AI 输入中的 topic name/description 始终来自 Topic 当前字段而不是 profile 内的重复快照。候选源必须经过真实 HTTP/HTTPS feed 验证并读取 feed title，验证通过后才写入 `Source.status='CANDIDATE'` 和 `SourceObservation.evidence`；没有匹配或验证失败时仍创建主题，并提示用户稍后在信源管理页继续发现。`language_preferences` 与 `digest_style` 尚无稳定契约，由 Issue #30 跟踪，不能只补 UI 壳。
+当前 TypeScript 主路径的 V1 落地方式是：新建主题页只要求用户填写主题名称和描述；后端先生成包含 `keywords`、`entities`、`includeScope`、`excludeScope`、`importanceRules`、`languagePreferences`（输出语言 + 术语规则）和 `digestStyle`（简报结构 + 详细程度 + 最大事件数）的初始 topic profile，再用内置信源包 `packages/db/seed-sources.json` 匹配候选 RSS/Atom。主题编辑页可读取并修改上述七组画像字段；保存使用 tenant-scoped update。`languagePreferences.outputLanguage` 控制 AI extraction prompt 的输出语言；`languagePreferences.terminologyRules` 注入 system prompt；`digestStyle` 控制 daily briefing renderer 的结构、事件数上限和详细程度。无 AI 或 AI 失败时，规则 relevance 对 title/summary 做大小写不敏感的短语匹配：excludeScope 优先否决，keywords/entities/includeScope 作为可解释正信号；importanceRules 只进入 AI 评分，不伪装成 deterministic 规则。关键词另用于信源发现，完整画像进入 AI event extraction；AI 输入中的 topic name/description 始终来自 Topic 当前字段而不是 profile 内的重复快照。Worker 抓取 RSS 后会异步抓取原文全文（基于 `@mozilla/readability` + `linkedom`），写入 `Item.rawContent`；AI event extraction 在 `rawContent` 可用时优先使用全文，无全文时 fallback 到 RSS summary，超长全文截断到 8000 字符。用户可在情报详情页手动触发"重新生成摘要"（频率限制：每事件每分钟最多 1 次），缺少 AI 凭证时给出友好提示。候选源必须经过真实 HTTP/HTTPS feed 验证并读取 feed title，验证通过后才写入 `Source.status='CANDIDATE'` 和 `SourceObservation.evidence`；没有匹配或验证失败时仍创建主题，并提示用户稍后在信源管理页继续发现。
 
 ### 4.2 每日主题简报
 

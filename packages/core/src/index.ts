@@ -25,6 +25,9 @@ export interface IntelligenceEventDraft {
 
 export interface RelevanceDecision {
   isRelevant: boolean;
+  matchedEntities: string[];
+  matchedExcludeScopes: string[];
+  matchedIncludeScopes: string[];
   matchedKeywords: string[];
   noiseReason?: string;
   score: number;
@@ -80,6 +83,7 @@ export interface MarkdownEventInput {
 }
 
 export interface DailyBriefingInput {
+  digestStyle?: DigestStyle;
   events: MarkdownEventInput[];
   generatedAt: Date;
   preferences?: Array<{
@@ -95,22 +99,48 @@ export interface DateRange {
   rangeStart: Date;
 }
 
+export interface LanguagePreferences {
+  outputLanguage: string;
+  terminologyRules: string[];
+}
+
+export interface DigestStyle {
+  structure: "standard" | "detailed" | "compact";
+  detailLevel: "brief" | "standard" | "comprehensive";
+  maxEvents: number;
+}
+
+export const DEFAULT_LANGUAGE_PREFERENCES: LanguagePreferences = {
+  outputLanguage: "zh-CN",
+  terminologyRules: [],
+};
+
+export const DEFAULT_DIGEST_STYLE: DigestStyle = {
+  structure: "standard",
+  detailLevel: "standard",
+  maxEvents: 10,
+};
+
 export interface TopicProfileDraft {
   entities: string[];
   excludeScope: string[];
   importanceRules: string[];
   includeScope: string[];
   keywords: string[];
+  languagePreferences: LanguagePreferences;
+  digestStyle: DigestStyle;
   source: "topic-profile-generator";
 }
 
 export interface TopicProfileContext {
   description: string | null;
+  digestStyle: DigestStyle;
   entities: string[];
   excludeScope: string[];
   importanceRules: string[];
   includeScope: string[];
   keywords: string[];
+  languagePreferences: LanguagePreferences;
   name: string;
 }
 
@@ -148,6 +178,8 @@ export function buildTopicProfile(input: TopicProfileInput): TopicProfileDraft {
       "公开 RSS/Atom、官方博客、研究团队和工程团队更新。",
     ],
     keywords,
+    languagePreferences: { ...DEFAULT_LANGUAGE_PREFERENCES },
+    digestStyle: { ...DEFAULT_DIGEST_STYLE },
     source: "topic-profile-generator",
   };
 }
@@ -156,35 +188,66 @@ export function buildTopicProfileContext(
   profile: unknown,
   topic: { description?: string | null; name: string },
 ): TopicProfileContext {
-  const record =
-    profile && typeof profile === "object" && !Array.isArray(profile)
-      ? (profile as Record<string, unknown>)
-      : {};
+  const record = readProfileRecord(profile);
 
   return {
     description: topic.description?.trim() || null,
+    digestStyle: readDigestStyle(record.digestStyle),
     entities: readProfileStringList(record.entities),
     excludeScope: readProfileStringList(record.excludeScope),
     importanceRules: readProfileStringList(record.importanceRules),
     includeScope: readProfileStringList(record.includeScope),
     keywords: readProfileStringList(record.keywords),
+    languagePreferences: readLanguagePreferences(record.languagePreferences),
     name: topic.name.trim(),
   };
 }
 
 export function evaluateRelevance(item: IntelligenceInputItem): RelevanceDecision {
-  const keywords = extractKeywords(item.topicProfile);
+  const profile = readProfileRecord(item.topicProfile);
+  const keywords = readProfileStringList(profile.keywords);
+  const entities = readProfileStringList(profile.entities);
+  const includeScopes = readProfileStringList(profile.includeScope);
+  const excludeScopes = readProfileStringList(profile.excludeScope);
   const haystack = `${item.title}\n${item.summary ?? ""}`.toLowerCase();
-  const matchedKeywords = keywords.filter((keyword) =>
-    haystack.includes(keyword.toLowerCase()),
+  const matches = (values: string[]) =>
+    values.filter((value) => haystack.includes(value.toLowerCase()));
+  const matchedKeywords = matches(keywords);
+  const matchedEntities = matches(entities);
+  const matchedIncludeScopes = matches(includeScopes);
+  const matchedExcludeScopes = matches(excludeScopes);
+
+  if (matchedExcludeScopes.length > 0) {
+    return {
+      isRelevant: false,
+      matchedEntities,
+      matchedExcludeScopes,
+      matchedIncludeScopes,
+      matchedKeywords,
+      noiseReason: `Matched excluded topic scope: ${matchedExcludeScopes.join(", ")}.`,
+      score: 0,
+    };
+  }
+
+  const hasPositiveSignal =
+    matchedKeywords.length > 0 ||
+    matchedEntities.length > 0 ||
+    matchedIncludeScopes.length > 0;
+  const score = Math.min(
+    98,
+    (hasPositiveSignal ? 72 : 42) +
+      matchedKeywords.length * 8 +
+      matchedEntities.length * 6 +
+      matchedIncludeScopes.length * 6,
   );
-  const baseScore = matchedKeywords.length > 0 ? 72 : 42;
-  const score = Math.min(98, baseScore + matchedKeywords.length * 8);
 
   return {
     isRelevant: score >= 70,
+    matchedEntities,
+    matchedExcludeScopes,
+    matchedIncludeScopes,
     matchedKeywords,
-    noiseReason: score >= 70 ? undefined : "No topic keywords matched.",
+    noiseReason: score >= 70 ? undefined : "No positive topic profile signals matched.",
     score,
   };
 }
@@ -225,22 +288,22 @@ export function createIntelligenceEventDraft(
 
   const occurredAt = item.publishedAt ?? item.fetchedAt;
   const summary = buildRuleFallbackSummary(item.summary, item.title);
-  const category =
-    decision.matchedKeywords[0] !== undefined
-      ? `keyword:${decision.matchedKeywords[0]}`
-      : "general";
+  const category = decision.matchedKeywords[0]
+    ? `keyword:${decision.matchedKeywords[0]}`
+    : decision.matchedEntities[0]
+      ? `entity:${decision.matchedEntities[0]}`
+      : decision.matchedIncludeScopes[0]
+        ? `scope:${decision.matchedIncludeScopes[0]}`
+        : "general";
   const eventHash = createEventHash(`${normalizeTitle(item.title)}\n${item.url}`);
   const titleHash = createTitleHash(item.title);
   const gravityScore = calculateGravityScore(decision.score, occurredAt, new Date());
 
   return {
     category,
-    entities: [],
+    entities: decision.matchedEntities,
     eventHash,
-    explanation:
-      decision.matchedKeywords.length > 0
-        ? `Matched topic keywords: ${decision.matchedKeywords.join(", ")}.`
-        : "Matched default relevance threshold.",
+    explanation: buildRelevanceExplanation(decision),
     followUpSuggestion: undefined,
     gravityScore,
     mergeReason: undefined,
@@ -250,6 +313,22 @@ export function createIntelligenceEventDraft(
     title: item.title.trim(),
     titleHash,
   };
+}
+
+function buildRelevanceExplanation(decision: RelevanceDecision): string {
+  const signals = [
+    decision.matchedKeywords.length > 0
+      ? `Matched topic keywords: ${decision.matchedKeywords.join(", ")}.`
+      : null,
+    decision.matchedEntities.length > 0
+      ? `Matched topic entities: ${decision.matchedEntities.join(", ")}.`
+      : null,
+    decision.matchedIncludeScopes.length > 0
+      ? `Matched include scope: ${decision.matchedIncludeScopes.join(", ")}.`
+      : null,
+  ].filter((signal): signal is string => signal !== null);
+
+  return signals.join(" ") || "Matched default relevance threshold.";
 }
 
 export interface AiEventExtraction {
@@ -446,8 +525,11 @@ function isHttpUrl(value: string): boolean {
 }
 
 export function renderDailyBriefingMarkdown(input: DailyBriefingInput): string {
-  const topEvents = input.events.slice(0, 10);
-  const lines = [
+  const style = input.digestStyle ?? DEFAULT_DIGEST_STYLE;
+  const maxEvents = style.maxEvents;
+  const topEvents = input.events.slice(0, maxEvents);
+
+  const lines: Array<string | undefined> = [
     "---",
     `title: ${escapeYaml(`${input.topicName} Daily Briefing`)}`,
     `created: ${input.generatedAt.toISOString()}`,
@@ -459,47 +541,68 @@ export function renderDailyBriefingMarkdown(input: DailyBriefingInput): string {
     "",
     `Generated at ${input.generatedAt.toISOString()}.`,
     "",
-    "## Executive Summary",
-    "",
-    topEvents.length > 0
-      ? `Today's briefing contains ${topEvents.length} ranked intelligence events.`
-      : "No ranked intelligence events were available for this briefing.",
-    "",
-    "## Top Events",
-    "",
-    ...topEvents.flatMap((event, index) => [
-      `### ${index + 1}. ${event.title}`,
-      "",
-      event.summary,
-      "",
-      `- Score: ${Math.round(event.score)}`,
-      `- Category: ${event.category ?? "general"}`,
-      `- Source: ${event.sourceName ?? "Unknown source"}`,
-      ...(event.secondarySources && event.secondarySources.length > 0
-        ? event.secondarySources.map(
-            (s) => `- Also reported by: ${s.sourceName}`,
-          )
-        : []),
-      event.url ? `- Original: ${event.url}` : undefined,
-      event.explanation ? `- Why it matters: ${event.explanation}` : undefined,
-      "",
-    ]),
-    "## Learned Preferences",
-    "",
-    ...(input.preferences && input.preferences.length > 0
-      ? input.preferences.slice(0, 8).flatMap((preference) => [
-          `- ${preference.key}: ${preference.weight >= 0 ? "+" : ""}${preference.weight}`,
-          `  - ${preference.explanation}`,
-        ])
-      : ["No preference memory was available for this topic yet."]),
-    "",
-    "## Follow Up",
-    "",
-    "- [ ] Mark reviewed events as read",
-    "- [ ] Export important single events into the knowledge base",
-  ].filter((line): line is string => line !== undefined);
+  ];
 
-  return `${lines.join("\n")}\n`;
+  if (style.structure !== "compact") {
+    lines.push(
+      "## Executive Summary",
+      "",
+      topEvents.length > 0
+        ? `Today's briefing contains ${topEvents.length} ranked intelligence events.`
+        : "No ranked intelligence events were available for this briefing.",
+      "",
+    );
+  }
+
+  lines.push("## Top Events", "");
+
+  if (style.structure === "compact") {
+    lines.push(
+      ...topEvents.flatMap((event, index) => [
+        `${index + 1}. **${event.title}** — ${event.summary}`,
+        event.url ? `   - Original: ${event.url}` : undefined,
+        "",
+      ]),
+    );
+  } else {
+    lines.push(
+      ...topEvents.flatMap((event, index) => [
+        `### ${index + 1}. ${event.title}`,
+        "",
+        event.summary,
+        "",
+        `- Score: ${Math.round(event.score)}`,
+        `- Category: ${event.category ?? "general"}`,
+        `- Source: ${event.sourceName ?? "Unknown source"}`,
+        ...(event.secondarySources && event.secondarySources.length > 0
+          ? event.secondarySources.map(
+              (s) => `- Also reported by: ${s.sourceName}`,
+            )
+          : []),
+        event.url ? `- Original: ${event.url}` : undefined,
+        event.explanation ? `- Why it matters: ${event.explanation}` : undefined,
+        "",
+      ]),
+    );
+  }
+
+  if (style.structure !== "compact") {
+    lines.push(
+      "## Learned Preferences",
+      "",
+      ...(input.preferences && input.preferences.length > 0
+        ? input.preferences.slice(0, 8).flatMap((preference) => [
+            `- ${preference.key}: ${preference.weight >= 0 ? "+" : ""}${preference.weight}`,
+            `  - ${preference.explanation}`,
+          ])
+        : ["No preference memory was available for this topic yet."]),
+      "",
+    );
+  }
+
+  lines.push("## Follow Up", "", "- [ ] Mark reviewed events as read", "- [ ] Export important single events into the knowledge base");
+
+  return `${lines.filter((line): line is string => line !== undefined).join("\n")}\n`;
 }
 
 export function createContentHash(value: string): string {
@@ -507,19 +610,7 @@ export function createContentHash(value: string): string {
 }
 
 export function extractKeywords(topicProfile: unknown): string[] {
-  if (!topicProfile || typeof topicProfile !== "object") {
-    return [];
-  }
-
-  const keywords = (topicProfile as { keywords?: unknown }).keywords;
-  if (!Array.isArray(keywords)) {
-    return [];
-  }
-
-  return keywords
-    .filter((keyword): keyword is string => typeof keyword === "string")
-    .map((keyword) => keyword.trim())
-    .filter(Boolean);
+  return readProfileStringList(readProfileRecord(topicProfile).keywords);
 }
 
 function extractTopicTerms(value: string): string[] {
@@ -618,6 +709,12 @@ function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function readProfileRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 function readProfileStringList(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -632,6 +729,47 @@ function readProfileStringList(value: unknown): string[] {
         .slice(0, 50),
     ),
   );
+}
+
+function readLanguagePreferences(value: unknown): LanguagePreferences {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    return {
+      outputLanguage:
+        typeof record.outputLanguage === "string" &&
+        record.outputLanguage.trim().length > 0
+          ? record.outputLanguage.trim().slice(0, 20)
+          : DEFAULT_LANGUAGE_PREFERENCES.outputLanguage,
+      terminologyRules: readProfileStringList(record.terminologyRules),
+    };
+  }
+  return { ...DEFAULT_LANGUAGE_PREFERENCES };
+}
+
+function readDigestStyle(value: unknown): DigestStyle {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as Record<string, unknown>;
+    const structure = record.structure;
+    const detailLevel = record.detailLevel;
+    const maxEvents = Number(record.maxEvents);
+    return {
+      structure:
+        typeof structure === "string" &&
+        ["standard", "detailed", "compact"].includes(structure)
+          ? (structure as DigestStyle["structure"])
+          : DEFAULT_DIGEST_STYLE.structure,
+      detailLevel:
+        typeof detailLevel === "string" &&
+        ["brief", "standard", "comprehensive"].includes(detailLevel)
+          ? (detailLevel as DigestStyle["detailLevel"])
+          : DEFAULT_DIGEST_STYLE.detailLevel,
+      maxEvents:
+        Number.isFinite(maxEvents) && maxEvents >= 1 && maxEvents <= 50
+          ? maxEvents
+          : DEFAULT_DIGEST_STYLE.maxEvents,
+    };
+  }
+  return { ...DEFAULT_DIGEST_STYLE };
 }
 
 function normalizeTitleForFuzzyMatch(title: string): string {

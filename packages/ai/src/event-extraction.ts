@@ -9,6 +9,7 @@ export interface EventExtractionInput {
     url: string;
     publishedAt?: string | null;
     sourceName?: string | null;
+    rawContent?: string | null;
   };
   topic: {
     description?: string | null;
@@ -18,6 +19,10 @@ export interface EventExtractionInput {
     includeScope?: string[];
     keywords: string[];
     name: string;
+    languagePreferences?: {
+      outputLanguage: string;
+      terminologyRules?: string[];
+    };
   };
 }
 
@@ -64,11 +69,21 @@ const EVENT_EXTRACTION_SCHEMA: JsonSchema = {
 export function buildEventExtractionMessages(
   input: EventExtractionInput,
 ): AiChatMessage[] {
+  const lang = input.topic.languagePreferences?.outputLanguage ?? "zh-CN";
+  const langInstruction =
+    lang === "en"
+      ? "Write summary, title, noiseReason, importanceExplanation, and followUpSuggestion in English."
+      : "Write summary, title, noiseReason, importanceExplanation, and followUpSuggestion in Chinese (zh-CN).";
+  const termRules =
+    input.topic.languagePreferences?.terminologyRules?.length
+      ? `\nFollow these terminology rules: ${input.topic.languagePreferences.terminologyRules.join("; ")}.`
+      : "";
+
   return [
     {
       role: "system",
       content:
-        "You filter and extract intelligence events for a topic-driven workspace. Return strict JSON only. If the item is irrelevant noise, set isRelevant=false. Otherwise set isRelevant=true and fill extraction fields.",
+        `You filter and extract intelligence events for a topic-driven workspace. Return strict JSON only. If the item is irrelevant noise, set isRelevant=false. Otherwise set isRelevant=true and fill extraction fields. ${langInstruction}${termRules}`,
     },
     {
       role: "user",
@@ -102,6 +117,7 @@ export function buildEventExtractionMessages(
           url: input.item.url,
           publishedAt: input.item.publishedAt,
           sourceName: input.item.sourceName,
+          ...(input.item.rawContent ? { rawContent: input.item.rawContent.slice(0, 8_000) } : {}),
         },
       }),
     },

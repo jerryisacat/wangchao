@@ -118,7 +118,7 @@ Development is organized by `AGENTS.md` and `REFACTOR_PLAN.md`. After each phase
 - The worker handles fetching, analysis, and briefing generation; the deployment platform is responsible for scheduled execution.
 - The intelligence pipeline currently favors explainable rules. `packages/ai` keeps the OpenAI-compatible boundary for deeper semantic extraction and briefing rewrites.
 - Category up/down feedback changes only the matching category inside the current topic; preference signals with the same category name remain isolated across topics before they affect Dashboard ranking.
-- Topic profile edits are persisted with an organization-scoped mutation and feed subsequent rule filtering, source discovery, and AI event extraction. Language preferences and briefing style remain tracked in Issue #30 until a stable consumed contract is implemented.
+- Topic profile edits are persisted with an organization-scoped mutation. Deterministic fallback treats keyword/entity/include-scope phrases as positive signals and lets exclude-scope matches veto them; importance rules remain AI-only. Keywords also feed source discovery, while the full profile feeds AI event extraction. Language preferences and briefing style remain tracked in Issue #30 until a stable consumed contract is implemented.
 
 ## Reference Docs
 

@@ -16,7 +16,7 @@
     "lint": "tsc -p tsconfig.json --noEmit",
     "source-discovery": "node dist/index.js --source-discovery",
     "start": "node dist/index.js",
-    "test": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json && node -e \"await import('./dist/index.fixtures.js').then((m) => m.runWorkerFixtures())\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

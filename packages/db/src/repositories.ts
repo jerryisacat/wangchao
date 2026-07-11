@@ -73,6 +73,7 @@ export interface NormalizedFetchedItemInput extends TopicScope {
   author?: string;
   publishedAt?: Date;
   contentHash?: string;
+  rawContent?: string;
   rawMetadata?: Record<string, unknown>;
 }
 
@@ -81,6 +82,7 @@ export interface PendingAnalysisItem {
   id: string;
   organizationId: string;
   publishedAt: Date | null;
+  rawContent: string | null;
   sourceId: string;
   sourceName: string;
   summary: string | null;
@@ -1253,6 +1255,7 @@ export async function upsertFetchedItems(
           contentHash: item.contentHash,
           fetchedAt: new Date(),
           publishedAt: item.publishedAt,
+          rawContent: item.rawContent,
           rawMetadata: toInputJson(item.rawMetadata),
           sourceId: item.sourceId,
           summary: item.summary,
@@ -1271,6 +1274,7 @@ export async function upsertFetchedItems(
           author: item.author,
           publishedAt: item.publishedAt,
           contentHash: item.contentHash,
+          rawContent: item.rawContent,
           rawMetadata: toInputJson(item.rawMetadata),
         },
       }),
@@ -1316,6 +1320,7 @@ export async function listFetchedItemsForAnalysis(
     id: item.id,
     organizationId: item.organizationId,
     publishedAt: item.publishedAt,
+    rawContent: item.rawContent,
     sourceId: item.sourceId,
     sourceName: item.source.name,
     summary: item.summary,
@@ -1326,6 +1331,37 @@ export async function listFetchedItemsForAnalysis(
     topicProfile: item.topic.profile,
     url: item.url,
   }));
+}
+
+export async function updateItemRawContent(
+  prisma: PrismaClient,
+  itemId: string,
+  rawContent: string,
+): Promise<void> {
+  await prisma.item.update({
+    where: { id: itemId },
+    data: { rawContent },
+  });
+}
+
+export async function listItemsWithoutRawContent(
+  prisma: PrismaClient,
+  scope: TenantScope,
+  limit = 20,
+): Promise<Array<{ id: string; url: string }>> {
+  const items = await prisma.item.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      status: "FETCHED",
+      rawContent: null,
+      url: { not: "" },
+    },
+    select: { id: true, url: true },
+    orderBy: { fetchedAt: "desc" },
+    take: limit,
+  });
+
+  return items;
 }
 
 export async function listHighScoreEventPagesForDiscovery(

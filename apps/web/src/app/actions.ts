@@ -916,6 +916,26 @@ function readProfileListField(
   return values;
 }
 
+function readPositiveInteger(
+  formData: FormData,
+  key: string,
+  fallback: number,
+): number {
+  const raw = readOptionalField(formData, key);
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function validateEnumValue<T extends string>(
+  value: string,
+  allowed: readonly T[],
+): T {
+  return (allowed as readonly string[]).includes(value)
+    ? (value as T)
+    : (allowed[0] as T);
+}
+
 function readJsonRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? { ...(value as Record<string, unknown>) }
@@ -1026,6 +1046,11 @@ async function updateTopicFromForm(formData: FormData) {
     formData,
     "topicImportanceRules",
   );
+  const outputLanguage = readOptionalField(formData, "topicOutputLanguage") || "zh-CN";
+  const terminologyRules = readProfileListField(formData, "topicTerminologyRules");
+  const digestStructure = readOptionalField(formData, "topicDigestStructure") || "standard";
+  const digestDetailLevel = readOptionalField(formData, "topicDigestDetailLevel") || "standard";
+  const digestMaxEvents = readPositiveInteger(formData, "topicDigestMaxEvents", 10);
 
   if (name.length > 120 || description.length > 2_000) {
     throw new Error("Topic name or description is too long.");
@@ -1080,6 +1105,15 @@ async function updateTopicFromForm(formData: FormData) {
         importanceRules,
         includeScope,
         keywords,
+        languagePreferences: {
+          outputLanguage: outputLanguage.trim().slice(0, 20),
+          terminologyRules,
+        },
+        digestStyle: {
+          structure: validateEnumValue(digestStructure, ["standard", "detailed", "compact"]),
+          detailLevel: validateEnumValue(digestDetailLevel, ["brief", "standard", "comprehensive"]),
+          maxEvents: Math.max(1, Math.min(digestMaxEvents, 50)),
+        },
         source: "topic-profile-editor",
       },
     },
@@ -1253,6 +1287,162 @@ async function deleteTopicFromForm(formData: FormData) {
     unit: "action",
     userId: workspace.userId,
   });
+}
+
+export async function regenerateEventSummaryAction(
+  formData: FormData,
+): Promise<void> {
+  const eventId = readRequiredField(formData, "eventId");
+  const returnTo =
+    readSafeReturnPath(formData, "returnTo") ?? `/events/${eventId}`;
+  let message = "摘要已重新生成。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to regenerate summary.");
+    }
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getDecryptedCredentials,
+      getPrismaClient,
+      recordUsageEvent,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      { organizationId: workspace.organizationId, userId: workspace.userId },
+      ["OWNER", "ADMIN", "MEMBER"],
+    );
+
+    const event = await prisma.intelligenceEvent.findUnique({
+      where: { id: eventId, organizationId: workspace.organizationId },
+      include: {
+        primaryItem: { include: { source: { select: { name: true } } } },
+        topic: { select: { name: true, description: true, profile: true } },
+      },
+    });
+
+    if (!event) {
+      throw new Error("Event not found in this workspace.");
+    }
+    if (!event.primaryItem) {
+      throw new Error("No primary item associated with this event.");
+    }
+
+    const sixtySecondsAgo = new Date(Date.now() - 60_000);
+    if (event.updatedAt > sixtySecondsAgo) {
+      message = "刚刚已更新摘要，请稍后再试。";
+      type = "notice";
+      revalidatePath(returnTo);
+      redirect(actionRedirectHref(returnTo, type, message));
+      return;
+    }
+
+    const creds = await getDecryptedCredentials(prisma, {
+      organizationId: workspace.organizationId,
+    });
+    if (!creds?.ai?.apiKey || !creds.ai.baseUrl) {
+      const envKey = process.env.AI_API_KEY;
+      const envUrl = process.env.AI_BASE_URL;
+      if (!envKey || !envUrl) {
+        throw new Error("AI_API_KEY_MISSING");
+      }
+    }
+
+    const { createOpenAiCompatibleAdapter, buildEventExtractionMessages, parseEventExtractionResponse } =
+      await import("@wangchao/ai");
+    const { buildTopicProfileContext } = await import("@wangchao/core");
+    const model = creds?.ai?.model ?? process.env.AI_MODEL ?? "gpt-4o-mini";
+
+    let adapter;
+    if (creds?.ai?.apiKey && creds.ai.baseUrl) {
+      adapter = createOpenAiCompatibleAdapter({
+        apiKey: creds.ai.apiKey,
+        baseUrl: creds.ai.baseUrl,
+      });
+    } else {
+      adapter = createOpenAiCompatibleAdapter({
+        apiKey: process.env.AI_API_KEY!,
+        baseUrl: process.env.AI_BASE_URL!,
+      });
+    }
+
+    const context = buildTopicProfileContext(
+      event.topic.profile,
+      { description: event.topic.description, name: event.topic.name },
+    );
+    const extractionInput = {
+      item: {
+        id: event.primaryItem.id,
+        title: event.primaryItem.title,
+        summary: event.primaryItem.summary,
+        url: event.primaryItem.url,
+        publishedAt: event.primaryItem.publishedAt?.toISOString() ?? null,
+        sourceName: event.primaryItem.source.name,
+        rawContent: event.primaryItem.rawContent ?? null,
+      },
+      topic: {
+        description: context.description,
+        entities: context.entities,
+        excludeScope: context.excludeScope,
+        importanceRules: context.importanceRules,
+        includeScope: context.includeScope,
+        keywords: context.keywords,
+        name: context.name,
+        languagePreferences: context.languagePreferences,
+      },
+    };
+    const messages = buildEventExtractionMessages(extractionInput);
+    const response = await adapter.chat({
+      jsonMode: true,
+      maxTokens: 600,
+      messages,
+      model,
+      temperature: 0.2,
+    });
+    const result = parseEventExtractionResponse(response.content, {
+      itemSummary: event.primaryItem.summary ?? "",
+      itemTitle: event.primaryItem.title,
+    });
+
+    if (result.isRelevant && result.summary) {
+      await prisma.intelligenceEvent.update({
+        where: { id: eventId },
+        data: { summary: result.summary },
+      });
+      message = "摘要已基于 AI 重新生成。";
+    } else {
+      message = "AI 判定该条目为不相关内容，未更新摘要。";
+    }
+
+    await recordUsageEvent(prisma, {
+      metadata: {
+        action: "regenerate-event-summary",
+        isRelevant: result.isRelevant,
+        source: "event-detail-page",
+      },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectId: eventId,
+      subjectType: "intelligence-event",
+      type: "AI_CALL",
+      unit: "call",
+      userId: workspace.userId,
+    });
+  } catch (error) {
+    logActionError("regenerateEventSummaryAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath(returnTo);
+  revalidatePath("/");
+  redirect(actionRedirectHref(returnTo, type, message));
 }
 
 export async function upsertAiCredentialAction(formData: FormData): Promise<void> {

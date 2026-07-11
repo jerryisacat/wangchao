@@ -18,10 +18,12 @@ import {
   createIntelligenceEventDraftFromExtraction,
   createUtcDayRange,
   buildTopicProfileContext,
+  DEFAULT_DIGEST_STYLE,
   evaluateRelevance,
   generatePreferenceDeltas,
   renderDailyBriefingMarkdown,
   type AiEventExtraction,
+  type RelevanceDecision,
 } from "@wangchao/core";
 import {
   completeTaskRun,
@@ -39,6 +41,7 @@ import {
   listEventsForDailyBriefing,
   listFetchedItemsForAnalysis,
   listHighScoreEventPagesForDiscovery,
+  listItemsWithoutRawContent,
   listPreferenceMemoryForDashboard,
   listRecentActiveSourcePagesForDiscovery,
   listRecentFeedbackSignals,
@@ -50,6 +53,7 @@ import {
   recordSourceFetchFailure,
   recordSourceFetchSuccess,
   recordSourceQualityObservation,
+  updateItemRawContent,
   upsertFetchedItems,
   upsertIntelligenceEventFromItem,
   upsertPreferenceMemory,
@@ -63,6 +67,7 @@ import {
   discoverFeedCandidatesFromSearchResult,
   extractExternalLinksFromPage,
   extractTopicKeywords,
+  fetchArticleContent,
   fetchRssFeed,
   FetchRssError,
   isFetchRssRetryable,
@@ -165,6 +170,20 @@ export interface WorkerHealthCheckResult {
   status: "ok" | "degraded";
 }
 
+export function resolveFilteredNoiseReason(input: {
+  llmNoiseReason?: string;
+  ruleDecision?: RelevanceDecision | null;
+  usedFallback: boolean;
+}): string {
+  return (
+    input.ruleDecision?.noiseReason ??
+    input.llmNoiseReason ??
+    (input.usedFallback
+      ? "AI 分析失败且规则判定为噪声。"
+      : "Item did not pass relevance threshold.")
+  );
+}
+
 export function describeWorker(): string {
   return "Wangchao worker";
 }
@@ -229,6 +248,8 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
       userId: workspace.userId,
     });
   }
+
+  await runArticleFetchCycle(prisma, workspace.organizationId);
 
   const analysisResult = await runAnalysisCycle(
     prisma,
@@ -296,6 +317,36 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
       userId: workspace.userId,
     });
   }
+
+  return result;
+}
+
+async function runArticleFetchCycle(
+  prisma: ReturnType<typeof getPrismaClient>,
+  organizationId: string,
+): Promise<{ fetched: number; failed: number }> {
+  const result = { fetched: 0, failed: 0 };
+  const items = await listItemsWithoutRawContent(prisma, { organizationId });
+
+  if (items.length === 0) return result;
+
+  const limit = pLimit(getFetchConcurrency());
+  const articleResults = await Promise.all(
+    items.map((item) =>
+      limit(async () => {
+        try {
+          const content = await fetchArticleContent(item.url);
+          if (content) {
+            await updateItemRawContent(prisma, item.id, content);
+            result.fetched += 1;
+          }
+        } catch {
+          result.failed += 1;
+        }
+      }),
+    ),
+  );
+  void articleResults;
 
   return result;
 }
@@ -472,6 +523,8 @@ async function runAnalysisCycle(
       let rawAiResponse: Record<string, unknown> = {
         mode: "uninitialized",
       };
+      let ruleDecision: RelevanceDecision | null = null;
+      let llmNoiseReason: string | undefined;
       let usedLlm = false;
       let usedFallback = false;
 
@@ -504,10 +557,12 @@ async function runAnalysisCycle(
             extractionToAiEventExtraction(extraction),
           );
           rawAiResponse = { mode: "llm", extraction };
+          llmNoiseReason = extraction.noiseReason;
           usedLlm = true;
           await completeTaskRun(prisma, extractionTask.id, {
             isRelevant: extraction.isRelevant,
             model: ai.model,
+            noiseReason: extraction.noiseReason,
             outcome: draft ? "draft-created" : "filtered",
           });
         } catch (error) {
@@ -520,7 +575,7 @@ async function runAnalysisCycle(
       }
 
       if (!usedLlm) {
-        const decision = evaluateRelevance({
+        ruleDecision = evaluateRelevance({
           fetchedAt: item.fetchedAt,
           id: item.id,
           publishedAt: item.publishedAt,
@@ -539,11 +594,11 @@ async function runAnalysisCycle(
             topicProfile: item.topicProfile,
             url: item.url,
           },
-          decision,
+          ruleDecision,
         );
         rawAiResponse = {
           mode: "explainable-rules",
-          relevance: decision,
+          relevance: ruleDecision,
           ...(usedFallback ? { llmFallback: true } : {}),
         };
       }
@@ -553,14 +608,17 @@ async function runAnalysisCycle(
       if (usedFallback) result.llmFallbackItems += 1;
 
       if (!draft) {
-        const noiseReason = usedFallback
-          ? "AI 分析失败且规则判定为噪声。"
-          : "Item did not pass relevance threshold.";
+        const noiseReason = resolveFilteredNoiseReason({
+          llmNoiseReason,
+          ruleDecision,
+          usedFallback,
+        });
         await markItemFiltered(prisma, item.id, noiseReason);
         result.filteredItems += 1;
         await completeTaskRun(prisma, relevanceTask.id, {
           llmFallback: usedFallback,
           mode: usedLlm ? "llm" : "explainable-rules",
+          noiseReason,
           outcome: "filtered",
         });
         continue;
@@ -801,7 +859,13 @@ async function runDailyBriefingCycle(
         continue;
       }
 
+      const context = buildTopicProfileContext(topic.profile, {
+        description: topic.description,
+        name: topic.name,
+      });
+
       const markdown = renderDailyBriefingMarkdown({
+        digestStyle: context.digestStyle ?? DEFAULT_DIGEST_STYLE,
         events: events.map((event) => ({
           category: event.category,
           explanation: event.explanation,
@@ -1287,6 +1351,7 @@ function buildExtractionInput(
     summary?: string | null;
     url: string;
     publishedAt?: Date | null;
+    rawContent?: string | null;
     sourceId?: string | null;
     sourceName?: string | null;
     topicDescription?: string | null;
@@ -1301,6 +1366,7 @@ function buildExtractionInput(
     url: string;
     publishedAt?: string | null;
     sourceName?: string | null;
+    rawContent?: string | null;
   };
   topic: {
     description?: string | null;
@@ -1310,8 +1376,11 @@ function buildExtractionInput(
     includeScope?: string[];
     keywords: string[];
     name: string;
-  };
-} {
+    languagePreferences?: {
+      outputLanguage: string;
+      terminologyRules?: string[];
+    };
+  };} {
   const context = buildTopicProfileContext(topicProfile, {
     description: item.topicDescription,
     name: item.topicName,
@@ -1325,8 +1394,12 @@ function buildExtractionInput(
       summary: item.summary,
       title: item.title,
       url: item.url,
+      rawContent: item.rawContent ?? null,
     },
-    topic: context,
+    topic: {
+      ...context,
+      languagePreferences: context.languagePreferences,
+    },
   };
 }
 

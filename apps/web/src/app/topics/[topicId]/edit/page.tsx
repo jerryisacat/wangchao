@@ -47,11 +47,13 @@ export default async function TopicEditPage({
   if (!topic) {
     notFound();
   }
-  const { buildTopicProfileContext } = await import("@wangchao/core");
+  const { buildTopicProfileContext, DEFAULT_LANGUAGE_PREFERENCES, DEFAULT_DIGEST_STYLE } = await import("@wangchao/core");
   const profile = buildTopicProfileContext(topic.profile, {
     description: topic.description,
     name: topic.name,
   });
+  const lang = profile.languagePreferences ?? DEFAULT_LANGUAGE_PREFERENCES;
+  const digest = profile.digestStyle ?? DEFAULT_DIGEST_STYLE;
 
   return (
     <>
@@ -105,7 +107,10 @@ export default async function TopicEditPage({
             <div className="topic-profile-fields">
               <div className="topic-profile-heading">
                 <strong>主题画像</strong>
-                <span>这些字段会进入规则筛选、AI 事件抽取和信源发现。</span>
+                <span>
+                  关键词用于信源发现；关键词、实体和覆盖/排除范围进入规则与 AI
+                  筛选；重要性规则由 AI 用于评分。
+                </span>
               </div>
               <label>
                 <span>关键词（必填，每行或逗号分隔）</span>
@@ -151,6 +156,58 @@ export default async function TopicEditPage({
                   maxLength={5_000}
                   name="topicImportanceRules"
                   rows={5}
+                />
+              </label>
+            </div>
+            <div className="topic-profile-fields">
+              <div className="topic-profile-heading">
+                <strong>语言与简报偏好</strong>
+                <span>
+                  输出语言和术语规则影响 AI 摘要生成；简报风格控制日报结构和详细程度。
+                </span>
+              </div>
+              <label>
+                <span>输出语言</span>
+                <select className="topic-select" defaultValue={lang.outputLanguage} name="topicOutputLanguage">
+                  <option value="zh-CN">简体中文</option>
+                  <option value="en">English</option>
+                </select>
+              </label>
+              <label>
+                <span>术语规则（每行一项）</span>
+                <textarea
+                  defaultValue={lang.terminologyRules.join("\n")}
+                  maxLength={2_000}
+                  name="topicTerminologyRules"
+                  placeholder="例如：OpenAI 不译、LLM 保留英文"
+                  rows={3}
+                />
+              </label>
+              <label>
+                <span>简报结构</span>
+                <select className="topic-select" defaultValue={digest.structure} name="topicDigestStructure">
+                  <option value="standard">标准（摘要 + 事件 + 偏好 + 跟进）</option>
+                  <option value="detailed">详尽（含 Executive Summary）</option>
+                  <option value="compact">紧凑（仅事件列表 + 跟进）</option>
+                </select>
+              </label>
+              <label>
+                <span>详细程度</span>
+                <select className="topic-select" defaultValue={digest.detailLevel} name="topicDigestDetailLevel">
+                  <option value="standard">标准</option>
+                  <option value="comprehensive">全面</option>
+                  <option value="brief">简略</option>
+                </select>
+              </label>
+              <label>
+                <span>最大事件数</span>
+                <input
+                  className="topic-number-input"
+                  defaultValue={digest.maxEvents}
+                  max={50}
+                  min={1}
+                  name="topicDigestMaxEvents"
+                  type="number"
                 />
               </label>
             </div>

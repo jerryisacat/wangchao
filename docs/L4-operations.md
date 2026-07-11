@@ -27,9 +27,11 @@ pnpm worker:source-discovery
 pnpm smoke:web
 ```
 
-`pnpm test` 会实际执行 `packages/core`、`packages/ai`、`packages/sources` 和 `packages/db` 的编译后 fixture；core/db fixture 当前覆盖收藏集合、Daily Briefing、TaskRun 生命周期、标题模糊合并、SourceObservation 指标口径、category feedback/跨 Topic 隔离，以及 Topic profile 清洗、tenant-scoped update 和 analysis context 查询，而不是只做 TypeScript 编译。
+`pnpm test` 会实际执行 `packages/core`、`packages/ai`、`packages/sources`、`packages/db` 和 `apps/worker` 的编译后 fixture；core/db/worker fixture 当前覆盖收藏集合、Daily Briefing、TaskRun 生命周期、标题模糊合并、SourceObservation 指标口径、category feedback/跨 Topic 隔离、Topic profile/analysis context，以及 rule/LLM filter reason 优先级，而不是只做 TypeScript 编译。
 
 Topic profile 或 analysis 输入变更后，应使用临时 Postgres 验证：更新后的 keywords/entities/include/exclude/importance、当前 Source name 与 Topic 当前 name/description 能从 `listFetchedItemsForAnalysis()` 进入 extraction input / `buildTopicProfileContext()`；使用错误 organizationId 调用 `updateTopic()` 必须失败。不要在真实工作区制造验证数据。
+
+Relevance 变更必须用 core fixture 覆盖：exclude 与正信号同时命中时 exclude 胜出且不生成 draft；仅 entity 或 includeScope 命中也能生成 event；entity match 保留到 event entities；无任何正信号仍被过滤。Worker filtered 分支必须把具体 rule 或 LLM `noiseReason` 写入 Item rawMetadata 和对应 extraction/relevance TaskRun output，而不是覆盖成泛化文案。
 
 多来源或治理指标变更后，应在临时 Postgres 验证：同标题不同 URL 最终只有一个未归档 IntelligenceEvent；最新 Item 为 PRIMARY/ANALYZED，旧 Item 为 SECONDARY/DUPLICATE；source report 的 hit/noise/duplicate 与唯一 active event 数和 fixture 数据一致。
 
