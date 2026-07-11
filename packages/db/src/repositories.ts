@@ -1081,6 +1081,244 @@ export async function updateSourceGovernanceStatus(
   });
 }
 
+export interface BatchSourceGovernanceInput extends TenantScope {
+  action: SourceGovernanceAction;
+  reason?: string;
+  sourceIds: string[];
+  userId?: string;
+}
+
+export interface BatchSourceGovernanceResult {
+  errors: Array<{ error: string; sourceId: string }>;
+  updated: number;
+}
+
+export async function batchUpdateSourceGovernanceStatus(
+  prisma: PrismaClient,
+  input: BatchSourceGovernanceInput,
+): Promise<BatchSourceGovernanceResult> {
+  const targetStatus = sourceActionToStatus(input.action);
+  const errors: Array<{ error: string; sourceId: string }> = [];
+  let updated = 0;
+
+  for (const sourceId of input.sourceIds) {
+    try {
+      const source = await prisma.source.findFirstOrThrow({
+        where: {
+          id: sourceId,
+          organizationId: input.organizationId,
+        },
+        select: {
+          id: true,
+          topicId: true,
+        },
+      });
+
+      await prisma.$transaction(async (transaction) => {
+        const updateData: Prisma.SourceUpdateInput = {
+          status: targetStatus,
+        };
+        if (targetStatus === "CANDIDATE" && input.action === "observe") {
+          updateData.observeExpiresAt = new Date(
+            Date.now() + 14 * 24 * 60 * 60 * 1000,
+          );
+        }
+
+        await transaction.source.update({
+          data: updateData,
+          where: { id: source.id },
+        });
+        await transaction.sourceObservation.create({
+          data: {
+            organizationId: input.organizationId,
+            topicId: source.topicId,
+            sourceId: source.id,
+            evidence: {
+              action: input.action,
+              batch: true,
+              reason: input.reason,
+              source: "batch-source-governance",
+            },
+          },
+        });
+
+        if (input.userId) {
+          await transaction.feedbackEvent.create({
+            data: {
+              organizationId: input.organizationId,
+              topicId: source.topicId,
+              userId: input.userId,
+              sourceId: source.id,
+              kind: input.action === "approve" ? "SOURCE_APPROVE" : "SOURCE_REJECT",
+              value: input.action === "approve" ? 2 : -1,
+              reason: input.reason,
+              metadata: {
+                action: input.action,
+                batch: true,
+                source: "batch-source-governance",
+              },
+            },
+          });
+        }
+      });
+
+      updated += 1;
+    } catch (error) {
+      errors.push({
+        error: error instanceof Error ? error.message : String(error),
+        sourceId,
+      });
+    }
+  }
+
+  return { errors, updated };
+}
+
+export interface ExpiredCandidateSourceRecord {
+  candidateUrl: string;
+  lastError: string | null;
+  name: string;
+  recommendationReason: string | null;
+  sourceId: string;
+  status: string;
+  topicId: string;
+  topicName: string;
+  url: string;
+  observeExpiresAt: Date | null;
+}
+
+export async function listExpiredCandidateSources(
+  prisma: PrismaClient,
+  scope: TenantScope,
+): Promise<ExpiredCandidateSourceRecord[]> {
+  const sources = await prisma.source.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      status: "CANDIDATE",
+      observeExpiresAt: {
+        lt: new Date(),
+      },
+    },
+    include: {
+      topic: {
+        select: { name: true },
+      },
+    },
+    orderBy: { observeExpiresAt: "asc" },
+  });
+
+  return sources.map((source) => ({
+    candidateUrl: source.canonicalUrl,
+    lastError: source.lastError,
+    name: source.name,
+    recommendationReason: source.recommendationReason,
+    sourceId: source.id,
+    status: source.status,
+    topicId: source.topicId,
+    topicName: source.topic.name,
+    url: source.url,
+    observeExpiresAt: source.observeExpiresAt,
+  }));
+}
+
+export async function setSourceObserveExpiry(
+  prisma: PrismaClient,
+  input: { days: number; organizationId: string; sourceId: string },
+): Promise<void> {
+  await prisma.source.update({
+    data: {
+      observeExpiresAt: new Date(Date.now() + input.days * 24 * 60 * 60 * 1000),
+      status: "CANDIDATE",
+    },
+    where: {
+      id: input.sourceId,
+      organizationId: input.organizationId,
+    },
+  });
+}
+
+export async function listCandidateRssSourcesForObservation(
+  prisma: PrismaClient,
+  scope: TenantScope,
+): Promise<FetchedSourceRecord[]> {
+  return prisma.source.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      kind: "RSS",
+      status: "CANDIDATE",
+      topic: {
+        status: "ACTIVE",
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      organizationId: true,
+      topicId: true,
+      name: true,
+      url: true,
+    },
+  });
+}
+
+export async function recordSourceFetchFailure(
+  prisma: PrismaClient,
+  sourceId: string,
+  errorMessage: string,
+): Promise<void> {
+  await prisma.source.update({
+    data: {
+      consecutiveFailures: { increment: 1 },
+      lastError: errorMessage.slice(0, 500),
+      lastErrorAt: new Date(),
+    },
+    where: { id: sourceId },
+  });
+}
+
+export async function recordSourceFetchSuccess(
+  prisma: PrismaClient,
+  sourceId: string,
+): Promise<void> {
+  await prisma.source.update({
+    data: {
+      consecutiveFailures: 0,
+      lastError: null,
+      lastErrorAt: null,
+      lastFetchedAt: new Date(),
+    },
+    where: { id: sourceId },
+  });
+}
+
+export async function autoMuteFailingSources(
+  prisma: PrismaClient,
+  scope: TenantScope,
+  threshold: number,
+): Promise<string[]> {
+  const failing = await prisma.source.findMany({
+    select: { id: true },
+    where: {
+      consecutiveFailures: { gte: threshold },
+      organizationId: scope.organizationId,
+      status: "ACTIVE",
+    },
+  });
+
+  if (failing.length === 0) return [];
+
+  const ids = failing.map((s) => s.id);
+  await prisma.source.updateMany({
+    data: { status: "MUTED" },
+    where: {
+      id: { in: ids },
+      organizationId: scope.organizationId,
+    },
+  });
+
+  return ids;
+}
+
 export async function recordSourceQualityObservation(
   prisma: PrismaClient,
   input: RecordSourceQualityObservationInput,
@@ -1209,36 +1447,6 @@ export async function failTaskRun(
       status: "FAILED",
       finishedAt: new Date(),
       errorMessage: error instanceof Error ? error.message : String(error),
-    },
-  });
-}
-
-export async function recordSourceFetchFailure(
-  prisma: PrismaClient,
-  sourceId: string,
-  errorMessage: string,
-) {
-  return prisma.source.update({
-    where: { id: sourceId },
-    data: {
-      lastError: errorMessage,
-      lastErrorAt: new Date(),
-      consecutiveFailures: { increment: 1 },
-    },
-  });
-}
-
-export async function recordSourceFetchSuccess(
-  prisma: PrismaClient,
-  sourceId: string,
-) {
-  return prisma.source.update({
-    where: { id: sourceId },
-    data: {
-      lastFetchedAt: new Date(),
-      lastError: null,
-      lastErrorAt: null,
-      consecutiveFailures: 0,
     },
   });
 }

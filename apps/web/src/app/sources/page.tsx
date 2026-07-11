@@ -1,5 +1,7 @@
 import {
+  AlertTriangle,
   Check,
+  CheckSquare,
   CircleAlert,
   Clock3,
   Plus,
@@ -9,6 +11,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import {
+  batchUpdateSourceGovernanceAction,
   createCandidateSourceAction,
   runSourceDiscoveryAction,
   updateSourceGovernanceAction,
@@ -121,55 +124,236 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                 title="无信源数据"
               />
             ) : (
+              <>
+                <div className="source-batch-toolbar">
+                  <form action={batchUpdateSourceGovernanceAction}>
+                    <CheckSquare
+                      aria-hidden="true"
+                      size={14}
+                      style={{ marginRight: 6 }}
+                    />
+                    <span className="source-batch-label">批量治理</span>
+                    <input
+                      name="sourceIds"
+                      placeholder="粘贴 sourceId，逗号分隔"
+                      required
+                      className="source-batch-input"
+                    />
+                    <input
+                      name="reason"
+                      type="hidden"
+                      value="batch-governance"
+                    />
+                    <button
+                      className="icon-action"
+                      name="action"
+                      title="批量批准"
+                      type="submit"
+                      value="approve"
+                    >
+                      <Check aria-hidden="true" size={13} />
+                      <span>批量批准</span>
+                    </button>
+                    <button
+                      className="icon-action"
+                      name="action"
+                      title="批量观察"
+                      type="submit"
+                      value="observe"
+                    >
+                      <Clock3 aria-hidden="true" size={13} />
+                      <span>批量观察</span>
+                    </button>
+                    <button
+                      className="icon-action"
+                      name="action"
+                      title="批量静音"
+                      type="submit"
+                      value="mute"
+                    >
+                      <ShieldCheck aria-hidden="true" size={13} />
+                      <span>批量静音</span>
+                    </button>
+                    <button
+                      className="icon-action"
+                      name="action"
+                      title="批量拒绝"
+                      type="submit"
+                      value="reject"
+                    >
+                      <X aria-hidden="true" size={13} />
+                      <span>批量拒绝</span>
+                    </button>
+                  </form>
+                </div>
+                <div className="source-quality-list">
+                  {workspace.sourceGovernance.map((source) => (
+                    <article className="source-quality-row" key={source.sourceId}>
+                      <div>
+                        <div className="source-quality-title">
+                          <h3>{source.name}</h3>
+                          <Badge variant={sourceTone(source.status)}>
+                            {formatSourceStatus(source.status)}
+                          </Badge>
+                        </div>
+                        <div className="source-quality-score">
+                          {Math.round(source.qualityScore)}
+                        </div>
+                        {source.recommendationReason ? (
+                          <p className="source-recommendation">
+                            {source.recommendationReason}
+                          </p>
+                        ) : null}
+                        <div className="source-quality-metrics">
+                          <span>命中 {formatPercent(source.hitRate)}</span>
+                          <span>噪声 {formatPercent(source.noiseRate)}</span>
+                          <span>重复 {formatPercent(source.duplicateRate)}</span>
+                          <span>事件 {source.eventCount}</span>
+                          {source.discoveryChannel ? (
+                            <span>{formatDiscoveryChannel(source.discoveryChannel)}</span>
+                          ) : null}
+                        </div>
+                        {source.consecutiveFailures > 0 ? (
+                          <p className="source-error-hint">
+                            连续失败 {source.consecutiveFailures} 次 ·{" "}
+                            {source.lastErrorAt
+                              ? formatDateTime(source.lastErrorAt)
+                              : "时间未知"}
+                            {source.lastError ? `: ${source.lastError}` : ""}
+                          </p>
+                        ) : null}
+                        <p>
+                          {source.topicName} · 建议 {formatRecommendation(source.recommendation)} · 最近{" "}
+                          {source.lastFetchedAt
+                            ? formatDateTime(source.lastFetchedAt)
+                            : "未抓取"}
+                        </p>
+                      </div>
+                      <div className="source-governance-actions">
+                        <form action={updateSourceGovernanceAction}>
+                          <input name="sourceId" type="hidden" value={source.sourceId} />
+                          <input name="reason" type="hidden" value="governance:approve" />
+                          <button
+                            aria-label="批准"
+                            className="icon-action"
+                            name="action"
+                            title="批准"
+                            type="submit"
+                            value="approve"
+                          >
+                            <Check aria-hidden="true" size={13} />
+                            <span>批准</span>
+                          </button>
+                        </form>
+                        <form action={updateSourceGovernanceAction}>
+                          <input name="sourceId" type="hidden" value={source.sourceId} />
+                          <input name="reason" type="hidden" value="governance:observe" />
+                          <button
+                            aria-label="观察"
+                            className="icon-action"
+                            name="action"
+                            title="观察"
+                            type="submit"
+                            value="observe"
+                          >
+                            <Clock3 aria-hidden="true" size={13} />
+                            <span>观察</span>
+                          </button>
+                        </form>
+                        <form action={updateSourceGovernanceAction}>
+                          <input name="sourceId" type="hidden" value={source.sourceId} />
+                          <input name="reason" type="hidden" value="governance:mute" />
+                          <button
+                            aria-label="静音"
+                            className="icon-action"
+                            name="action"
+                            title="静音"
+                            type="submit"
+                            value="mute"
+                          >
+                            <ShieldCheck aria-hidden="true" size={13} />
+                            <span>静音</span>
+                          </button>
+                        </form>
+                        <form action={updateSourceGovernanceAction}>
+                          <input name="sourceId" type="hidden" value={source.sourceId} />
+                          <input name="reason" type="hidden" value="governance:reject" />
+                          <button
+                            aria-label="拒绝"
+                            className="icon-action"
+                            name="action"
+                            title="拒绝"
+                            type="submit"
+                            value="reject"
+                          >
+                            <X aria-hidden="true" size={13} />
+                            <span>拒绝</span>
+                          </button>
+                        </form>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {workspace.expiredCandidates.length > 0 ? (
+          <Card variant="work">
+            <CardHeader>
+              <CardTitle>
+                <AlertTriangle
+                  aria-hidden="true"
+                  size={16}
+                  style={{ marginRight: 6, verticalAlign: "middle" }}
+                />
+                过期候选源复审（{workspace.expiredCandidates.length}）
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
               <div className="source-quality-list">
-                {workspace.sourceGovernance.map((source) => (
-                  <article className="source-quality-row" key={source.sourceId}>
+                {workspace.expiredCandidates.map((candidate) => (
+                  <article
+                    className="source-quality-row"
+                    key={candidate.sourceId}
+                  >
                     <div>
                       <div className="source-quality-title">
-                        <h3>{source.name}</h3>
-                        <Badge variant={sourceTone(source.status)}>
-                          {formatSourceStatus(source.status)}
-                        </Badge>
+                        <h3>{candidate.name}</h3>
+                        <Badge variant="warning">待复审</Badge>
                       </div>
-                      <div className="source-quality-score">
-                        {Math.round(source.qualityScore)}
-                      </div>
-                      {source.recommendationReason ? (
-                        <p className="source-recommendation">
-                          {source.recommendationReason}
-                        </p>
-                      ) : null}
-                      <div className="source-quality-metrics">
-                        <span>命中 {formatPercent(source.hitRate)}</span>
-                        <span>噪声 {formatPercent(source.noiseRate)}</span>
-                        <span>重复 {formatPercent(source.duplicateRate)}</span>
-                        <span>事件 {source.eventCount}</span>
-                        {source.discoveryChannel ? (
-                          <span>{formatDiscoveryChannel(source.discoveryChannel)}</span>
-                        ) : null}
-                      </div>
-                      {source.consecutiveFailures > 0 ? (
-                        <p className="source-error-hint">
-                          连续失败 {source.consecutiveFailures} 次 ·{" "}
-                          {source.lastErrorAt
-                            ? formatDateTime(source.lastErrorAt)
-                            : "时间未知"}
-                          {source.lastError ? `: ${source.lastError}` : ""}
-                        </p>
-                      ) : null}
+                      <p>主题: {candidate.topicName}</p>
                       <p>
-                        {source.topicName} · 建议 {formatRecommendation(source.recommendation)} · 最近{" "}
-                        {source.lastFetchedAt
-                          ? formatDateTime(source.lastFetchedAt)
-                          : "未抓取"}
+                        过期时间:{" "}
+                        {candidate.observeExpiresAt
+                          ? formatDateTime(candidate.observeExpiresAt)
+                          : "未知"}
                       </p>
+                      {candidate.recommendationReason ? (
+                        <p className="source-recommendation">
+                          {candidate.recommendationReason}
+                        </p>
+                      ) : null}
+                      {candidate.lastError ? (
+                        <p className="source-error-hint">
+                          错误: {candidate.lastError}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="source-governance-actions">
                       <form action={updateSourceGovernanceAction}>
-                        <input name="sourceId" type="hidden" value={source.sourceId} />
-                        <input name="reason" type="hidden" value="governance:approve" />
+                        <input
+                          name="sourceId"
+                          type="hidden"
+                          value={candidate.sourceId}
+                        />
+                        <input
+                          name="reason"
+                          type="hidden"
+                          value="expiry-review:approve"
+                        />
                         <button
-                          aria-label="批准"
                           className="icon-action"
                           name="action"
                           title="批准"
@@ -181,40 +365,17 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                         </button>
                       </form>
                       <form action={updateSourceGovernanceAction}>
-                        <input name="sourceId" type="hidden" value={source.sourceId} />
-                        <input name="reason" type="hidden" value="governance:observe" />
+                        <input
+                          name="sourceId"
+                          type="hidden"
+                          value={candidate.sourceId}
+                        />
+                        <input
+                          name="reason"
+                          type="hidden"
+                          value="expiry-review:reject"
+                        />
                         <button
-                          aria-label="观察"
-                          className="icon-action"
-                          name="action"
-                          title="观察"
-                          type="submit"
-                          value="observe"
-                        >
-                          <Clock3 aria-hidden="true" size={13} />
-                          <span>观察</span>
-                        </button>
-                      </form>
-                      <form action={updateSourceGovernanceAction}>
-                        <input name="sourceId" type="hidden" value={source.sourceId} />
-                        <input name="reason" type="hidden" value="governance:mute" />
-                        <button
-                          aria-label="静音"
-                          className="icon-action"
-                          name="action"
-                          title="静音"
-                          type="submit"
-                          value="mute"
-                        >
-                          <ShieldCheck aria-hidden="true" size={13} />
-                          <span>静音</span>
-                        </button>
-                      </form>
-                      <form action={updateSourceGovernanceAction}>
-                        <input name="sourceId" type="hidden" value={source.sourceId} />
-                        <input name="reason" type="hidden" value="governance:reject" />
-                        <button
-                          aria-label="拒绝"
                           className="icon-action"
                           name="action"
                           title="拒绝"
@@ -229,9 +390,9 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                   </article>
                 ))}
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ) : null}
       </div>
     </>
   );

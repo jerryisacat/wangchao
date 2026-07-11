@@ -8,6 +8,8 @@ export interface SearchProvider {
   searchSources(query: string, options?: SearchSourcesOptions): Promise<SearchResult[]>;
 }
 
+export type SearchProviderType = "brave" | "tavily" | "serper" | "searxng";
+
 export interface SearchSourcesOptions {
   count?: number;
   fetchImpl?: typeof fetch;
@@ -16,6 +18,23 @@ export interface SearchSourcesOptions {
 export interface BraveSearchProviderOptions {
   apiKey: string;
   baseUrl?: string;
+  fetchImpl?: typeof fetch;
+}
+
+export interface TavilySearchProviderOptions {
+  apiKey: string;
+  baseUrl?: string;
+  fetchImpl?: typeof fetch;
+}
+
+export interface SerperSearchProviderOptions {
+  apiKey: string;
+  baseUrl?: string;
+  fetchImpl?: typeof fetch;
+}
+
+export interface SearXngSearchProviderOptions {
+  baseUrl: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -88,6 +107,184 @@ export class BraveSearchProvider implements SearchProvider {
         url: result.url ?? "",
       }))
       .filter((result) => isHttpUrl(result.url));
+  }
+}
+
+const DEFAULT_TAVILY_SEARCH_URL = "https://api.tavily.com/search";
+
+interface TavilySearchResponse {
+  results?: Array<{
+    content?: string;
+    title?: string;
+    url?: string;
+  }>;
+}
+
+export class TavilySearchProvider implements SearchProvider {
+  private readonly apiKey: string;
+  private readonly baseUrl: string;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(options: TavilySearchProviderOptions) {
+    this.apiKey = options.apiKey;
+    this.baseUrl = options.baseUrl ?? DEFAULT_TAVILY_SEARCH_URL;
+    this.fetchImpl = options.fetchImpl ?? fetch;
+  }
+
+  async searchSources(
+    query: string,
+    options: SearchSourcesOptions = {},
+  ): Promise<SearchResult[]> {
+    const response = await this.fetchImpl(this.baseUrl, {
+      body: JSON.stringify({
+        api_key: this.apiKey,
+        max_results: options.count ?? 5,
+        query,
+      }),
+      headers: {
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      throw new Error(`Tavily search failed with HTTP ${response.status}`);
+    }
+
+    const payload = (await response.json()) as TavilySearchResponse;
+    return (payload.results ?? [])
+      .map((result) => ({
+        snippet: result.content,
+        title: result.title ?? result.url ?? "Untitled result",
+        url: result.url ?? "",
+      }))
+      .filter((result) => isHttpUrl(result.url));
+  }
+}
+
+const DEFAULT_SERPER_SEARCH_URL = "https://google.serper.dev/search";
+
+interface SerperSearchResponse {
+  organic?: Array<{
+    link?: string;
+    snippet?: string;
+    title?: string;
+  }>;
+}
+
+export class SerperSearchProvider implements SearchProvider {
+  private readonly apiKey: string;
+  private readonly baseUrl: string;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(options: SerperSearchProviderOptions) {
+    this.apiKey = options.apiKey;
+    this.baseUrl = options.baseUrl ?? DEFAULT_SERPER_SEARCH_URL;
+    this.fetchImpl = options.fetchImpl ?? fetch;
+  }
+
+  async searchSources(
+    query: string,
+    options: SearchSourcesOptions = {},
+  ): Promise<SearchResult[]> {
+    const url = new URL(this.baseUrl);
+    url.searchParams.set("num", String(options.count ?? 5));
+
+    const response = await this.fetchImpl(url, {
+      body: JSON.stringify({ q: query }),
+      headers: {
+        "X-API-KEY": this.apiKey,
+        "content-type": "application/json",
+      },
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      throw new Error(`Serper search failed with HTTP ${response.status}`);
+    }
+
+    const payload = (await response.json()) as SerperSearchResponse;
+    return (payload.organic ?? [])
+      .map((result) => ({
+        snippet: result.snippet,
+        title: result.title ?? result.link ?? "Untitled result",
+        url: result.link ?? "",
+      }))
+      .filter((result) => isHttpUrl(result.url));
+  }
+}
+
+interface SearXngSearchResponse {
+  results?: Array<{
+    content?: string;
+    title?: string;
+    url?: string;
+  }>;
+}
+
+export class SearXngSearchProvider implements SearchProvider {
+  private readonly baseUrl: string;
+  private readonly fetchImpl: typeof fetch;
+
+  constructor(options: SearXngSearchProviderOptions) {
+    this.baseUrl = options.baseUrl;
+    this.fetchImpl = options.fetchImpl ?? fetch;
+  }
+
+  async searchSources(
+    query: string,
+    options: SearchSourcesOptions = {},
+  ): Promise<SearchResult[]> {
+    const url = new URL(`${this.baseUrl.replace(/\/+$/, "")}/search`);
+    url.searchParams.set("q", query);
+    url.searchParams.set("format", "json");
+    url.searchParams.set("pageno", "1");
+
+    const response = await this.fetchImpl(url, {
+      headers: {
+        accept: "application/json",
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`SearXNG search failed with HTTP ${response.status}`);
+    }
+
+    const payload = (await response.json()) as SearXngSearchResponse;
+    return (payload.results ?? [])
+      .map((result) => ({
+        snippet: result.content,
+        title: result.title ?? result.url ?? "Untitled result",
+        url: result.url ?? "",
+      }))
+      .filter((result) => isHttpUrl(result.url))
+      .slice(0, options.count ?? 5);
+  }
+}
+
+export function createSearchProvider(
+  type: SearchProviderType,
+  config: { apiKey?: string; baseUrl?: string },
+): SearchProvider | null {
+  switch (type) {
+    case "brave":
+      return config.apiKey
+        ? new BraveSearchProvider({ apiKey: config.apiKey, baseUrl: config.baseUrl })
+        : null;
+    case "tavily":
+      return config.apiKey
+        ? new TavilySearchProvider({ apiKey: config.apiKey, baseUrl: config.baseUrl })
+        : null;
+    case "serper":
+      return config.apiKey
+        ? new SerperSearchProvider({ apiKey: config.apiKey, baseUrl: config.baseUrl })
+        : null;
+    case "searxng":
+      return config.baseUrl
+        ? new SearXngSearchProvider({ baseUrl: config.baseUrl })
+        : null;
+    default:
+      return null;
   }
 }
 

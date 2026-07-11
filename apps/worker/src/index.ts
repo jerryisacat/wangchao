@@ -29,6 +29,7 @@ import {
   type RelevanceDecision,
 } from "@wangchao/core";
 import {
+  autoMuteFailingSources,
   completeTaskRun,
   createCandidateRssSource,
   createDailyBriefing,
@@ -47,7 +48,9 @@ import {
   getPrismaClient,
   listActiveRssSourcesForFetch,
   listActiveTopics,
+  listCandidateRssSourcesForObservation,
   listEventsForDailyBriefing,
+  listExpiredCandidateSources,
   listFetchedItemsForAnalysis,
   findBriefingsForTelegramDelivery,
   findPendingDeliveryForBriefing,
@@ -77,8 +80,8 @@ import {
   type SourceDiscoveryTopicRecord,
 } from "@wangchao/db";
 import {
-  BraveSearchProvider,
   buildTopicSearchQueries,
+  createSearchProvider as createSearchProviderFromSources,
   discoverFeedCandidatesFromPage,
   discoverFeedCandidatesFromSearchResult,
   extractExternalLinksFromPage,
@@ -89,6 +92,7 @@ import {
   isFetchRssRetryable,
   type FeedCandidate,
   type SearchProvider,
+  type SearchProviderType,
 } from "@wangchao/sources";
 
 const MAX_FETCH_ATTEMPTS = 3;
@@ -298,6 +302,27 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     result.insertedOrUpdatedItems += sourceResult.insertedOrUpdatedItems;
   }
 
+  const autoMuteThreshold = readPositiveIntegerEnv("WANGCHAO_AUTO_MUTE_THRESHOLD", 10);
+  const mutedSourceIds = await autoMuteFailingSources(prisma, {
+    organizationId: workspace.organizationId,
+  }, autoMuteThreshold);
+  if (mutedSourceIds.length > 0) {
+    await recordUsageEvent(prisma, {
+      metadata: {
+        autoMutedCount: mutedSourceIds.length,
+        mutedSourceIds,
+        source: "worker-auto-mute",
+        threshold: autoMuteThreshold,
+      },
+      organizationId: workspace.organizationId,
+      quantity: mutedSourceIds.length,
+      subjectType: "source-auto-mute",
+      type: "SOURCE_GOVERNANCE",
+      unit: "source",
+      userId: workspace.userId,
+    });
+  }
+
   if (result.fetchedSources > 0 || result.insertedOrUpdatedItems > 0) {
     await recordUsageEvent(prisma, {
       metadata: {
@@ -312,6 +337,8 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
       userId: workspace.userId,
     });
   }
+
+  await runCandidateObservationCycle(prisma, workspace.organizationId);
 
   await runArticleFetchCycle(prisma, workspace.organizationId);
 
@@ -412,6 +439,27 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
       subjectType: "source-observation-cycle",
       type: "SOURCE_GOVERNANCE",
       unit: "observation",
+      userId: workspace.userId,
+    });
+  }
+
+  const expiryResult = await runExpiredCandidateReviewCycle(
+    prisma,
+    workspace.organizationId,
+  );
+  if (expiryResult.reviewed > 0) {
+    await recordUsageEvent(prisma, {
+      metadata: {
+        autoApproved: expiryResult.autoApproved,
+        autoRejected: expiryResult.autoRejected,
+        reviewed: expiryResult.reviewed,
+        source: "worker-expired-candidate-review",
+      },
+      organizationId: workspace.organizationId,
+      quantity: expiryResult.reviewed,
+      subjectType: "candidate-review",
+      type: "SOURCE_GOVERNANCE",
+      unit: "review",
       userId: workspace.userId,
     });
   }
@@ -1178,6 +1226,90 @@ async function runSourceGovernanceObservationCycle(
   return report.length;
 }
 
+async function runCandidateObservationCycle(
+  prisma: ReturnType<typeof getPrismaClient>,
+  organizationId: string,
+): Promise<{ observedCandidates: number; failedCandidates: number; insertedItems: number }> {
+  const result = { observedCandidates: 0, failedCandidates: 0, insertedItems: 0 };
+
+  if (process.env.WANGCHAO_CANDIDATE_OBSERVATION_ENABLED !== "true") {
+    return result;
+  }
+
+  const candidates = await listCandidateRssSourcesForObservation(prisma, { organizationId });
+  if (candidates.length === 0) return result;
+
+  const limit = pLimit(Math.min(getFetchConcurrency(), 3));
+
+  const candidateResults = await Promise.all(
+    candidates.map((source) => limit(async () => {
+      try {
+        const items = await fetchRssFeed(source.url);
+        const writtenItems = await upsertFetchedItems(prisma, items.map((item) => ({
+          organizationId: source.organizationId,
+          topicId: source.topicId,
+          sourceId: source.id,
+          title: item.title,
+          url: item.url,
+          canonicalUrl: item.canonicalUrl,
+          summary: item.summary,
+          author: item.author,
+          publishedAt: item.publishedAt,
+          contentHash: item.contentHash,
+          rawMetadata: { ...item.rawMetadata, candidateObservation: true },
+        })));
+        await recordSourceFetchSuccess(prisma, source.id);
+        result.observedCandidates += 1;
+        result.insertedItems += writtenItems.length;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        await recordSourceFetchFailure(prisma, source.id, errorMessage);
+        result.failedCandidates += 1;
+      }
+    })),
+  );
+  void candidateResults;
+
+  return result;
+}
+
+async function runExpiredCandidateReviewCycle(
+  prisma: ReturnType<typeof getPrismaClient>,
+  organizationId: string,
+): Promise<{ reviewed: number; autoApproved: number; autoRejected: number }> {
+  const result = { reviewed: 0, autoApproved: 0, autoRejected: 0 };
+
+  const expired = await listExpiredCandidateSources(prisma, { organizationId });
+  if (expired.length === 0) return result;
+
+  for (const candidate of expired) {
+    result.reviewed += 1;
+
+    const itemCount = await prisma.item.count({
+      where: {
+        sourceId: candidate.sourceId,
+        intelligenceEvents: { some: {} },
+      },
+    });
+
+    if (itemCount > 0) {
+      await prisma.source.update({
+        data: { status: "ACTIVE", observeExpiresAt: null },
+        where: { id: candidate.sourceId },
+      });
+      result.autoApproved += 1;
+    } else {
+      await prisma.source.update({
+        data: { status: "REJECTED", observeExpiresAt: null },
+        where: { id: candidate.sourceId },
+      });
+      result.autoRejected += 1;
+    }
+  }
+
+  return result;
+}
+
 async function fetchSourceWithRetries(
   prisma: ReturnType<typeof getPrismaClient>,
   source: FetchedSourceRecord,
@@ -1495,25 +1627,30 @@ async function createSearchProvider(
   prisma: ReturnType<typeof getPrismaClient>,
   organizationId: string,
 ): Promise<SearchProvider | null> {
-  // 1. Try DB-stored credential
   const creds = await getDecryptedCredentials(prisma, { organizationId });
   if (creds?.search?.apiKey) {
     const provider = creds.search.provider ?? "brave";
-    if (provider === "brave") {
-      return new BraveSearchProvider({ apiKey: creds.search.apiKey });
+    const providerType = provider as SearchProviderType;
+    if (providerType === "searxng") {
+      return createSearchProviderFromSources("searxng", { baseUrl: creds.search.apiKey });
     }
+    return createSearchProviderFromSources(providerType, { apiKey: creds.search.apiKey });
   }
 
-  // 2. Fallback to env var
-  const envProvider = process.env.WANGCHAO_SEARCH_PROVIDER ?? "brave";
-  if (envProvider !== "brave") {
-    return null;
+  const envProvider = (process.env.WANGCHAO_SEARCH_PROVIDER ?? "brave") as SearchProviderType;
+
+  if (envProvider === "searxng") {
+    const baseUrl = process.env.SEARXNG_BASE_URL;
+    return baseUrl ? createSearchProviderFromSources("searxng", { baseUrl }) : null;
   }
-  const apiKey = process.env.BRAVE_SEARCH_API_KEY;
-  if (!apiKey) {
-    return null;
-  }
-  return new BraveSearchProvider({ apiKey });
+
+  const apiKey =
+    envProvider === "tavily" ? process.env.TAVILY_API_KEY :
+    envProvider === "serper" ? process.env.SERPER_API_KEY :
+    process.env.BRAVE_SEARCH_API_KEY;
+
+  if (!apiKey) return null;
+  return createSearchProviderFromSources(envProvider, { apiKey });
 }
 
 async function createSourceRecommendationRuntime(

@@ -290,6 +290,7 @@ model Source {
   lastError            String?
   lastErrorAt          DateTime?
   consecutiveFailures  Int                 @default(0)
+  observeExpiresAt     DateTime?
   organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   topic                Topic               @relation(fields: [topicId], references: [id], onDelete: Cascade)
   items                Item[]

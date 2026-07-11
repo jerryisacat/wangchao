@@ -4,6 +4,17 @@
 
 ## 2026-07-11
 
+## Phase 11: 信源治理（#10, #11）
+
+- Phase: 11 — 信源发现与治理增强
+- Scope: 多 provider 搜索、专用适配器、批量治理、候选源观察到期、Worker auto-mute
+- Alignment: 符合 REFACTOR_PLAN.md Phase 11 信源治理目标和 SPEC.md 信源治理要求
+- Missing: Playwright 手动 discovery 点击流（后续补充）；Tavily/Serper 真实 API key 测试
+- Bugs: 无
+- Fixes: 无
+- Verification: pnpm typecheck, pnpm lint, pnpm test, pnpm build 全部通过
+- Follow-up: SearXNG 自建实例部署文档；信源质量报告与治理 UI 更深度联动
+
 ### Wave 3：Railway 运维闭环（#19 + #20 + #21 + #22 + #23 + #24 + #15 + #3）
 
 - Phase: Phase 13 (GitHub → Railway 部署运维)

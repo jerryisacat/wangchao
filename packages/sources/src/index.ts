@@ -4,8 +4,19 @@ import { parseHTML } from "linkedom";
 export type SourceKind = "rss" | "web";
 
 export {
+  fetchArxivPapers,
+  fetchGitHubReleases,
+  type ArxivFetchOptions,
+  type GitHubReleasesFetchOptions,
+} from "./adapters.js";
+
+export {
   BraveSearchProvider,
+  SearXngSearchProvider,
+  SerperSearchProvider,
+  TavilySearchProvider,
   buildTopicSearchQueries,
+  createSearchProvider,
   discoverFeedCandidatesFromPage,
   discoverFeedCandidatesFromSearchResult,
   extractExternalLinks,
@@ -14,8 +25,12 @@ export {
   type FeedCandidate,
   type FeedProbeOptions,
   type SearchProvider,
+  type SearchProviderType,
   type SearchResult,
   type SearchSourcesOptions,
+  type SearXngSearchProviderOptions,
+  type SerperSearchProviderOptions,
+  type TavilySearchProviderOptions,
 } from "./discovery.js";
 
 export interface SourceAdapterDescriptor {

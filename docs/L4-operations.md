@@ -139,7 +139,10 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 ### Source Discovery
 
 - `BRAVE_SEARCH_API_KEY` 是 Brave Search API BYOK；当前作为 Admin 后台 `/admin/settings` 未配置时的 fallback。为空时 source discovery 跳过 `keyword-search` 渠道。
-- `WANGCHAO_SEARCH_PROVIDER` 当前支持 `brave`，默认 `brave`，后续可接 Tavily/Serper/SearXNG。
+- `WANGCHAO_SEARCH_PROVIDER` 搜索 provider 类型，默认 `brave`，支持 `brave`/`tavily`/`serper`/`searxng`。
+- `TAVILY_API_KEY` Tavily 搜索 API Key（当 `WANGCHAO_SEARCH_PROVIDER=tavily` 时需要）。当前作为 Admin 后台 `/admin/settings` 未配置时的 fallback。
+- `SERPER_API_KEY` Serper 搜索 API Key（当 `WANGCHAO_SEARCH_PROVIDER=serper` 时需要）。当前作为 Admin 后台 `/admin/settings` 未配置时的 fallback。
+- `SEARXNG_BASE_URL` SearXNG 自建实例 base URL（当 `WANGCHAO_SEARCH_PROVIDER=searxng` 时需要），默认 `http://localhost:8080`，不需要 API Key。
 - `WANGCHAO_DISCOVERY_HIGHSCORE_THRESHOLD` 控制高分事件反查阈值，默认 `0.7`。
 - `WANGCHAO_DISCOVERY_LOOKBACK_DAYS` 控制高分事件反查时间窗，默认 `14`。
 - `WANGCHAO_DISCOVERY_WEEKLY_LIMIT` 控制每轮每个 topic 最多写入候选源数量，默认 `5`。
@@ -175,6 +178,11 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 - `WANGCHAO_FETCH_CONCURRENCY` 控制每轮 worker 并发抓取 RSS source 数量，默认 `5`。
 - `WANGCHAO_FETCH_BACKOFF_BASE_MS` 控制重试指数退避的基准延迟毫秒数，默认 `1000`。实际延迟为 `BASE * 2^(attempt-1) * jitter(0.5-1.0)`。
+
+### 信源治理
+
+- `WANGCHAO_AUTO_MUTE_THRESHOLD` 控制连续失败自动静音阈值，默认 `10`。ACTIVE source 连续抓取失败次数超过该阈值时自动转为 `MUTED`。
+- `WANGCHAO_CANDIDATE_OBSERVATION_ENABLED` 控制候选源低频观察 fetch 是否启用，默认 `false`。启用后 worker 会按低频周期探测候选源，用于在治理审核前收集质量信号。
 
 ### Seed Sources
 

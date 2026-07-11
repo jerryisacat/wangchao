@@ -138,8 +138,22 @@ export interface WorkspaceAudit {
   usageSummary: UsageSummary[];
 }
 
+export interface ExpiredCandidateSummary {
+  candidateUrl: string;
+  lastError: string | null;
+  name: string;
+  recommendationReason: string | null;
+  sourceId: string;
+  status: string;
+  topicId: string;
+  topicName: string;
+  url: string;
+  observeExpiresAt: string | null;
+}
+
 export interface TopicSourceWorkspace {
   events: DashboardEventSummary[];
+  expiredCandidates: ExpiredCandidateSummary[];
   mode: DataMode;
   message: string;
   preferences: PreferenceMemorySummary[];
@@ -151,6 +165,7 @@ export interface TopicSourceWorkspace {
 function emptyWorkspace(errorMessage: string): TopicSourceWorkspace {
   return {
     events: [],
+    expiredCandidates: [],
     mode: "error",
     message: errorMessage,
     preferences: [],
@@ -180,28 +195,33 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
       ensureDefaultWorkspace,
       getPrismaClient,
       listDashboardEvents,
+      listExpiredCandidateSources,
       listPreferenceMemoryForDashboard,
       listTopicSourceOverview,
       listSourceGovernanceReport,
     } = await import("@wangchao/db");
     const prisma = getPrismaClient();
     const workspace = await ensureDefaultWorkspace(prisma);
-    const [topics, events, preferences, sourceGovernance] = await Promise.all([
-      listTopicSourceOverview(prisma, {
-        organizationId: workspace.organizationId,
-      }),
-      listDashboardEvents(prisma, {
-        organizationId: workspace.organizationId,
-        userId: workspace.userId,
-      }),
-      listPreferenceMemoryForDashboard(prisma, {
-        organizationId: workspace.organizationId,
-        userId: workspace.userId,
-      }),
-      listSourceGovernanceReport(prisma, {
-        organizationId: workspace.organizationId,
-      }),
-    ]);
+    const [topics, events, preferences, sourceGovernance, expiredCandidates] =
+      await Promise.all([
+        listTopicSourceOverview(prisma, {
+          organizationId: workspace.organizationId,
+        }),
+        listDashboardEvents(prisma, {
+          organizationId: workspace.organizationId,
+          userId: workspace.userId,
+        }),
+        listPreferenceMemoryForDashboard(prisma, {
+          organizationId: workspace.organizationId,
+          userId: workspace.userId,
+        }),
+        listSourceGovernanceReport(prisma, {
+          organizationId: workspace.organizationId,
+        }),
+        listExpiredCandidateSources(prisma, {
+          organizationId: workspace.organizationId,
+        }),
+      ]);
     const preferenceWeights = preferences.map((preference) => ({
       key: preference.key,
       weight: preference.weight,
@@ -230,6 +250,18 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
       events: weightedEvents.map(({ event, preferenceScore }) =>
         toDashboardEventSummary(event, preferenceScore),
       ),
+      expiredCandidates: expiredCandidates.map((candidate) => ({
+        candidateUrl: candidate.candidateUrl,
+        lastError: candidate.lastError,
+        name: candidate.name,
+        recommendationReason: candidate.recommendationReason,
+        sourceId: candidate.sourceId,
+        status: candidate.status,
+        topicId: candidate.topicId,
+        topicName: candidate.topicName,
+        url: candidate.url,
+        observeExpiresAt: candidate.observeExpiresAt?.toISOString() ?? null,
+      })),
       mode: "database",
       message: "工作区已连接，情报排序会结合重要度和你的反馈偏好。",
       preferences: preferences.map((preference) => ({

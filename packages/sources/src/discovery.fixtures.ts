@@ -1,18 +1,26 @@
 import {
   BraveSearchProvider,
   buildTopicSearchQueries,
+  createSearchProvider,
   discoverFeedCandidatesFromPage,
   extractExternalLinks,
   extractTopicKeywords,
+  SearXngSearchProvider,
+  SerperSearchProvider,
+  TavilySearchProvider,
 } from "./discovery.js";
 import { validateRssFeedUrl } from "./index.js";
 
 export async function runSourceDiscoveryFixtures(): Promise<void> {
   await assertBraveSearchProvider();
+  await assertTavilySearchProvider();
+  await assertSerperSearchProvider();
+  await assertSearXngSearchProvider();
   await assertFeedProbe();
   await assertFeedValidation();
   assertExternalLinkExtraction();
   assertTopicQueries();
+  assertSearchProviderFactory();
 }
 
 async function assertBraveSearchProvider(): Promise<void> {
@@ -42,6 +50,79 @@ async function assertBraveSearchProvider(): Promise<void> {
 
   assert(results.length === 1, "Brave provider should drop non-HTTP URLs.");
   assert(results[0]?.url === "https://example.com/feed.xml", "Brave URL should match.");
+}
+
+async function assertTavilySearchProvider(): Promise<void> {
+  const provider = new TavilySearchProvider({
+    apiKey: "fixture-key",
+    fetchImpl: async (_input, init) => {
+      const body = JSON.parse(init?.body as string);
+      assert(body.query === "ai policy", "Tavily should send query in POST body.");
+      assert(body.api_key === "fixture-key", "Tavily should include API key in body.");
+      return jsonResponse({
+        results: [
+          {
+            content: "AI policy content",
+            title: "Policy Result",
+            url: "https://example.com/policy",
+          },
+        ],
+      });
+    },
+  });
+  const results = await provider.searchSources("ai policy");
+  assert(results.length === 1, "Tavily should return one result.");
+  assert(results[0]?.url === "https://example.com/policy", "Tavily URL should match.");
+  assert(results[0]?.snippet === "AI policy content", "Tavily snippet should match.");
+}
+
+async function assertSerperSearchProvider(): Promise<void> {
+  const provider = new SerperSearchProvider({
+    apiKey: "fixture-key",
+    fetchImpl: async (_input, init) => {
+      const body = JSON.parse(init?.body as string);
+      assert(body.q === "tech news", "Serper should send query in body.");
+      assert(
+        (init?.headers as Record<string, string>)["X-API-KEY"] === "fixture-key",
+        "Serper should send API key in header.",
+      );
+      return jsonResponse({
+        organic: [
+          {
+            link: "https://example.com/tech",
+            snippet: "Tech snippet",
+            title: "Tech News",
+          },
+        ],
+      });
+    },
+  });
+  const results = await provider.searchSources("tech news");
+  assert(results.length === 1, "Serper should return one result.");
+  assert(results[0]?.url === "https://example.com/tech", "Serper URL should match.");
+}
+
+async function assertSearXngSearchProvider(): Promise<void> {
+  const provider = new SearXngSearchProvider({
+    baseUrl: "https://search.example.com",
+    fetchImpl: async (input) => {
+      const url = String(input);
+      assert(url.includes("format=json"), "SearXNG should request JSON format.");
+      assert(url.includes("q=open+source"), "SearXNG should encode query.");
+      return jsonResponse({
+        results: [
+          {
+            content: "Open source content",
+            title: "OS Result",
+            url: "https://example.com/os",
+          },
+        ],
+      });
+    },
+  });
+  const results = await provider.searchSources("open source", { count: 3 });
+  assert(results.length === 1, "SearXNG should return one result.");
+  assert(results[0]?.url === "https://example.com/os", "SearXNG URL should match.");
 }
 
 async function assertFeedProbe(): Promise<void> {
@@ -133,6 +214,26 @@ function assertTopicQueries(): void {
   assert(keywords.join(",") === "AI,policy", "Topic profile keywords should be sanitized.");
   assert(queries.includes("AI Regulation RSS"), "Topic name RSS query should exist.");
   assert(queries.includes("policy announcements"), "Keyword announcement query should exist.");
+}
+
+function assertSearchProviderFactory(): void {
+  const brave = createSearchProvider("brave", { apiKey: "key" });
+  assert(brave instanceof BraveSearchProvider, "Factory should create BraveSearchProvider.");
+
+  const tavily = createSearchProvider("tavily", { apiKey: "key" });
+  assert(tavily instanceof TavilySearchProvider, "Factory should create TavilySearchProvider.");
+
+  const serper = createSearchProvider("serper", { apiKey: "key" });
+  assert(serper instanceof SerperSearchProvider, "Factory should create SerperSearchProvider.");
+
+  const searxng = createSearchProvider("searxng", { baseUrl: "http://localhost:8080" });
+  assert(searxng instanceof SearXngSearchProvider, "Factory should create SearXngSearchProvider.");
+
+  const noKey = createSearchProvider("brave", {});
+  assert(noKey === null, "Factory should return null when no API key.");
+
+  const searxngNoUrl = createSearchProvider("searxng", {});
+  assert(searxngNoUrl === null, "Factory should return null when no base URL for searxng.");
 }
 
 function jsonResponse(payload: unknown): Response {

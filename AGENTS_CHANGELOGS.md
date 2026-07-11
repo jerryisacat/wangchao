@@ -1,5 +1,35 @@
 ## 2026-07-11
 
+### Batch 6: 信源发现与治理增强（#10, #11）
+
+- Cause: 完成信源发现多 provider 支持、专用适配器、批量治理、候选源观察到期和 Worker 增强并发/退避
+- Changed:
+  - 新增 Tavily、Serper、SearXNG 搜索 provider 和 `createSearchProvider` 工厂
+  - 新增 arXiv、GitHub releases 专用适配器（`packages/sources/src/adapters.ts`）
+  - 新增批量信源治理（batchUpdateSourceGovernanceStatus）和过期候选源复审机制
+  - 新增 `observeExpiresAt` 字段和 migration 0011
+  - Worker 增强：auto-mute 连续失败源、候选源低频观察 fetch、过期候选源自动复审/提升/拒绝
+  - Web UI：批量治理工具栏、过期候选源复审卡片
+  - 新增 fixture 测试覆盖新 provider 和适配器
+- Files:
+  - `packages/sources/src/discovery.ts` — 新增 3 个 provider 类 + 工厂函数
+  - `packages/sources/src/adapters.ts` — 新增 arXiv + GitHub 适配器
+  - `packages/sources/src/index.ts` — 导出新 provider 和适配器
+  - `packages/sources/src/discovery.fixtures.ts` — 新增 provider fixture 测试
+  - `packages/sources/src/adapters.fixtures.ts` — 新增适配器 fixture 测试
+  - `packages/sources/package.json` — 更新 test script
+  - `packages/db/prisma/schema.prisma` — 新增 observeExpiresAt
+  - `packages/db/prisma/migrations/0011_source_governance_enhancements/migration.sql`
+  - `packages/db/src/repositories.ts` — 新增批量治理、过期复审、候选观察、auto-mute 函数
+  - `packages/db/src/index.ts` — 导出新函数
+  - `apps/worker/src/index.ts` — 集成新 provider、auto-mute、候选观察、过期复审
+  - `apps/web/src/app/sources/page.tsx` — 批量治理工具栏 + 过期候选源复审
+  - `apps/web/src/app/actions.ts` — batchUpdateSourceGovernanceAction
+  - `apps/web/src/lib/topic-source-data.ts` — expiredCandidates 数据
+  - `.env_example`、`docs/L2-domain.md`、`docs/L3-modules.md`、`docs/L4-operations.md`
+- Verification: pnpm typecheck ✓, pnpm lint ✓, pnpm test ✓, pnpm build ✓
+- Notes: SearXNG provider 不需要 API key，使用 baseUrl 配置自建实例。候选源观察默认关闭（WANGCHAO_CANDIDATE_OBSERVATION_ENABLED）。
+
 ### Batch 5: 商业化基础 — Auth + 订阅 + BYOK + CCPayment
 
 - Cause: 完成 #13 (Auth + RBAC + 租户隔离) 和 #14 (订阅 + 配额 + BYOK + 支付 + 用量仪表盘)

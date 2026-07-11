@@ -18,7 +18,7 @@
 | `Account` | Better Auth 兼容的 OAuth/account 记录。当前用于 email/password 认证，预留第三方 OAuth 扩展。 |
 | `Session` | Better Auth 兼容的会话记录。跟踪用户登录状态和过期时间。 |
 | `Topic` | 用户创建的情报主题，包含 topic profile、状态和 owner。 |
-| `Source` | RSS/Web 信源注册条目，带 candidate/active/muted/rejected 状态和质量分。 |
+| `Source` | RSS/Web 信源注册条目，带 candidate/active/muted/rejected 状态和质量分。`observeExpiresAt` 是观察到期时间，用于候选源复审机制。设置为 CANDIDATE 状态时自动设置 14 天观察期；到期后 worker 自动复审（有事件产出则提升为 ACTIVE，否则 REJECTED）。 |
 | `Item` | worker 抓取并规范化后的原始条目。 |
 | `IntelligenceEvent` | AI 抽取、去重、评分后的情报单元。支持多来源合并（primaryItem + secondaryItems），携带实体和后续跟踪建议。 |
 | `UserItemState` | 用户对某条情报的阅读/收藏/忽略状态。 |

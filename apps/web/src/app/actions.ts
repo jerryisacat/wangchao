@@ -671,6 +671,86 @@ async function updateSourceGovernance(formData: FormData) {
   });
 }
 
+export async function batchUpdateSourceGovernanceAction(
+  formData: FormData,
+): Promise<void> {
+  let message = "批量信源治理已完成。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    await batchUpdateSourceGovernance(formData);
+  } catch (error) {
+    logActionError("batchUpdateSourceGovernanceAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/sources");
+  redirect(actionRedirectHref("/sources", type, message));
+}
+
+async function batchUpdateSourceGovernance(formData: FormData) {
+  const action = readSourceGovernanceAction(formData, "action");
+  const reason = readOptionalField(formData, "reason");
+  const sourceIdsRaw = readRequiredField(formData, "sourceIds");
+  const sourceIds = sourceIdsRaw
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  if (sourceIds.length === 0) {
+    throw new Error("未选择信源。");
+  }
+
+  if (!process.env.DATABASE_URL) {
+    throw new Error("Database connection is required for batch source governance.");
+  }
+
+  const {
+    assertMembershipRole,
+    batchUpdateSourceGovernanceStatus,
+    ensureDefaultWorkspace,
+    getPrismaClient,
+    recordUsageEvent,
+  } = await import("@wangchao/db");
+  const prisma = getPrismaClient();
+  const workspace = await ensureDefaultWorkspace(prisma);
+
+  await assertMembershipRole(
+    prisma,
+    {
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
+    },
+    ["OWNER", "ADMIN"],
+  );
+
+  const result = await batchUpdateSourceGovernanceStatus(prisma, {
+    action,
+    organizationId: workspace.organizationId,
+    reason,
+    sourceIds,
+    userId: workspace.userId,
+  });
+
+  await recordUsageEvent(prisma, {
+    metadata: {
+      action,
+      batch: true,
+      errors: result.errors.length,
+      reason,
+      source: "dashboard-batch-source-governance",
+      updated: result.updated,
+    },
+    organizationId: workspace.organizationId,
+    quantity: result.updated,
+    subjectType: "source",
+    type: "SOURCE_GOVERNANCE",
+    unit: "action",
+    userId: workspace.userId,
+  });
+}
+
 interface SeedSourcePack {
   topics?: Array<{
     description?: string;
