@@ -4,6 +4,17 @@
 
 ## 2026-07-11
 
+## Phase 12 补充: 配额引擎 + Session 隔离（#31, #32）
+
+- Phase: 12 补充 — 配额引擎接入 Worker + Session-based workspace
+- Scope: Worker AI 调用按 Plan/BYOK 策略拦截；Web 层全量迁移到 session workspace
+- Alignment: 符合 REFACTOR_PLAN.md Phase 12 商业化基础和 SPEC.md 多租户隔离要求
+- Missing: 真实 Better Auth 端到端验证（#35）；Stripe 集成（#33）
+- Bugs: 无
+- Fixes: 无
+- Verification: pnpm typecheck, pnpm lint, pnpm test, pnpm build 全部通过
+- Follow-up: 配额耗尽时用户通知机制；session 过期处理 UX
+
 ## Phase 11: 信源治理（#10, #11）
 
 - Phase: 11 — 信源发现与治理增强

@@ -32,9 +32,10 @@ export default async function TopicTimelinePage({ params, searchParams }: Timeli
     );
   }
 
-  const { ensureDefaultWorkspace, getPrismaClient, getTopicById } = await import("@wangchao/db");
+  const { getSessionWorkspace } = await import("@/lib/session");
+  const { getPrismaClient, getTopicById } = await import("@wangchao/db");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
   const topic = await getTopicById(prisma, {
     organizationId: workspace.organizationId,
     topicId,

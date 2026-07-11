@@ -62,11 +62,12 @@ const PLAN_TIERS: PlanTier[] = [
 ];
 
 export default async function PricingPage() {
-  const { ensureDefaultWorkspace, getPrismaClient } = await import(
+  const { getSessionWorkspace } = await import("@/lib/session");
+  const { getPrismaClient } = await import(
     "@wangchao/db"
   );
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   const subscription = await prisma.subscription.findUnique({
     where: { organizationId: workspace.organizationId },

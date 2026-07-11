@@ -1,5 +1,27 @@
 ## 2026-07-11
 
+### Batch 7: 配额引擎接入 Worker + session-based workspace 迁移（#31, #32）
+
+- Cause: Worker AI 调用需要按 Plan/BYOK 策略做配额拦截；Web 层所有数据访问需要从默认 workspace 迁移到 session-based workspace 实现多租户数据隔离
+- Changed:
+  - Worker 新增 `createAnalysisRuntimeWithPlan` + `createOfficialAiRuntime`，按 Plan 配额/BYOK 策略选择 AI 凭证
+  - Worker 配额耗尽时 graceful skip（不 crash），stderr 记录拦截原因
+  - Worker AI 调用 source（official/byok/official_fallback）写入 UsageEvent.metadata
+  - Web 层全部 `ensureDefaultWorkspace` → `getSessionWorkspace()`（~45 call sites）
+  - 涉及 actions.ts、topic-source-data.ts、report-data.ts、7 个页面、3 个 export route、2 个 billing route
+- Files:
+  - `apps/worker/src/index.ts`
+  - `apps/web/src/app/actions.ts`
+  - `apps/web/src/lib/topic-source-data.ts`
+  - `apps/web/src/lib/report-data.ts`
+  - `apps/web/src/app/admin/settings/page.tsx`
+  - `apps/web/src/app/topics/page.tsx`、`topics/[topicId]/page.tsx`、`topics/[topicId]/edit/page.tsx`、`topics/[topicId]/timeline/page.tsx`
+  - `apps/web/src/app/pricing/page.tsx`、`usage/page.tsx`
+  - `apps/web/src/app/exports/topics/[topicId]/route.ts`、`exports/events/[eventId]/route.ts`、`exports/briefings/[briefingId]/route.ts`
+  - `apps/web/src/app/api/billing/stripe/checkout/route.ts`、`api/billing/ccayment/create-invoice/route.ts`
+- Verification: pnpm typecheck ✓, pnpm lint ✓, pnpm test ✓, pnpm build ✓
+- Notes: Worker 的 `createSourceRecommendationRuntime` 保持不变（低频调用，不拦截）。未配置 `BETTER_AUTH_SECRET` 时 `getSessionWorkspace()` 内部 fallback 到 `ensureDefaultWorkspace()`，dev 部署行为不变。
+
 ### Batch 6: 信源发现与治理增强（#10, #11）
 
 - Cause: 完成信源发现多 provider 支持、专用适配器、批量治理、候选源观察到期和 Worker 增强并发/退避

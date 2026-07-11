@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 
+import { getSessionWorkspace } from "@/lib/session";
 import {
   assertMembershipRole,
   createCcpaymentInvoice,
   createPaymentInvoice,
-  ensureDefaultWorkspace,
   getDecryptedCcpaymentCredential,
   getPrismaClient,
   recordUsageEvent,
@@ -42,7 +42,7 @@ export async function POST(request: Request) {
   const pricing = PLAN_PRICING[plan];
 
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   await assertMembershipRole(
     prisma,

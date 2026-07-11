@@ -12,11 +12,11 @@ export async function GET(_request: Request, context: EventRouteContext) {
     return new Response("Workspace is not ready for export.", { status: 503 });
   }
 
+  const { getSessionWorkspace } = await import("@/lib/session");
   const {
     assertMembershipRole,
     completeTaskRun,
     createTaskRun,
-    ensureDefaultWorkspace,
     failTaskRun,
     getEventMarkdownExportRecord,
     getPrismaClient,
@@ -24,7 +24,7 @@ export async function GET(_request: Request, context: EventRouteContext) {
     recordUsageEvent,
   } = await import("@wangchao/db");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   await assertMembershipRole(
     prisma,

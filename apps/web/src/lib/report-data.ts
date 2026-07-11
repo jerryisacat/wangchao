@@ -31,10 +31,11 @@ export async function getReportsPage(
     );
   }
 
-  const { ensureDefaultWorkspace, getPrismaClient, listReports } =
+  const { getSessionWorkspace } = await import("@/lib/session");
+  const { getPrismaClient, listReports } =
     await import("@wangchao/db");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
   const result = await listReports(
     prisma,
     { organizationId: workspace.organizationId },
@@ -73,10 +74,11 @@ export async function getReportDetail(
     );
   }
 
-  const { ensureDefaultWorkspace, getPrismaClient, getReport } =
+  const { getSessionWorkspace } = await import("@/lib/session");
+  const { getPrismaClient, getReport } =
     await import("@wangchao/db");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
   const report = await getReport(
     prisma,
     { organizationId: workspace.organizationId },

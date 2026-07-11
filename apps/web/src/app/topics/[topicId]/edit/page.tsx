@@ -34,11 +34,12 @@ export default async function TopicEditPage({
     );
   }
 
-  const { getTopicById, ensureDefaultWorkspace, getPrismaClient } = await import(
+  const { getSessionWorkspace } = await import("@/lib/session");
+  const { getTopicById, getPrismaClient } = await import(
     "@wangchao/db"
   );
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
   const topic = await getTopicById(prisma, {
     organizationId: workspace.organizationId,
     topicId,

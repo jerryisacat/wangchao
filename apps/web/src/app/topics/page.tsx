@@ -20,7 +20,8 @@ interface TopicsPageProps {
 }
 
 export default async function TopicsPage({ searchParams }: TopicsPageProps) {
-  const { listAllTopics, ensureDefaultWorkspace, getPrismaClient } = await import(
+  const { getSessionWorkspace } = await import("@/lib/session");
+  const { listAllTopics, getPrismaClient } = await import(
     "@wangchao/db"
   );
   const resolvedSearchParams = (await Promise.resolve(searchParams ?? {})) as Record<string, string | string[] | undefined>;
@@ -36,7 +37,7 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
       throw new Error("DATABASE_URL is not configured.");
     }
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
     topics = await listAllTopics(prisma, {
       organizationId: workspace.organizationId,
     });

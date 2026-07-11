@@ -48,13 +48,13 @@ const PLAN_LIMITS: Record<"FREE" | "PLUS" | "PRO", PlanLimits> = {
 };
 
 export default async function UsagePage() {
+  const { getSessionWorkspace } = await import("@/lib/session");
   const {
-    ensureDefaultWorkspace,
     getPrismaClient,
     listUsageSummary,
   } = await import("@wangchao/db");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   const subscription = await prisma.subscription.findUnique({
     where: { organizationId: workspace.organizationId },

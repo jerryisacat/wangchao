@@ -23,9 +23,13 @@ import {
   DEFAULT_DIGEST_STYLE,
   evaluateRelevance,
   generatePreferenceDeltas,
+  PLAN_LIMITS,
+  checkAiCallQuota,
+  shouldUseByok,
   renderDailyBriefingMarkdown,
   renderPeriodBriefingMarkdown,
   type AiEventExtraction,
+  type Plan,
   type RelevanceDecision,
 } from "@wangchao/core";
 import {
@@ -44,7 +48,11 @@ import {
   failReport,
   failTaskRun,
   getDecryptedCredentials,
+  getDecryptedByokCredential,
   getDecryptedTelegramCredential,
+  getMonthAiCallCount,
+  getSubscriptionPlanView,
+  getTodayAiCallCount,
   getPrismaClient,
   listActiveRssSourcesForFetch,
   listActiveTopics,
@@ -665,7 +673,11 @@ async function runAnalysisCycle(
   "analyzedItems" | "createdOrUpdatedEvents" | "filteredItems"
 >> {
   const items = await listFetchedItemsForAnalysis(prisma, { organizationId });
-  const ai = await createAnalysisRuntime(prisma, organizationId);
+  const aiRuntime = await createAnalysisRuntimeWithPlan(prisma, organizationId);
+  const ai = aiRuntime
+    ? { adapter: aiRuntime.adapter, model: aiRuntime.model }
+    : null;
+  const aiSource = aiRuntime?.source ?? "official";
   const result = {
     analyzedItems: 0,
     createdOrUpdatedEvents: 0,
@@ -826,6 +838,7 @@ async function runAnalysisCycle(
   if (ai && result.llmAttempts > 0) {
     await recordUsageEvent(prisma, {
       metadata: {
+        aiSource,
         attemptedItems: result.llmAttempts,
         filteredItems: result.filteredItems,
         fallbackItems: result.llmFallbackItems,
@@ -850,8 +863,9 @@ async function runSemanticDedupCycle(
 ): Promise<{ merged: number; llmCalls: number }> {
   const result = { merged: 0, llmCalls: 0 };
 
-  const ai = await createAnalysisRuntime(prisma, organizationId);
-  if (!ai) return result;
+  const aiRuntime = await createAnalysisRuntimeWithPlan(prisma, organizationId);
+  if (!aiRuntime) return result;
+  const ai = { adapter: aiRuntime.adapter, model: aiRuntime.model };
 
   const since = new Date();
   since.setHours(since.getHours() - 48);
@@ -1687,14 +1701,70 @@ async function createSourceRecommendationRuntime(
   };
 }
 
-async function createAnalysisRuntime(
-  prisma: ReturnType<typeof getPrismaClient>,
-  organizationId: string,
-): Promise<{
+interface AnalysisRuntimeResult {
   adapter: EventExtractionAdapter;
   model: string;
-} | null> {
-  // 1. Try DB-stored credential
+  source: "official" | "byok" | "official_fallback";
+}
+
+async function createAnalysisRuntimeWithPlan(
+  prisma: ReturnType<typeof getPrismaClient>,
+  organizationId: string,
+): Promise<AnalysisRuntimeResult | null> {
+  const planView = await getSubscriptionPlanView(prisma, { organizationId });
+  const isSelfHosted = planView.isSelfHosted;
+  const plan = planView.plan;
+
+  const todayCalls = await getTodayAiCallCount(prisma, { organizationId });
+  const monthCalls = await getMonthAiCallCount(prisma, { organizationId });
+
+  const quotaCheck = checkAiCallQuota(plan, todayCalls, monthCalls, isSelfHosted);
+  if (!quotaCheck.allowed) {
+    process.stderr.write(
+      `[quota] AI calls blocked for org ${organizationId}: ${quotaCheck.reason}\n`,
+    );
+    return null;
+  }
+
+  const byokCred = await getDecryptedByokCredential(prisma, { organizationId });
+  const hasByok =
+    byokCred !== null && Boolean(byokCred.apiKey) && Boolean(byokCred.baseUrl);
+
+  const byokStrategy = shouldUseByok(plan, monthCalls, isSelfHosted, hasByok);
+
+  if (byokStrategy.useByok && byokCred) {
+    return {
+      adapter: createOpenAiCompatibleAdapter({
+        apiKey: byokCred.apiKey,
+        baseUrl: byokCred.baseUrl,
+      }),
+      model: byokCred.model,
+      source: "byok",
+    };
+  }
+
+  if (!byokStrategy.fallbackToOfficial) {
+    process.stderr.write(
+      `[quota] AI calls blocked for org ${organizationId}: ${byokStrategy.reason}\n`,
+    );
+    return null;
+  }
+
+  const officialRuntime = await createOfficialAiRuntime(prisma, organizationId);
+  if (!officialRuntime) {
+    return null;
+  }
+
+  return {
+    ...officialRuntime,
+    source: "official",
+  };
+}
+
+async function createOfficialAiRuntime(
+  prisma: ReturnType<typeof getPrismaClient>,
+  organizationId: string,
+): Promise<{ adapter: EventExtractionAdapter; model: string } | null> {
   const creds = await getDecryptedCredentials(prisma, { organizationId });
   if (creds?.ai?.apiKey && creds.ai.baseUrl) {
     return {
@@ -1706,7 +1776,6 @@ async function createAnalysisRuntime(
     };
   }
 
-  // 2. Fallback to env var
   const apiKey = process.env.AI_API_KEY;
   const baseUrl = process.env.AI_BASE_URL;
   if (!apiKey || !baseUrl) {
@@ -2128,7 +2197,13 @@ export async function runReportGeneration(
       return;
     }
 
-    const ai = await createAnalysisRuntime(prisma, input.organizationId);
+    const aiRuntime = await createAnalysisRuntimeWithPlan(
+      prisma,
+      input.organizationId,
+    );
+    const ai = aiRuntime
+      ? { adapter: aiRuntime.adapter, model: aiRuntime.model }
+      : null;
     let markdown: string;
     if (ai) {
       markdown = await generateReportWithAi(ai, report.question, events);

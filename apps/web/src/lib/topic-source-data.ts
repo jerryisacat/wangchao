@@ -191,8 +191,8 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
     const { applyPreferenceWeights, preferenceKeysForEvent } = await import(
       "@wangchao/core"
     );
+    const { getSessionWorkspace } = await import("@/lib/session");
     const {
-      ensureDefaultWorkspace,
       getPrismaClient,
       listDashboardEvents,
       listExpiredCandidateSources,
@@ -201,7 +201,7 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
       listSourceGovernanceReport,
     } = await import("@wangchao/db");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
     const [topics, events, preferences, sourceGovernance, expiredCandidates] =
       await Promise.all([
         listTopicSourceOverview(prisma, {
@@ -331,15 +331,15 @@ export async function getWorkspaceAudit(): Promise<WorkspaceAudit> {
     );
   }
 
+  const { getSessionWorkspace } = await import("@/lib/session");
   const {
     assertMembershipRole,
-    ensureDefaultWorkspace,
     getPrismaClient,
     listOrganizationMemberships,
     listUsageSummary,
   } = await import("@wangchao/db");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
   await assertMembershipRole(
     prisma,
     {
@@ -385,10 +385,11 @@ export async function getBriefingsPage(
     );
   }
 
-  const { ensureDefaultWorkspace, getPrismaClient, listBriefingsPage } =
+  const { getSessionWorkspace } = await import("@/lib/session");
+  const { getPrismaClient, listBriefingsPage } =
     await import("@wangchao/db");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
   const result = await listBriefingsPage(
     prisma,
     { organizationId: workspace.organizationId, period: periodFilter },
@@ -423,13 +424,13 @@ export async function getSavedEventsPage(
     );
   }
 
+  const { getSessionWorkspace } = await import("@/lib/session");
   const {
-    ensureDefaultWorkspace,
     getPrismaClient,
     listSavedDashboardEvents,
   } = await import("@wangchao/db");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
   const result = await listSavedDashboardEvents(
     prisma,
     {
@@ -459,13 +460,13 @@ export async function getDashboardEventDetail(
   }
 
   try {
+    const { getSessionWorkspace } = await import("@/lib/session");
     const {
-      ensureDefaultWorkspace,
       getDashboardEventById,
       getPrismaClient,
     } = await import("@wangchao/db");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
     const event = await getDashboardEventById(prisma, {
       eventId,
       organizationId: workspace.organizationId,
@@ -557,10 +558,11 @@ export async function getTopicTimeline(
     );
   }
 
-  const { ensureDefaultWorkspace, getPrismaClient, listTimelineEvents } =
+  const { getSessionWorkspace } = await import("@/lib/session");
+  const { getPrismaClient, listTimelineEvents } =
     await import("@wangchao/db");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
   const result = await listTimelineEvents(
     prisma,
     { organizationId: workspace.organizationId, topicId },

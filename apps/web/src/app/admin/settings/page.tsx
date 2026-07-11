@@ -52,14 +52,14 @@ interface AdminSettingsPageProps {
 export default async function AdminSettingsPage({
   searchParams,
 }: AdminSettingsPageProps) {
+  const { getSessionWorkspace } = await import("@/lib/session");
   const {
     assertMembershipRole,
-    ensureDefaultWorkspace,
     getPrismaClient,
     getSubscriptionCredentialView,
   } = await import("@wangchao/db");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
   await assertMembershipRole(
     prisma,
     {

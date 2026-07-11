@@ -42,14 +42,14 @@ async function createTopicWithCandidateDiscovery(formData: FormData) {
     assertMembershipRole,
     createCandidateRssSource,
     createTopic,
-    ensureDefaultWorkspace,
     getPrismaClient,
     recordUsageEvent,
   } = await import("@wangchao/db");
+  const { getSessionWorkspace } = await import("@/lib/session");
   const { buildTopicProfile } = await import("@wangchao/core");
   const { validateRssFeedUrl } = await import("@wangchao/sources");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   await assertMembershipRole(
     prisma,
@@ -191,12 +191,12 @@ async function createTopicWithSource(formData: FormData) {
   const {
     assertMembershipRole,
     createTopicWithActiveRssSource,
-    ensureDefaultWorkspace,
     getPrismaClient,
     recordUsageEvent,
   } = await import("@wangchao/db");
+  const { getSessionWorkspace } = await import("@/lib/session");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   await assertMembershipRole(
     prisma,
@@ -284,13 +284,13 @@ async function updateDashboardEventStateFromForm(formData: FormData) {
 
   const {
     assertMembershipRole,
-    ensureDefaultWorkspace,
     getPrismaClient,
     recordUsageEvent,
     updateDashboardEventState,
   } = await import("@wangchao/db");
+  const { getSessionWorkspace } = await import("@/lib/session");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   await assertMembershipRole(
     prisma,
@@ -360,13 +360,13 @@ async function updateCategoryPreferenceFromForm(
 
   const {
     assertMembershipRole,
-    ensureDefaultWorkspace,
     getPrismaClient,
     recordCategoryPreferenceFeedback,
     recordUsageEvent,
   } = await import("@wangchao/db");
+  const { getSessionWorkspace } = await import("@/lib/session");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   await assertMembershipRole(
     prisma,
@@ -455,12 +455,12 @@ async function createCandidateSource(formData: FormData) {
   const {
     assertMembershipRole,
     createCandidateRssSource,
-    ensureDefaultWorkspace,
     getPrismaClient,
     recordUsageEvent,
   } = await import("@wangchao/db");
+  const { getSessionWorkspace } = await import("@/lib/session");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   await assertMembershipRole(
     prisma,
@@ -519,12 +519,12 @@ async function runSourceDiscoveryFromDashboard() {
 
   const {
     assertMembershipRole,
-    ensureDefaultWorkspace,
     getPrismaClient,
   } = await import("@wangchao/db");
+  const { getSessionWorkspace } = await import("@/lib/session");
   const { runSourceDiscoveryCycle } = await import("@wangchao/worker");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   await assertMembershipRole(
     prisma,
@@ -584,12 +584,12 @@ async function runFetchCycleFromDashboard() {
 
   const {
     assertMembershipRole,
-    ensureDefaultWorkspace,
     getPrismaClient,
   } = await import("@wangchao/db");
+  const { getSessionWorkspace } = await import("@/lib/session");
   const { runFetchCycle } = await import("@wangchao/worker");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   await assertMembershipRole(
     prisma,
@@ -632,13 +632,13 @@ async function updateSourceGovernance(formData: FormData) {
 
   const {
     assertMembershipRole,
-    ensureDefaultWorkspace,
     getPrismaClient,
     recordUsageEvent,
     updateSourceGovernanceStatus,
   } = await import("@wangchao/db");
+  const { getSessionWorkspace } = await import("@/lib/session");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   await assertMembershipRole(
     prisma,
@@ -709,12 +709,12 @@ async function batchUpdateSourceGovernance(formData: FormData) {
   const {
     assertMembershipRole,
     batchUpdateSourceGovernanceStatus,
-    ensureDefaultWorkspace,
     getPrismaClient,
     recordUsageEvent,
   } = await import("@wangchao/db");
+  const { getSessionWorkspace } = await import("@/lib/session");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   await assertMembershipRole(
     prisma,
@@ -1177,14 +1177,14 @@ async function updateTopicFromForm(formData: FormData) {
 
   const {
     assertMembershipRole,
-    ensureDefaultWorkspace,
     getTopicById,
     getPrismaClient,
     recordUsageEvent,
     updateTopic,
   } = await import("@wangchao/db");
+  const { getSessionWorkspace } = await import("@/lib/session");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   await assertMembershipRole(
     prisma,
@@ -1298,13 +1298,13 @@ async function updateTopicStatusFromForm(formData: FormData) {
 
   const {
     assertMembershipRole,
-    ensureDefaultWorkspace,
     getPrismaClient,
     recordUsageEvent,
     updateTopicStatus,
   } = await import("@wangchao/db");
+  const { getSessionWorkspace } = await import("@/lib/session");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   await assertMembershipRole(
     prisma,
@@ -1368,12 +1368,12 @@ async function deleteTopicFromForm(formData: FormData) {
   const {
     assertMembershipRole,
     deleteTopic,
-    ensureDefaultWorkspace,
     getPrismaClient,
     recordUsageEvent,
   } = await import("@wangchao/db");
+  const { getSessionWorkspace } = await import("@/lib/session");
   const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
+  const workspace = await getSessionWorkspace();
 
   await assertMembershipRole(
     prisma,
@@ -1420,13 +1420,13 @@ export async function regenerateEventSummaryAction(
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getDecryptedCredentials,
       getPrismaClient,
       recordUsageEvent,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -1586,13 +1586,13 @@ export async function upsertAiCredentialAction(formData: FormData): Promise<void
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getPrismaClient,
       recordUsageEvent,
       upsertAiCredential,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -1646,13 +1646,13 @@ export async function upsertSearchCredentialAction(formData: FormData): Promise<
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getPrismaClient,
       recordUsageEvent,
       upsertSearchCredential,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -1699,12 +1699,12 @@ export async function deleteAiCredentialAction(formData: FormData): Promise<void
     const {
       assertMembershipRole,
       deleteAiCredential,
-      ensureDefaultWorkspace,
       getPrismaClient,
       recordUsageEvent,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -1748,12 +1748,12 @@ export async function deleteSearchCredentialAction(formData: FormData): Promise<
     const {
       assertMembershipRole,
       deleteSearchCredential,
-      ensureDefaultWorkspace,
       getPrismaClient,
       recordUsageEvent,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -1809,12 +1809,12 @@ export async function testAiCredentialAction(
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getPrismaClient,
       testAiCredential,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -1856,12 +1856,12 @@ export async function listAiModelsAction(
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getPrismaClient,
       listAiModels,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -1895,12 +1895,12 @@ export async function testSearchCredentialAction(
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getPrismaClient,
       testSearchCredential,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -1940,13 +1940,13 @@ export async function upsertTelegramCredentialAction(
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getPrismaClient,
       recordUsageEvent,
       upsertTelegramCredential,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -1996,12 +1996,12 @@ export async function deleteTelegramCredentialAction(
     const {
       assertMembershipRole,
       deleteTelegramCredential,
-      ensureDefaultWorkspace,
       getPrismaClient,
       recordUsageEvent,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -2054,12 +2054,12 @@ export async function testTelegramCredentialAction(
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getPrismaClient,
       testTelegramCredential,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -2099,13 +2099,13 @@ export async function upsertCcpaymentCredentialAction(
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getPrismaClient,
       recordUsageEvent,
       upsertCcpaymentCredential,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -2155,12 +2155,12 @@ export async function deleteCcpaymentCredentialAction(
     const {
       assertMembershipRole,
       deleteCcpaymentCredential,
-      ensureDefaultWorkspace,
       getPrismaClient,
       recordUsageEvent,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -2213,12 +2213,12 @@ export async function testCcpaymentCredentialAction(
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getPrismaClient,
       testCcpaymentCredential,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -2253,12 +2253,12 @@ export async function createReportAction(formData: FormData): Promise<void> {
     const {
       assertMembershipRole,
       createReport,
-      ensureDefaultWorkspace,
       getPrismaClient,
       recordUsageEvent,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -2318,11 +2318,11 @@ export async function deletePreferenceAction(formData: FormData): Promise<void> 
     const {
       assertMembershipRole,
       deletePreferenceMemory,
-      ensureDefaultWorkspace,
       getPrismaClient,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -2369,12 +2369,12 @@ export async function updatePreferenceWeightAction(
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getPrismaClient,
       updatePreferenceMemoryWeight,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -2426,12 +2426,12 @@ export async function recordEnhancedFeedbackAction(
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getPrismaClient,
       recordEnhancedFeedback,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -2502,13 +2502,13 @@ export async function upsertByokCredentialAction(
     const {
       assertMembershipRole,
       encryptCredential,
-      ensureDefaultWorkspace,
       getPrismaClient,
       maskKeyHint,
       recordUsageEvent,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -2574,12 +2574,12 @@ export async function deleteByokCredentialAction(
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getPrismaClient,
       recordUsageEvent,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -2647,12 +2647,12 @@ export async function testByokCredentialAction(
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getPrismaClient,
       testAiCredential,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,
@@ -2686,12 +2686,12 @@ export async function toggleSelfHostedModeAction(
 
     const {
       assertMembershipRole,
-      ensureDefaultWorkspace,
       getPrismaClient,
       recordUsageEvent,
     } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
 
     await assertMembershipRole(
       prisma,

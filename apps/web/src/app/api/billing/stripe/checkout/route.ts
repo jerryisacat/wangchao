@@ -7,10 +7,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const { assertMembershipRole, ensureDefaultWorkspace, getPrismaClient } =
+    const { getSessionWorkspace } = await import("@/lib/session");
+    const { assertMembershipRole, getPrismaClient } =
       await import("@wangchao/db");
     const prisma = getPrismaClient();
-    const workspace = await ensureDefaultWorkspace(prisma);
+    const workspace = await getSessionWorkspace();
     await assertMembershipRole(
       prisma,
       {
