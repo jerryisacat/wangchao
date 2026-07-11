@@ -162,7 +162,7 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 ### Auth（Better Auth）
 
-- `BETTER_AUTH_SECRET` Required for auth。设置后激活 Better Auth（email/password + session），`middleware.ts` 保护需要认证的路由，未登录重定向到 `/login`。未设置时应用运行在兼容模式：`getSessionWorkspace()` fallback 到 `ensureDefaultWorkspace()`，使用默认 workspace/user，不要求登录。
+- `BETTER_AUTH_SECRET` Required for auth。设置后激活 Better Auth（email/password + session），`proxy.ts` 保护需要认证的路由，未登录重定向到 `/login`。未设置时应用运行在兼容模式：`getSessionWorkspace()` fallback 到 `ensureDefaultWorkspace()`，使用默认 workspace/user，不要求登录。
 - `BETTER_AUTH_URL` Required for auth。Better Auth 的 base URL（如 `https://wangchao.jerryiscat.one`），用于 session callback URL 和邮件链接生成。
 - 当 `BETTER_AUTH_SECRET` 未设置时，`/login` 和 `/register` 页面不生效，应用直接使用默认 workspace，适合个人版和本地开发。
 
@@ -212,3 +212,26 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - 当前环境曾出现公网 RSS 抓取 `https://hnrss.org/newest?points=100` 失败并记录 `TaskRun(FAILED)`；后续个人使用前需要用真实可访问 RSS 复测，或手动使用离线 fixture source 验证 worker 闭环。
 - 2026-07-06 生产发现 `apps/web/src/app/page.tsx` 被 Next.js 静态预渲染，导致 Railway 上 `/api/health` database `ok` 但首页仍显示预览 fallback；已通过 `export const dynamic = "force-dynamic"` 修复，后续首页会读取运行时工作区数据。
 - 2026-07-10 已安装与 Playwright 匹配的 Chromium，并在沙箱外通过本地 Prisma Postgres + 干净 `next build` / `next start` 完成桌面/移动交互 smoke；同时通过 11 个页面 × 6 档宽度的响应式矩阵。不要让 `next dev` 与 `next build` / `next start` 同时使用同一个 `apps/web/.next`，并发写入会制造无效或不一致的客户端产物。
+
+### Auth E2E 测试
+
+Auth 端到端测试覆盖 Better Auth 注册/登录/登出/路由保护流程。
+
+启用条件：
+- 设置 `BETTER_AUTH_SECRET` 环境变量
+- 设置 `DATABASE_URL`（指向已有 migration 的 Postgres）
+- 可选：设置 `PLAYWRIGHT_AUTH_RUN_ID` 避免测试用户冲突
+
+运行命令：
+```bash
+# 启动 Docker Postgres（如尚未启动）
+docker run -d --name wangchao-smoke-pg -e POSTGRES_USER=wangchao -e POSTGRES_PASSWORD=wangchao -e POSTGRES_DB=wangchao -p 5433:5432 postgres:16-alpine
+
+# 执行 migration
+DATABASE_URL=postgresql://wangchao:wangchao@localhost:5433/wangchao?schema=public pnpm --filter @wangchao/db exec prisma migrate deploy
+
+# 运行 auth e2e 测试
+BETTER_AUTH_SECRET=test-secret BETTER_AUTH_URL=http://localhost:3000 DATABASE_URL=postgresql://wangchao:wangchao@localhost:5433/wangchao?schema=public npx playwright test tests/smoke/auth.spec.ts
+```
+
+未配置 `BETTER_AUTH_SECRET` 时，auth 测试自动 skip。

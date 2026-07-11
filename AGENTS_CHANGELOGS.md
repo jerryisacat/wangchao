@@ -1,5 +1,21 @@
 ## 2026-07-11
 
+### Batch 7.5: Better Auth e2e 测试 + proxy 迁移（#35, #36）
+
+- Cause: Better Auth 登录流程缺少端到端验证和登出功能；Next.js 16 middleware convention 已废弃
+- Changed:
+  - `middleware.ts` → `proxy.ts`，函数 `middleware` → `proxy`，消除构建警告
+  - TopNav 新增登出按钮（仅 auth 启用时可见），AppShell 传递 authEnabled prop
+  - 新增 `tests/smoke/auth.spec.ts`：注册→登录→登出→重登录→admin 保护→多用户隔离
+  - Auth 测试条件跳过：未配置 `BETTER_AUTH_SECRET` 时自动 skip
+- Files:
+  - `apps/web/src/proxy.ts`（原 `middleware.ts`）
+  - `apps/web/src/components/layout/top-nav.tsx`
+  - `apps/web/src/components/layout/app-shell.tsx`
+  - `tests/smoke/auth.spec.ts`（新文件）
+- Verification: pnpm typecheck ✓, pnpm lint ✓, pnpm test ✓, pnpm build ✓（无 deprecation 警告）
+- Notes: Auth e2e 测试需要设置 `BETTER_AUTH_SECRET` + `DATABASE_URL` + Docker Postgres 才能运行。未配置时自动 skip，不影响现有 CI。
+
 ### Batch 7: 配额引擎接入 Worker + session-based workspace 迁移（#31, #32）
 
 - Cause: Worker AI 调用需要按 Plan/BYOK 策略做配额拦截；Web 层所有数据访问需要从默认 workspace 迁移到 session-based workspace 实现多租户数据隔离

@@ -13,7 +13,7 @@ function isPublicPath(pathname: string): boolean {
   );
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   if (!process.env.BETTER_AUTH_SECRET) {
     return NextResponse.next();
   }

@@ -1,9 +1,11 @@
 "use client";
 
-import { Plus, Rss, Settings, Sparkles, List, FileSearch } from "lucide-react";
+import { LogOut, Plus, Rss, Settings, Sparkles, List, FileSearch } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
 const mainLinks = [
@@ -16,11 +18,24 @@ const mainLinks = [
 ] as const;
 
 interface TopNavProps {
+  authEnabled?: boolean;
   className?: string;
 }
 
-export function TopNav({ className }: TopNavProps) {
+export function TopNav({ authEnabled = false, className }: TopNavProps) {
   const pathname = usePathname();
+  const router = useRouter();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await authClient.signOut();
+    } finally {
+      router.push("/login");
+      router.refresh();
+    }
+  }
 
   return (
     <header className={cn("top-nav", className)}>
@@ -92,6 +107,19 @@ export function TopNav({ className }: TopNavProps) {
               <span>设置</span>
             </Link>
           </Button>
+          {authEnabled ? (
+            <Button
+              aria-label="登出"
+              className="top-nav-action"
+              disabled={loggingOut}
+              onClick={handleLogout}
+              size="sm"
+              variant="ghost"
+            >
+              <LogOut aria-hidden="true" size={14} />
+              <span>{loggingOut ? "…" : "登出"}</span>
+            </Button>
+          ) : null}
         </div>
       </div>
     </header>

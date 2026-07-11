@@ -4,6 +4,17 @@
 
 ## 2026-07-11
 
+## Phase 12 补充 2: Auth e2e + proxy 迁移（#35, #36）
+
+- Phase: 12 补充 2 — Better Auth 端到端测试 + Next.js 16 proxy convention
+- Scope: 登出 UI、auth e2e Playwright 测试、middleware→proxy 迁移
+- Alignment: 符合 REFACTOR_PLAN.md Phase 12 认证需求和 Next.js 16 兼容性
+- Missing: 真实 Better Auth CI 集成（需要 Docker Postgres + BETTER_AUTH_SECRET）
+- Bugs: 无
+- Fixes: 修复 top-nav.tsx 在 client component 中导入 server-only auth.ts 导致的构建错误
+- Verification: pnpm typecheck, pnpm lint, pnpm test, pnpm build 全部通过
+- Follow-up: CI 环境配置 BETTER_AUTH_SECRET 运行 auth e2e
+
 ## Phase 12 补充: 配额引擎 + Session 隔离（#31, #32）
 
 - Phase: 12 补充 — 配额引擎接入 Worker + Session-based workspace

@@ -285,7 +285,7 @@ apps/web/src/
 ├── components/
 │   ├── layout/
 │   │   ├── app-shell.tsx             # AppShell 容器
-│   │   └── top-nav.tsx               # 顶部导航（首页/专题报告/主题/信源/简报/收藏/偏好/设置齿轮入口）
+│   │   └── top-nav.tsx               # 顶部导航（首页/专题报告/主题/信源/简报/收藏/偏好/设置齿轮入口；auth 启用时显示登出按钮）
 │   ├── intelligence/
 │   │   ├── intelligence-card.tsx     # 情报卡片 client 组件
 │   │   ├── intelligence-feed.tsx     # 情报流 client 组件
@@ -341,7 +341,7 @@ apps/web/src/
 | `apps/web/src/lib/auth.ts` | Better Auth 服务端配置。email/password + session 插件 + Prisma adapter。仅当 `BETTER_AUTH_SECRET` 环境变量设置时启用。 |
 | `apps/web/src/lib/auth-client.ts` | Better Auth 客户端导出 `createAuthClient`，供 login/register 页面和客户端组件使用。 |
 | `apps/web/src/lib/session.ts` | Session helper。`getSessionWorkspace()`：当 `BETTER_AUTH_SECRET` 设置时，从 Better Auth session 读取用户和组织；否则 fallback 到 `ensureDefaultWorkspace()`（兼容默认 workspace 开发模式）。 |
-| `apps/web/src/middleware.ts` | Next.js 中间件。仅当 `BETTER_AUTH_SECRET` 设置时激活，保护需要认证的路由，未登录重定向到 `/login`。 |
+| `apps/web/src/proxy.ts` | Next.js proxy（原 `middleware.ts`）。仅当 `BETTER_AUTH_SECRET` 设置时激活，保护需要认证的路由，未登录重定向到 `/login`。 |
 | `apps/web/src/app/login/page.tsx` | 登录页。email/password 表单，提交到 Better Auth session。 |
 | `apps/web/src/app/register/page.tsx` | 注册页。email/password 注册，创建用户后重定向。 |
 | `apps/web/src/app/pricing/page.tsx` | 定价页。FREE/PLUS/PRO 三层对比，展示各层配额限制和价格。 |
@@ -353,6 +353,7 @@ apps/web/src/
 | `apps/web/src/app/exports/events/[eventId]/route.ts` | 单条情报 Markdown 下载 route。 |
 | `apps/web/src/app/globals.css` | 全局 token、布局、组件样式、motion/reduced-motion、焦点状态、safe-area padding、触摸导航和响应式规则；按 `FRONTEND.md` 语义 token 定义。 |
 | `tests/smoke/responsive.spec.ts` | 全站响应式回归：逐页验证 320/375/414/768/1024/1440px 无横向滚动/超框，主要控件不少于 44px，主按钮对比度不少于 4.5:1。 |
+| `tests/smoke/auth.spec.ts` | 条件性 auth e2e 测试：注册→登录→登出→重登录→admin 路由保护→多用户隔离。未配置 `BETTER_AUTH_SECRET` 时自动 skip。 |
 | `FRONTEND.md` | `apps/web` 前端设计规范，定义 Kinetic Intelligence 风格、token、组件变体、页面组合、动效、响应式和可访问性边界。 |
 
 ### 前端维护规则
@@ -371,9 +372,9 @@ apps/web/src/
 
 ### Auth 与 Middleware 规则
 
-- 当 `BETTER_AUTH_SECRET` 环境变量设置时，Better Auth 激活：`/login` 和 `/register` 页面可用，`/api/auth/[...all]` 处理认证请求，`middleware.ts` 保护需要认证的路由。
+- 当 `BETTER_AUTH_SECRET` 环境变量设置时，Better Auth 激活：`/login` 和 `/register` 页面可用，`/api/auth/[...all]` 处理认证请求，`proxy.ts` 保护需要认证的路由。
 - 当 `BETTER_AUTH_SECRET` 未设置时，应用运行在兼容模式：`getSessionWorkspace()` fallback 到 `ensureDefaultWorkspace()`，使用默认 workspace/user，不要求登录。这是当前个人版和本地开发的默认行为。
-- `middleware.ts` 仅在 `BETTER_AUTH_SECRET` 设置时执行认证检查，否则直接放行（`next()`）。
+- `proxy.ts` 仅在 `BETTER_AUTH_SECRET` 设置时执行认证检查，否则直接放行（`next()`）。
 - 认证模式下，`/login`、`/register`、`/pricing` 和 `/api/*` 公开路由不需要 session；其余路由需要登录。
 
 ### 数据访问模式
