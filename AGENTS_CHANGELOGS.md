@@ -1,5 +1,13 @@
 ## 2026-07-11
 
+### fix:第五轮 SPEC/README 实现审计 — 修正信源质量指标与工作区审计
+
+- Cause: `README.md` 承诺 Worker 会计算真实 hit/noise/duplicate 并提供工作区成员/用量审计。反查发现 `duplicateRate` 只统计 `Item.status='DUPLICATE'`，但任何代码都不会写该状态，因此重复率长期为 0；标题模糊匹配虽然找到已有事件，随后仍按新 eventHash upsert，会实际创建第二条事件，EventItem 主次角色也不完整。成员与用量虽在 `getTopicSourceWorkspace()` 每次读取，却没有任何页面渲染，属于性能开销和展示壳。
+- Changed: `upsertIntelligenceEventFromItem()` 改为模糊/精确命中后按已有 event id 更新，维护唯一 PRIMARY EventItem，将旧 primary 改为 SECONDARY/DUPLICATE，新 primary 保持 ANALYZED；`mergeSemanticEvents()` 使用 relation upsert 合并 Item，避免 stale snapshot 唯一键冲突并标记 DUPLICATE，同时清空归档旧事件的匹配 hash，防止未来输入重新命中 archived row。`listSourceGovernanceReport()` 改按未归档 primary/secondary EventItem 计算 Item 命中率、secondary 重复率和唯一 active event 数，并兼容历史未回填 DUPLICATE 的关系数据。新增 OWNER/ADMIN `/admin/usage`，展示工作区、成员角色和近 30 天按 type/unit 分组的 UsageEvent；主工作台不再白查成员/用量，设置页提供入口并补页面权限守卫。同步移动端单列样式、语义标题和 Playwright 路径。
+- Files: `packages/db/src/repositories.ts`, `packages/db/src/repositories.fixtures.ts`, `apps/web/src/lib/topic-source-data.ts`, `apps/web/src/app/admin/usage/page.tsx`（新）, `apps/web/src/app/admin/settings/page.tsx`, `apps/web/src/components/layout/top-nav.tsx`, `apps/web/src/app/globals.css`, `tests/smoke/web.spec.ts`, `tests/smoke/responsive.spec.ts`, `SPEC.md`, `README.md`, `README-en.md`, `FRONTEND.md`, `CODEGUIDE.md`, `docs/L2-domain.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification: `pnpm db:validate` ✓，`pnpm typecheck` ✓（7/7），`pnpm lint` ✓（7/7），`pnpm test` ✓（7/7；DB fixture 覆盖 fuzzy existing-id update、角色/状态与指标口径），`pnpm build` ✓（7/7，包含 `/admin/usage`），`pnpm exec playwright test --list` ✓（16 tests），`git diff --check` ✓。临时 Postgres 16 实际构造三个来源：同标题不同 URL 最终 `firstEventId === fuzzyEventId`，仅 1 条未归档 event；最新 Item=PRIMARY/ANALYZED，旧标题匹配与语义合并 Item=SECONDARY/DUPLICATE；页面数据分别显示 Fuzzy 0%、Primary 50%、Semantic 100% duplicate rate，active eventCount 均为 1。生产构建浏览器验证 admin audit desktop/mobile 2 passed，12 页面 × 6 宽度响应式矩阵通过；network-idle 截图确认内容可见、bodyLength=295、Next error overlay=0。`agent-browser` CLI 不在 PATH，按 skill fallback 到仓库已安装 Playwright，并明确区分工具缺失与页面结果。
+- Notes / Risk: 现有 quality score 权重/治理阈值未改，本轮只修正输入数据口径；历史 Item 即使尚未回填 DUPLICATE，也会通过 active SECONDARY relation 得到正确重复率。没有新增 Issue：provider/批量治理/候选复审仍由 #10 覆盖，配额/计费周期/商业用量仪表盘仍由 #14 覆盖；本页是个人版的事实审计视图，不声称已实现订阅额度。
+
 ### fix:第四轮 SPEC/README 实现审计 — 补齐全管线 TaskRun 审计
 
 - Cause: `REFACTOR_PLAN.md` 将 TaskRun 定义为持久化 worker 状态、重试、错误和耗时的边界，`docs/L2-domain.md` 也列出了六种任务类型；实际代码却只有 `SOURCE_FETCH` / `SOURCE_DISCOVERY` 会写 TaskRun，`AI_RELEVANCE`、`AI_EVENT_EXTRACTION`、`BRIEFING_GENERATION`、`EXPORT_GENERATION` 只是 schema 枚举壳。LLM extraction 失败只写 stderr 并回退规则，AI UsageEvent 又只统计成功响应，导致失败调用和后续阶段无法在数据库审计。

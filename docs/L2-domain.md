@@ -76,7 +76,7 @@ ANALYZED ──duplicate──────> DUPLICATE
 规则：
 - `markItemFiltered()` 必须保留原有 `rawMetadata`，只追加过滤原因，避免丢失 RSS 原始追溯信息。
 - 当前分析管线用 topic profile keywords 做 relevance/noise，用标题和 URL 生成 `eventHash`，用 `topicId + eventHash` 幂等 upsert 事件。
-- 多来源合并：当 hash 冲突时，旧 `primaryItemId` 推入 `secondaryItemIds`，新 item 成为 primaryItem，并写入 `mergeReason` 说明聚合原因。
+- 多来源合并：精确 event hash 或标题 hash + ±24h 命中已有事件时，直接按已有 event id 更新，不能按新 hash 再创建一条事件；旧 primary 的 `EventItem.role` 改为 `SECONDARY` 且 Item 进入 `DUPLICATE`，新 Item 成为 `PRIMARY/ANALYZED`。语义聚类同样把被合并事件的 Item 关联到保留事件并标记为 `DUPLICATE`；归档的被合并事件清空 eventHash/titleHash，避免未来新报道再次命中已归档行或被唯一键阻塞。
 
 ### IntelligenceEvent 状态机
 
@@ -174,6 +174,13 @@ create/start ──> RUNNING
 | **Event Hash** | 情报事件去重哈希。当前由标题和 URL 生成，配合 `topicId + eventHash` 做幂等 upsert。 |
 | **Content Hash** | Item 内容哈希，用于跨源重复检测。 |
 | **Candidate Source** | 处于 `CANDIDATE` 状态的信源，尚未通过治理审核，不得进入正式抓取和简报。 |
+
+Source Observation 指标口径：
+
+- `hitRate`：该 source 的 Item 中，关联至少一个未归档 IntelligenceEvent 的比例；primary 和 secondary 报道都属于有效命中。
+- `noiseRate`：`Item.status='FILTERED'` 的比例。
+- `duplicateRate`：Item 已为 `DUPLICATE`，或只以 SECONDARY 角色关联未归档事件的比例；用于兼容旧数据未回填状态的情况。
+- `eventCount`：上述关联中的未归档 event id 去重数量，不把归档的语义合并旧事件继续计入报告。
 | **Source Discovery** | 自动信源发现流程。三条渠道：`keyword-search`（Brave Search API + RSS 探测）、`backlink-from-highscore`（高分事件原文页反查）、`outlink-network`（active source 外链网络）。 |
 | **Tenant Scope** | 租户作用域。所有 tenant-owned 数据必须带 `organizationId`，user-specific state 必须带 `userId`。当前个人版使用默认 organization/user。 |
 | **Deterministic Fallback** | AI 调用失败或未配置时的可解释规则降级路径。source recommendation 在无 `AI_API_KEY`/`AI_BASE_URL` 时使用此路径。 |

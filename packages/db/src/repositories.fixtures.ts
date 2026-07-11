@@ -7,7 +7,10 @@ import {
   listBriefingsPage,
   listEventsForDailyBriefing,
   listSavedDashboardEvents,
+  listSourceGovernanceReport,
+  mergeSemanticEvents,
   updateDashboardEventState,
+  upsertIntelligenceEventFromItem,
 } from "./repositories.js";
 
 export async function runRepositoryFixtures(): Promise<void> {
@@ -17,6 +20,9 @@ export async function runRepositoryFixtures(): Promise<void> {
   await verifyDailyBriefingUpsert();
   await verifyBriefingHistoryPagination();
   await verifyTaskRunLifecycle();
+  await verifySourceGovernanceMetricsUseActiveEventLinks();
+  await verifyFuzzyEventMatchUpdatesExistingEvent();
+  await verifySemanticMergeClearsArchivedMatchKeys();
 }
 
 async function verifySavedPagination(): Promise<void> {
@@ -274,6 +280,236 @@ async function verifyTaskRunLifecycle(): Promise<void> {
   assert(completed.finishedAt instanceof Date, "Completion must record finishedAt.");
   assert(failed.status === "FAILED", "Failure must persist FAILED.");
   assert(failed.errorMessage === "provider unavailable", "Failure must persist the error reason.");
+}
+
+async function verifySourceGovernanceMetricsUseActiveEventLinks(): Promise<void> {
+  const prisma = {
+    source: {
+      findMany: async () => [
+        {
+          consecutiveFailures: 0,
+          discoveryChannel: null,
+          id: "source-1",
+          items: [
+            {
+              eventItems: [
+                {
+                  event: { id: "event-1", status: "UNREAD" },
+                  role: "PRIMARY",
+                },
+              ],
+              intelligenceEvents: [{ id: "event-1", status: "UNREAD" }],
+              status: "ANALYZED",
+            },
+            {
+              eventItems: [
+                {
+                  event: { id: "event-archived", status: "ARCHIVED" },
+                  role: "PRIMARY",
+                },
+                {
+                  event: { id: "event-1", status: "UNREAD" },
+                  role: "SECONDARY",
+                },
+              ],
+              intelligenceEvents: [
+                { id: "event-archived", status: "ARCHIVED" },
+              ],
+              status: "ANALYZED",
+            },
+            {
+              eventItems: [],
+              intelligenceEvents: [],
+              status: "FILTERED",
+            },
+          ],
+          lastError: null,
+          lastErrorAt: null,
+          lastFetchedAt: null,
+          name: "Source One",
+          recommendationReason: null,
+          sourceObservations: [],
+          status: "ACTIVE",
+          topic: { name: "Topic One" },
+          topicId: "topic-1",
+          trustScore: 0.5,
+          url: "https://example.com/feed.xml",
+        },
+      ],
+    },
+  } as unknown as PrismaClient;
+
+  const [source] = await listSourceGovernanceReport(prisma, {
+    organizationId: "org-1",
+  });
+
+  assert(source, "Expected one source governance result.");
+  assert(source.totalItems === 3, `Expected 3 items, received ${source.totalItems}.`);
+  assert(source.eventCount === 1, `Expected 1 active event, received ${source.eventCount}.`);
+  assert(source.hitRate === 0.6667, `Expected hit rate 0.6667, received ${source.hitRate}.`);
+  assert(source.noiseRate === 0.3333, `Expected noise rate 0.3333, received ${source.noiseRate}.`);
+  assert(
+    source.duplicateRate === 0.3333,
+    `Expected duplicate rate 0.3333, received ${source.duplicateRate}.`,
+  );
+  assert(source.qualityScore === 36.67, `Expected score 36.67, received ${source.qualityScore}.`);
+}
+
+async function verifyFuzzyEventMatchUpdatesExistingEvent(): Promise<void> {
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const transaction = {
+    eventItem: {
+      updateMany: async (args: unknown) => {
+        calls.push({ args, method: "eventItem.updateMany" });
+        return { count: 1 };
+      },
+      upsert: async (args: unknown) => {
+        calls.push({ args, method: "eventItem.upsert" });
+        return {};
+      },
+    },
+    intelligenceEvent: {
+      create: async () => {
+        throw new Error("Fuzzy matches must not create a second event.");
+      },
+      update: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.update" });
+        return { id: "event-existing" };
+      },
+    },
+    item: {
+      update: async (args: unknown) => {
+        calls.push({ args, method: "item.update" });
+        return {};
+      },
+    },
+  };
+  const prisma = {
+    $transaction: async (callback: (tx: typeof transaction) => Promise<unknown>) =>
+      callback(transaction),
+    intelligenceEvent: {
+      findFirst: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.findFirst" });
+        return {
+          id: "event-existing",
+          primaryItemId: "item-old",
+          status: "UNREAD",
+        };
+      },
+      findUnique: async () => null,
+    },
+  } as unknown as PrismaClient;
+
+  await upsertIntelligenceEventFromItem(prisma, {
+    category: "release",
+    entities: ["OpenAI"],
+    eventHash: "new-event-hash",
+    explanation: "Relevant release",
+    gravityScore: 80,
+    occurredAt: new Date("2026-07-11T00:00:00.000Z"),
+    organizationId: "org-1",
+    primaryItemId: "item-new",
+    score: 80,
+    summary: "Summary",
+    title: "Shared normalized title",
+    titleHash: "shared-title-hash",
+    topicId: "topic-1",
+  });
+
+  const eventUpdate = readArgsByName(calls, "intelligenceEvent.update");
+  const fuzzyFind = readArgsByName(calls, "intelligenceEvent.findFirst");
+  const fuzzyWhere = readRecord(fuzzyFind.where, "fuzzy.findFirst.where");
+  const fuzzyStatus = readRecord(fuzzyWhere.status, "fuzzy.findFirst.where.status");
+  assert(
+    fuzzyStatus.not === "ARCHIVED",
+    "Fuzzy matching must not attach new reports to archived events.",
+  );
+  const eventWhere = readRecord(eventUpdate.where, "event.update.where");
+  const eventData = readRecord(eventUpdate.data, "event.update.data");
+  assert(eventWhere.id === "event-existing", "Fuzzy match must update the existing event id.");
+  assert(eventData.eventHash === "new-event-hash", "Updated event must use the new primary hash.");
+  assert(eventData.primaryItemId === "item-new", "New report must become the primary item.");
+
+  const roleUpdate = readArgsByName(calls, "eventItem.updateMany");
+  const roleData = readRecord(roleUpdate.data, "eventItem.updateMany.data");
+  assert(roleData.role === "SECONDARY", "Previous primary relation must become secondary.");
+  const primaryUpsert = readArgsByName(calls, "eventItem.upsert");
+  const primaryCreate = readRecord(primaryUpsert.create, "eventItem.upsert.create");
+  assert(primaryCreate.itemId === "item-new", "New primary relation must reference the new item.");
+  assert(primaryCreate.role === "PRIMARY", "New item relation must be primary.");
+
+  const itemUpdates = calls.filter((entry) => entry.method === "item.update");
+  assert(itemUpdates.length === 2, "Old and new item statuses must both be updated.");
+  const oldItem = readRecord(itemUpdates[0]?.args, "oldItem.args");
+  const newItem = readRecord(itemUpdates[1]?.args, "newItem.args");
+  assert(readRecord(oldItem.where, "oldItem.where").id === "item-old", "Old item must be updated.");
+  assert(
+    readRecord(oldItem.data, "oldItem.data").status === "DUPLICATE",
+    "Old primary item must become DUPLICATE.",
+  );
+  assert(readRecord(newItem.where, "newItem.where").id === "item-new", "New item must be updated.");
+  assert(
+    readRecord(newItem.data, "newItem.data").status === "ANALYZED",
+    "New primary item must remain ANALYZED.",
+  );
+}
+
+async function verifySemanticMergeClearsArchivedMatchKeys(): Promise<void> {
+  const calls: Array<{ args: unknown; method: string }> = [];
+  let findCount = 0;
+  const transaction = {
+    eventItem: {
+      upsert: async (args: unknown) => {
+        calls.push({ args, method: "eventItem.upsert" });
+        return {};
+      },
+    },
+    intelligenceEvent: {
+      findUnique: async () => {
+        findCount += 1;
+        return findCount === 1
+          ? { eventItems: [], id: "event-keep", primaryItemId: "item-keep" }
+          : { eventItems: [], id: "event-merge", primaryItemId: "item-merge" };
+      },
+      update: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.update" });
+        return {};
+      },
+    },
+    item: {
+      updateMany: async (args: unknown) => {
+        calls.push({ args, method: "item.updateMany" });
+        return { count: 1 };
+      },
+    },
+  };
+  const prisma = {
+    $transaction: async (callback: (tx: typeof transaction) => Promise<unknown>) =>
+      callback(transaction),
+  } as unknown as PrismaClient;
+
+  await mergeSemanticEvents(prisma, {
+    keepEventId: "event-keep",
+    mergeEventIds: ["event-merge"],
+    reason: "same real-world event",
+  });
+
+  const relation = readArgsByName(calls, "eventItem.upsert");
+  const relationCreate = readRecord(relation.create, "semantic.relation.create");
+  assert(relationCreate.itemId === "item-merge", "Merged primary item must move to keep event.");
+  assert(relationCreate.role === "SECONDARY", "Merged item must become a secondary report.");
+  const itemUpdate = readArgsByName(calls, "item.updateMany");
+  assert(
+    readRecord(itemUpdate.data, "semantic.item.data").status === "DUPLICATE",
+    "Merged items must become DUPLICATE.",
+  );
+  const archived = readRecord(
+    readArgsByName(calls, "intelligenceEvent.update").data,
+    "semantic.event.data",
+  );
+  assert(archived.status === "ARCHIVED", "Merged event must be archived.");
+  assert(archived.eventHash === null, "Archived merged event must release eventHash.");
+  assert(archived.titleHash === null, "Archived merged event must stop fuzzy matching.");
 }
 
 function readArgs(

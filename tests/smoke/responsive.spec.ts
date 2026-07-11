@@ -193,5 +193,6 @@ async function discoverAppPaths(page: Page): Promise<string[]> {
     topicHref ? `${topicHref}/edit` : null,
     eventHref,
     "/admin/settings",
+    "/admin/usage",
   ].filter((path): path is string => Boolean(path));
 }

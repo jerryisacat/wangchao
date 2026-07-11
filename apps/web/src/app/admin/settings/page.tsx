@@ -1,4 +1,4 @@
-import { Check, CircleAlert, KeyRound, Search, Trash2 } from "lucide-react";
+import { Activity, Check, CircleAlert, KeyRound, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import {
   deleteAiCredentialAction,
@@ -28,10 +28,22 @@ interface AdminSettingsPageProps {
 export default async function AdminSettingsPage({
   searchParams,
 }: AdminSettingsPageProps) {
-  const { ensureDefaultWorkspace, getPrismaClient, getSubscriptionCredentialView } =
-    await import("@wangchao/db");
+  const {
+    assertMembershipRole,
+    ensureDefaultWorkspace,
+    getPrismaClient,
+    getSubscriptionCredentialView,
+  } = await import("@wangchao/db");
   const prisma = getPrismaClient();
   const workspace = await ensureDefaultWorkspace(prisma);
+  await assertMembershipRole(
+    prisma,
+    {
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
+    },
+    ["OWNER", "ADMIN"],
+  );
   const credential = await getSubscriptionCredentialView(prisma, {
     organizationId: workspace.organizationId,
   });
@@ -43,6 +55,12 @@ export default async function AdminSettingsPage({
   return (
     <>
       <PageHeader eyebrow="管理后台" title="API Key 配置">
+        <Button asChild size="sm" variant="secondary">
+          <Link href="/admin/usage">
+            <Activity aria-hidden="true" size={14} />
+            成员与用量
+          </Link>
+        </Button>
         <Button asChild size="sm" variant="ghost">
           <Link href="/">← 返回情报流</Link>
         </Button>

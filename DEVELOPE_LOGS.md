@@ -4,6 +4,17 @@
 
 ## 2026-07-11
 
+### SPEC/README 实现一致性审计 Round 5：信源质量指标与工作区审计
+
+- Phase: Cross-phase / Phase 7 event dedupe + Phase 11 source governance + Phase 12 usage boundary
+- Scope: 验证 README 的 hit/noise/duplicate 是否由真实多来源关系产生，标题 fuzzy dedupe 是否确实只保留一个活跃事件，以及“工作区成员/用量审计”是否有可发现、受权限约束的页面而非 unused loader 数据。
+- Alignment: 多来源合并现在同时维护 IntelligenceEvent、EventItem role 和 Item status 三层不变量；质量报告从未归档关系计算，符合 SPEC 的来源表现/重复率治理目标。成员/用量通过 dedicated OWNER/ADMIN loader 和页面展示，保持 organization scope，并明确只做个人版事实审计，不冒充 Phase 15 配额/账单。
+- Missing: 质量趋势图、批量治理、候选源低频观察/到期提醒仍由 #10 追踪；订阅周期、额度、拦截原因和账单由 #14 追踪。历史已创建的重复 IntelligenceEvent 没有一次性全库修复 migration，但当前 semantic dedup 与关系口径可继续收敛新数据；仓库没有真实用户/兼容承诺，不在本轮臆测生产数据修复策略。
+- Bugs: fuzzy title 命中后仍按新 hash upsert 导致第二条 event；旧/new primary 的 EventItem role 不同步；semantic merge 用 stale keepEvent snapshot 检查 relation，多个 merge event 可能撞唯一键；Item 从未进入 DUPLICATE，导致治理重复率恒 0；成员/用量每次主工作台查询却完全不展示。
+- Fixes: fuzzy 分支按已有 id 更新并同步主次角色/状态；semantic relation 改 upsert、标记合并 Item 并清除归档旧事件的匹配 hash；source report 以 active relation 计算 hit/duplicate/eventCount；新增 `/admin/usage` 与设置入口、OWNER/ADMIN 守卫、30 天 type/unit 汇总；删除主工作台的无用成员/用量查询；补 DB fixtures、浏览器交互和响应式覆盖。
+- Verification: 全仓 db validate/typecheck/lint/test/build、Playwright discovery 和 diff check 通过；临时 Postgres 验证 fuzzy/semantic/指标/usage 数据；生产构建浏览器验证 desktop/mobile、六宽度矩阵和 network-idle screenshot，具体数值见同日 `AGENTS_CHANGELOGS.md`。
+- Follow-up: 下一轮审计反馈学习是否真正覆盖 README/SPEC 声明的信号、衰减与分析阶段应用，重点检查 FeedbackKind 枚举是否存在无入口/无消费的壳；完全缺失项先与 #7 查重。
+
 ### SPEC/README 实现一致性审计 Round 4：全管线 TaskRun 与失败调用计量
 
 - Phase: Cross-phase / Phase 5-10 worker pipeline + Phase 12 usage audit boundary

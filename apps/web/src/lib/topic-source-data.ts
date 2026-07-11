@@ -131,22 +131,26 @@ export interface UsageSummary {
   unit: string;
 }
 
+export interface WorkspaceAudit {
+  memberships: MembershipSummary[];
+  tenant: TenantSummary;
+  usageSince: string;
+  usageSummary: UsageSummary[];
+}
+
 export interface TopicSourceWorkspace {
   events: DashboardEventSummary[];
-  memberships: MembershipSummary[];
   mode: DataMode;
   message: string;
   preferences: PreferenceMemorySummary[];
   sourceGovernance: SourceGovernanceSummary[];
   tenant: TenantSummary;
   topics: TopicSummary[];
-  usageSummary: UsageSummary[];
 }
 
 function emptyWorkspace(errorMessage: string): TopicSourceWorkspace {
   return {
     events: [],
-    memberships: [],
     mode: "error",
     message: errorMessage,
     preferences: [],
@@ -158,7 +162,6 @@ function emptyWorkspace(errorMessage: string): TopicSourceWorkspace {
       userEmail: "",
     },
     topics: [],
-    usageSummary: [],
   };
 }
 
@@ -178,23 +181,12 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
       getPrismaClient,
       listDashboardEvents,
       listPreferenceMemoryForDashboard,
-      listOrganizationMemberships,
       listTopicSourceOverview,
       listSourceGovernanceReport,
-      listUsageSummary,
     } = await import("@wangchao/db");
     const prisma = getPrismaClient();
     const workspace = await ensureDefaultWorkspace(prisma);
-    const usageSince = new Date();
-    usageSince.setDate(usageSince.getDate() - 30);
-    const [
-      topics,
-      events,
-      preferences,
-      sourceGovernance,
-      memberships,
-      usageSummary,
-    ] = await Promise.all([
+    const [topics, events, preferences, sourceGovernance] = await Promise.all([
       listTopicSourceOverview(prisma, {
         organizationId: workspace.organizationId,
       }),
@@ -209,16 +201,6 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
       listSourceGovernanceReport(prisma, {
         organizationId: workspace.organizationId,
       }),
-      listOrganizationMemberships(prisma, {
-        organizationId: workspace.organizationId,
-      }),
-      listUsageSummary(
-        prisma,
-        {
-          organizationId: workspace.organizationId,
-        },
-        usageSince,
-      ),
     ]);
     const preferenceWeights = preferences.map((preference) => ({
       key: preference.key,
@@ -248,7 +230,6 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
       events: weightedEvents.map(({ event, preferenceScore }) =>
         toDashboardEventSummary(event, preferenceScore),
       ),
-      memberships,
       mode: "database",
       message: "工作区已连接，情报排序会结合重要度和你的反馈偏好。",
       preferences: preferences.map((preference) => ({
@@ -302,7 +283,6 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
           url: source.url,
         })),
       })),
-      usageSummary,
     };
   } catch (error) {
     const message =
@@ -310,6 +290,56 @@ export async function getTopicSourceWorkspace(): Promise<TopicSourceWorkspace> {
 
     return emptyWorkspace(message);
   }
+}
+
+export async function getWorkspaceAudit(): Promise<WorkspaceAudit> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not configured. Set DATABASE_URL to connect to Postgres.",
+    );
+  }
+
+  const {
+    assertMembershipRole,
+    ensureDefaultWorkspace,
+    getPrismaClient,
+    listOrganizationMemberships,
+    listUsageSummary,
+  } = await import("@wangchao/db");
+  const prisma = getPrismaClient();
+  const workspace = await ensureDefaultWorkspace(prisma);
+  await assertMembershipRole(
+    prisma,
+    {
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
+    },
+    ["OWNER", "ADMIN"],
+  );
+  const usageSince = new Date();
+  usageSince.setUTCDate(usageSince.getUTCDate() - 30);
+  const [memberships, usageSummary] = await Promise.all([
+    listOrganizationMemberships(prisma, {
+      organizationId: workspace.organizationId,
+    }),
+    listUsageSummary(
+      prisma,
+      { organizationId: workspace.organizationId },
+      usageSince,
+    ),
+  ]);
+
+  return {
+    memberships,
+    tenant: {
+      organizationName: workspace.organizationName,
+      organizationSlug: workspace.organizationSlug,
+      role: workspace.role,
+      userEmail: workspace.userEmail,
+    },
+    usageSince: usageSince.toISOString(),
+    usageSummary,
+  };
 }
 
 export async function getBriefingsPage(

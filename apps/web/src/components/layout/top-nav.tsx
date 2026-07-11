@@ -83,7 +83,7 @@ export function TopNav({ className }: TopNavProps) {
           </Button>
           <Button asChild className="top-nav-action" size="sm" variant="ghost">
             <Link
-              aria-current={pathname.startsWith("/admin/settings") ? "page" : undefined}
+              aria-current={pathname.startsWith("/admin") ? "page" : undefined}
               href="/admin/settings"
             >
               <Settings aria-hidden="true" size={14} />

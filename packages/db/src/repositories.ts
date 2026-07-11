@@ -893,6 +893,18 @@ export async function listSourceGovernanceReport(
           intelligenceEvents: {
             select: {
               id: true,
+              status: true,
+            },
+          },
+          eventItems: {
+            select: {
+              role: true,
+              event: {
+                select: {
+                  id: true,
+                  status: true,
+                },
+              },
             },
           },
         },
@@ -910,14 +922,38 @@ export async function listSourceGovernanceReport(
     const filteredItems = source.items.filter(
       (item) => item.status === "FILTERED",
     ).length;
-    const duplicateItems = source.items.filter(
-      (item) => item.status === "DUPLICATE",
-    ).length;
-    const eventCount = source.items.reduce(
-      (count, item) => count + item.intelligenceEvents.length,
-      0,
-    );
-    const hitRate = ratio(eventCount, totalItems);
+    const activeEventIds = new Set<string>();
+    let hitItems = 0;
+    let duplicateItems = 0;
+
+    for (const item of source.items) {
+      const activePrimaryEvents = item.intelligenceEvents.filter(
+        (event) => event.status !== "ARCHIVED",
+      );
+      const activeEventItems = item.eventItems.filter(
+        (eventItem) => eventItem.event.status !== "ARCHIVED",
+      );
+      const hasActivePrimary = activePrimaryEvents.length > 0;
+      const hasActiveSecondary = activeEventItems.some(
+        (eventItem) => eventItem.role === "SECONDARY",
+      );
+
+      for (const event of activePrimaryEvents) activeEventIds.add(event.id);
+      for (const eventItem of activeEventItems) {
+        activeEventIds.add(eventItem.event.id);
+      }
+
+      if (hasActivePrimary || activeEventItems.length > 0) hitItems += 1;
+      if (
+        item.status === "DUPLICATE" ||
+        (!hasActivePrimary && hasActiveSecondary)
+      ) {
+        duplicateItems += 1;
+      }
+    }
+
+    const eventCount = activeEventIds.size;
+    const hitRate = ratio(hitItems, totalItems);
     const noiseRate = ratio(filteredItems, totalItems);
     const duplicateRate = ratio(duplicateItems, totalItems);
     const qualityScore = calculateSourceQualityScore({
@@ -1358,6 +1394,9 @@ export async function markItemFiltered(
   });
 }
 
+// A fuzzy title match identifies an existing row by id even when the incoming
+// hash differs, so this write must branch by existing id instead of upserting
+// by the new hash and accidentally creating a second event.
 export async function upsertIntelligenceEventFromItem(
   prisma: PrismaClient,
   input: IntelligenceEventWriteInput,
@@ -1369,8 +1408,10 @@ export async function upsertIntelligenceEventFromItem(
         topicId: input.topicId,
       },
     },
-    select: { id: true, primaryItemId: true },
+    select: { id: true, primaryItemId: true, status: true },
   });
+
+  if (existing?.status === "ARCHIVED") existing = null;
 
   if (!existing && input.titleHash) {
     const fuzzyWindowStart = new Date(input.occurredAt ?? Date.now());
@@ -1382,12 +1423,13 @@ export async function upsertIntelligenceEventFromItem(
       where: {
         topicId: input.topicId,
         titleHash: input.titleHash,
+        status: { not: "ARCHIVED" },
         occurredAt: {
           gte: fuzzyWindowStart,
           lte: fuzzyWindowEnd,
         },
       },
-      select: { id: true, primaryItemId: true },
+      select: { id: true, primaryItemId: true, status: true },
     });
 
     if (existingByTitle) {
@@ -1397,78 +1439,98 @@ export async function upsertIntelligenceEventFromItem(
   }
 
   const event = await prisma.$transaction(async (tx) => {
-    const upserted = await tx.intelligenceEvent.upsert({
-      where: {
-        topicId_eventHash: {
-          eventHash: input.eventHash,
-          topicId: input.topicId,
+    const updateData = {
+      category: input.category,
+      entities: input.entities ?? [],
+      eventHash: input.eventHash,
+      explanation: input.explanation,
+      followUpSuggestion: input.followUpSuggestion,
+      gravityScore: input.gravityScore,
+      mergeReason: input.mergeReason,
+      occurredAt: input.occurredAt,
+      primaryItemId: input.primaryItemId,
+      rawAiResponse: toInputJson(input.rawAiResponse),
+      score: input.score,
+      summary: input.summary,
+      title: input.title,
+      titleHash: input.titleHash,
+    };
+    const upserted = existing
+      ? await tx.intelligenceEvent.update({
+          where: { id: existing.id },
+          data: updateData,
+        })
+      : await tx.intelligenceEvent.create({
+          data: {
+            organizationId: input.organizationId,
+            topicId: input.topicId,
+            primaryItemId: input.primaryItemId,
+            secondaryItemIds: [],
+            status: "UNREAD",
+            title: input.title,
+            summary: input.summary,
+            category: input.category,
+            entities: input.entities ?? [],
+            score: input.score,
+            gravityScore: input.gravityScore,
+            eventHash: input.eventHash,
+            titleHash: input.titleHash,
+            explanation: input.explanation,
+            followUpSuggestion: input.followUpSuggestion,
+            mergeReason: input.mergeReason,
+            occurredAt: input.occurredAt,
+            rawAiResponse: toInputJson(input.rawAiResponse),
+            eventItems: {
+              create: {
+                itemId: input.primaryItemId,
+                role: "PRIMARY",
+              },
+            },
+          },
+        });
+
+    if (existing) {
+      const mergeReason =
+        input.mergeReason ?? "事件哈希匹配：来自不同条目的同一事件报道";
+
+      await tx.eventItem.updateMany({
+        where: {
+          eventId: existing.id,
+          itemId: { not: input.primaryItemId },
+          role: "PRIMARY",
         },
-      },
-      update: {
-        category: input.category,
-        entities: input.entities ?? [],
-        explanation: input.explanation,
-        followUpSuggestion: input.followUpSuggestion,
-        gravityScore: input.gravityScore,
-        mergeReason: input.mergeReason,
-        occurredAt: input.occurredAt,
-        primaryItemId: input.primaryItemId,
-        rawAiResponse: toInputJson(input.rawAiResponse),
-        score: input.score,
-        summary: input.summary,
-        title: input.title,
-        titleHash: input.titleHash,
-      },
-      create: {
-        organizationId: input.organizationId,
-        topicId: input.topicId,
-        primaryItemId: input.primaryItemId,
-        secondaryItemIds: [],
-        status: "UNREAD",
-        title: input.title,
-        summary: input.summary,
-        category: input.category,
-        entities: input.entities ?? [],
-        score: input.score,
-        gravityScore: input.gravityScore,
-        eventHash: input.eventHash,
-        titleHash: input.titleHash,
-        explanation: input.explanation,
-        followUpSuggestion: input.followUpSuggestion,
-        mergeReason: input.mergeReason,
-        occurredAt: input.occurredAt,
-        rawAiResponse: toInputJson(input.rawAiResponse),
-        eventItems: {
-          create: {
+        data: {
+          mergeReason,
+          role: "SECONDARY",
+        },
+      });
+      await tx.eventItem.upsert({
+        where: {
+          eventId_itemId: {
+            eventId: existing.id,
             itemId: input.primaryItemId,
-            role: "PRIMARY",
           },
         },
-      },
-    });
+        update: {
+          mergeReason: null,
+          role: "PRIMARY",
+        },
+        create: {
+          eventId: existing.id,
+          itemId: input.primaryItemId,
+          role: "PRIMARY",
+        },
+      });
+    }
 
     if (
       existing?.primaryItemId &&
       existing.primaryItemId !== input.primaryItemId
     ) {
-      const alreadyLinked = await tx.eventItem.findUnique({
-        where: {
-          eventId_itemId: {
-            eventId: existing.id,
-            itemId: existing.primaryItemId,
-          },
-        },
+      await tx.item.update({
+        where: { id: existing.primaryItemId },
+        data: { status: "DUPLICATE" },
       });
-      if (!alreadyLinked) {
-        await tx.eventItem.create({
-          data: {
-            eventId: existing.id,
-            itemId: existing.primaryItemId,
-            role: "SECONDARY",
-            mergeReason: input.mergeReason ?? "精确 hash 匹配：多来源聚合",
-          },
-        });
-      }
     }
 
     await tx.item.update({
@@ -2395,42 +2457,46 @@ export async function mergeSemanticEvents(
 
       if (!mergeEvent) continue;
 
-      for (const eventItem of mergeEvent.eventItems) {
-        const alreadyLinked = keepEvent.eventItems.some(
-          (ei) => ei.itemId === eventItem.itemId,
-        );
-        if (!alreadyLinked) {
-          await tx.eventItem.create({
-            data: {
+      const mergedItemIds = new Set(
+        mergeEvent.eventItems.map((eventItem) => eventItem.itemId),
+      );
+      if (mergeEvent.primaryItemId) mergedItemIds.add(mergeEvent.primaryItemId);
+      if (keepEvent.primaryItemId) mergedItemIds.delete(keepEvent.primaryItemId);
+
+      for (const itemId of mergedItemIds) {
+        await tx.eventItem.upsert({
+          where: {
+            eventId_itemId: {
               eventId: keepEvent.id,
-              itemId: eventItem.itemId,
-              role: "SECONDARY",
-              mergeReason: input.reason,
+              itemId,
             },
-          });
-        }
+          },
+          update: {
+            mergeReason: input.reason,
+            role: "SECONDARY",
+          },
+          create: {
+            eventId: keepEvent.id,
+            itemId,
+            role: "SECONDARY",
+            mergeReason: input.reason,
+          },
+        });
       }
 
-      if (mergeEvent.primaryItemId) {
-        const alreadyLinked = keepEvent.eventItems.some(
-          (ei) => ei.itemId === mergeEvent.primaryItemId,
-        );
-        if (!alreadyLinked) {
-          await tx.eventItem.create({
-            data: {
-              eventId: keepEvent.id,
-              itemId: mergeEvent.primaryItemId,
-              role: "SECONDARY",
-              mergeReason: input.reason,
-            },
-          });
-        }
+      if (mergedItemIds.size > 0) {
+        await tx.item.updateMany({
+          where: { id: { in: Array.from(mergedItemIds) } },
+          data: { status: "DUPLICATE" },
+        });
       }
 
       await tx.intelligenceEvent.update({
         where: { id: mergeEventId },
         data: {
+          eventHash: null,
           status: "ARCHIVED",
+          titleHash: null,
           mergeReason: `语义聚类合并到 ${input.keepEventId}: ${input.reason}`,
         },
       });

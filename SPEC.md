@@ -265,6 +265,7 @@ preference_updates:
 - 每条 candidate source 写入 `discoveryChannel`、`recommendationReason`、`trustScore` 和 `SourceObservation.evidence`。
 - Source recommendation 优先使用 OpenAI-compatible adapter 生成一句推荐理由和 0-1 相关性评分；未配置 AI 或调用失败时使用确定性兜底推荐。
 - 每轮 discovery 写入 `TaskRun(type='SOURCE_DISCOVERY')` 和 `UsageEvent(type='SOURCE_DISCOVERY')`。
+- 信源质量报告从当前真实关系计算：`hitRate` 是该源 Item 中进入未归档 IntelligenceEvent（primary 或 secondary）的比例；`noiseRate` 是 FILTERED Item 比例；`duplicateRate` 是被合并为 secondary 报道的 Item 比例。事件数按未归档 event id 去重，已归档的语义合并旧事件不会继续抬高指标。
 
 重要原则：
 

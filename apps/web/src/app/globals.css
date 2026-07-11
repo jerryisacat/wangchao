@@ -769,6 +769,68 @@ a:not([data-slot="button"]):hover {
   font-size: 12px;
 }
 
+.workspace-audit-tenant {
+  margin-bottom: 12px;
+}
+
+.workspace-audit-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.workspace-audit-stat {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #0f0f13;
+  padding: 14px;
+}
+
+.workspace-audit-stat > svg {
+  grid-row: 1 / span 2;
+  color: var(--accent);
+}
+
+.workspace-audit-stat-value {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.workspace-audit-stat-label,
+.workspace-audit-period {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.workspace-audit-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 12px;
+}
+
+.workspace-audit-period {
+  margin: 0 0 12px;
+}
+
+.workspace-usage-quantity {
+  overflow-wrap: anywhere;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-align: right;
+}
+
 .source-quality-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1532,8 +1594,13 @@ a:not([data-slot="button"]):hover {
   }
 
   .event-row,
-  .source-quality-row {
+  .source-quality-row,
+  .workspace-audit-grid {
     grid-template-columns: 1fr;
+  }
+
+  .workspace-audit-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .score-pill {
@@ -1617,6 +1684,14 @@ a:not([data-slot="button"]):hover {
   .preference-row,
   .tenant-card {
     grid-template-columns: 1fr;
+  }
+
+  .workspace-audit-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-usage-quantity {
+    text-align: left;
   }
 
   .preference-meta {

@@ -72,6 +72,24 @@ test("admin credential tabs and client validation remain interactive", async ({ 
   await page.goto("/admin/settings");
   await expect(page.getByRole("heading", { name: "API Key 配置" })).toBeVisible();
 
+  await page.getByRole("link", { name: "成员与用量" }).click();
+  await expect(page).toHaveURL(/\/admin\/usage/);
+  await expect(
+    page.getByRole("heading", { name: "工作区成员与用量" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "成员" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "近 30 天用量" }),
+  ).toBeVisible();
+  await expect(
+    page.locator(
+      '[data-nextjs-dialog], .vite-error-overlay, #webpack-dev-server-client-overlay',
+    ),
+  ).toHaveCount(0);
+  await page.getByRole("link", { name: "API Key 设置" }).click();
+
   await page.getByRole("tab", { name: "搜索凭证" }).click();
   await expect(page.getByPlaceholder("输入新的搜索 API Key")).toBeVisible();
 
