@@ -1,5 +1,20 @@
 ## 2026-07-11
 
+### Batch 4: Telegram 投递 + 专题报告 + 反馈学习增强
+
+- Cause: 完成 #29 (Telegram 投递通道)、#17 (按需专题报告)、#7 (反馈学习增强)、#18 (首页导航)
+- Changed:
+  - 新增 DeliveryLog 模型、Telegram 凭证管理、Worker Telegram 投递 cycle
+  - 新增 Report 模型、情报库证据检索、Worker 报告生成 (规则+AI)、报告列表/详情页
+  - 新增 6 种 FeedbackKind (SOURCE_QUALITY_UP/DOWN, SCORE_UP/DOWN, MORE/LESS_LIKE_THIS)
+  - 新增偏好时间衰减 (30 天半衰期)
+  - 新增偏好编辑 UI (权重调整、删除)
+  - 新增事件详情增强反馈按钮
+  - 顶部导航增加专题报告入口
+- Files: schema.prisma, 0009 migration, extended-repositories.ts, worker index.ts, actions.ts, settings page + telegram-form, reports pages, preferences page, report-data.ts, core index.ts, top-nav.tsx, .env_example
+- Verification: typecheck, lint, test, build all pass
+- Notes: Telegram 投递需要 Admin 配置 Bot Token + Chat ID; 报告生成是异步任务; 偏好衰减在 generatePreferenceDeltas 中实现
+
 ### feat:Wave 3 Railway 运维 — GitHub 自动部署、Cron 观测、结构化日志、备份/回滚 runbook、CI/CD、环境变量矩阵
 
 - Cause: Issues #19、#20、#21、#22、#23、#24、#15、#3 描述了 Railway 运维的系统性缺口：GitHub→Railway 主路径未在文档中固化；Worker 缺少结构化日志和 Cron 观测；Postgres 备份/PITR 策略和 migration 前检查缺失；发布验证缺乏 HTTP smoke fallback 和回滚 runbook；Railway 环境变量矩阵和 secret 最小化暴露未文档化；Railpack monorepo 构建优化方向不清；GitHub Actions CI 不存在；Worker/Source Discovery Cron 的启用方式未说明。

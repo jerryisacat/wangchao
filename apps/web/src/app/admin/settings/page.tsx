@@ -1,13 +1,16 @@
-import { Activity, Check, CircleAlert, KeyRound, Search, Trash2 } from "lucide-react";
+import { Activity, Check, CircleAlert, KeyRound, MessageCircle, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import {
   deleteAiCredentialAction,
   deleteSearchCredentialAction,
+  deleteTelegramCredentialAction,
   listAiModelsAction,
   testAiCredentialAction,
   testSearchCredentialAction,
+  testTelegramCredentialAction,
   upsertAiCredentialAction,
   upsertSearchCredentialAction,
+  upsertTelegramCredentialAction,
 } from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,6 +19,7 @@ import { PageHeader } from "@/components/common/page-header";
 import { StatusBanner } from "@/components/common/status-banner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CredentialForm } from "./credential-form";
+import { TelegramCredentialForm } from "./telegram-form";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +49,11 @@ export default async function AdminSettingsPage({
     ["OWNER", "ADMIN"],
   );
   const credential = await getSubscriptionCredentialView(prisma, {
+    organizationId: workspace.organizationId,
+  });
+
+  const { getTelegramCredentialView } = await import("@wangchao/db");
+  const telegramCredential = await getTelegramCredentialView(prisma, {
     organizationId: workspace.organizationId,
   });
 
@@ -94,6 +103,10 @@ export default async function AdminSettingsPage({
           <TabsTrigger value="search">
             <Search aria-hidden="true" size={14} />
             搜索凭证
+          </TabsTrigger>
+          <TabsTrigger value="telegram">
+            <MessageCircle aria-hidden="true" size={14} />
+            Telegram 投递
           </TabsTrigger>
         </TabsList>
 
@@ -238,6 +251,77 @@ export default async function AdminSettingsPage({
               <p className="credential-note">
                 保存后系统将使用此 Key 进行信源发现。当前 Key
                 不会显示，仅显示脱敏提示。
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="telegram">
+          <Card variant="work">
+            <CardHeader>
+              <CardTitle>
+                <span className="inline-flex items-center gap-2">
+                  <MessageCircle aria-hidden="true" size={16} />
+                  Telegram 投递
+                </span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4 rounded-md border border-border bg-surface p-4">
+                <div className="mb-3 flex items-center justify-between">
+                  <Badge
+                    variant={telegramCredential.hasBotToken ? "success" : "muted"}
+                  >
+                    {telegramCredential.hasBotToken ? "已配置" : "未配置"}
+                  </Badge>
+                  {telegramCredential.hasBotToken ? (
+                    <Badge variant={telegramCredential.enabled ? "success" : "muted"}>
+                      {telegramCredential.enabled ? "已启用" : "已禁用"}
+                    </Badge>
+                  ) : null}
+                </div>
+                {telegramCredential.hasBotToken ? (
+                  <dl className="grid gap-1.5 text-xs">
+                    <div className="flex gap-2">
+                      <dt className="w-16 shrink-0 text-muted-foreground">
+                        Token
+                      </dt>
+                      <dd className="break-all font-mono text-muted-foreground">
+                        {telegramCredential.botTokenHint}
+                      </dd>
+                    </div>
+                    <div className="flex gap-2">
+                      <dt className="w-16 shrink-0 text-muted-foreground">
+                        Chat ID
+                      </dt>
+                      <dd className="break-all font-mono text-muted-foreground">
+                        {telegramCredential.chatId}
+                      </dd>
+                    </div>
+                  </dl>
+                ) : null}
+              </div>
+
+              <TelegramCredentialForm
+                currentChatId={telegramCredential.chatId}
+                formAction={upsertTelegramCredentialAction}
+                testAction={testTelegramCredentialAction}
+              />
+
+              {telegramCredential.hasBotToken ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <form action={deleteTelegramCredentialAction}>
+                    <Button size="sm" type="submit" variant="danger">
+                      <Trash2 aria-hidden="true" size={14} />
+                      清除凭证
+                    </Button>
+                  </form>
+                </div>
+              ) : null}
+
+              <p className="credential-note">
+                配置后，系统每日简报生成完成后会自动发送到指定 Telegram Chat。
+                Bot Token 加密存储，不会明文显示。未配置或禁用时不影响 Web/Markdown 简报。
               </p>
             </CardContent>
           </Card>

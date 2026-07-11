@@ -190,7 +190,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 |---|---|---|
 | 核心实体职责 | User/Org/Topic/Source/Item/Event/State/Feedback/Preference/Briefing/TaskRun/UsageEvent 职责表 | [docs/L2-domain.md#核心实体职责](L2-domain.md#核心实体职责) |
 | 关键状态机 | Source / Item / IntelligenceEvent / TaskRun 状态转换图 | [docs/L2-domain.md#关键状态机](L2-domain.md#关键状态机) |
-| FeedbackKind 枚举 | 8 种反馈类型及对偏好影响 | [docs/L2-domain.md#feedbackkind-枚举](L2-domain.md#feedbackkind-枚举) |
+| FeedbackKind 枚举 | 14 种反馈类型及对偏好影响 | [docs/L2-domain.md#feedbackkind-枚举](L2-domain.md#feedbackkind-枚举) |
 | 领域术语表 | Topic Profile / Gravity Score / Preference Memory / Source Observation 等 | [docs/L2-domain.md#领域术语表](L2-domain.md#领域术语表) |
 | 实体关系概览 | 树状关系图和唯一性约束 | [docs/L2-domain.md#实体关系概览](L2-domain.md#实体关系概览) |
 
@@ -215,11 +215,17 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 | 文件 | 职责摘要 |
 |---|---|
 | `packages/db/prisma/migrations/0008_briefing_idempotency/migration.sql` | 清理历史重复简报并建立主题/周期/窗口唯一约束。 |
+| `packages/db/prisma/migrations/0009_delivery_report_feedback/migration.sql` | 新增 DeliveryLog/Report 模型、Telegram 凭证字段、增强 FeedbackKind 枚举。 |
+| `packages/db/src/extended-repositories.ts` | Telegram 凭证、DeliveryLog、Report CRUD、证据检索和偏好编辑函数。 |
 | `packages/db/src/repositories.fixtures.ts` | Repository runtime fixtures，覆盖收藏、daily briefing、TaskRun、标题模糊合并和 SourceObservation 指标口径。 |
 | `apps/worker/src/index.fixtures.ts` | Worker runtime fixture，覆盖 rule/LLM filter reason 的选择优先级。 |
 | `apps/web/src/app/admin/usage/page.tsx` | OWNER/ADMIN 工作区成员与近 30 天用量审计页。 |
 | `apps/web/src/app/admin/settings/credential-form.tsx` | AI/搜索凭证表单，模型嗅探下拉、自定义 provider 手动确认、计费提示 |
+| `apps/web/src/app/admin/settings/telegram-form.tsx` | Telegram 凭证表单，Bot Token/Chat ID 输入、测试连接、密码显隐。 |
 | `apps/web/src/app/admin/settings/providers.ts` | Provider 常量集中定义（`AI_PROVIDERS`/`SEARCH_PROVIDERS`/`defaultAiBaseUrl`），前后端统一数据源。 |
+| `apps/web/src/app/reports/page.tsx` | 专题报告列表页，提交自然语言问题触发异步报告生成。 |
+| `apps/web/src/app/reports/[reportId]/page.tsx` | 专题报告详情页，展示 Markdown 内容和覆盖说明。 |
+| `apps/web/src/lib/report-data.ts` | 报告数据读取 helper（`getReportsPage`/`getReportDetail`）。 |
 
 关键调用链索引：
 
@@ -233,6 +239,8 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 | Source Governance（信源治理） | [docs/L3-modules.md#source-governance信源治理链路](L3-modules.md#source-governance信源治理链路) |
 | Source Discovery（信源发现） | [docs/L3-modules.md#source-discovery信源发现链路](L3-modules.md#source-discovery信源发现链路) |
 | Commercial Readiness Boundary（商业化边界） | [docs/L3-modules.md#commercial-readiness-boundary商业化边界链路](L3-modules.md#commercial-readiness-boundary商业化边界链路) |
+| Telegram Delivery（Telegram 投递） | [docs/L3-modules.md#telegram-deliverytelegram-投递链路](L3-modules.md#telegram-deliverytelegram-投递链路) |
+| Report Generation（专题报告生成） | [docs/L3-modules.md#report-generation专题报告生成链路](L3-modules.md#report-generation专题报告生成链路) |
 | Deployment and Health（部署与健康检查） | [docs/L3-modules.md#deployment-and-health部署与健康检查链路](L3-modules.md#deployment-and-health部署与健康检查链路) |
 
 ---

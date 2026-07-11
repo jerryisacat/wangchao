@@ -1,5 +1,9 @@
-import { Brain } from "lucide-react";
+import { Brain, Minus, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
+import {
+  deletePreferenceAction,
+  updatePreferenceWeightAction,
+} from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,10 +39,13 @@ export default async function PreferencesPage() {
             ) : (
               <div className="preference-list">
                 {workspace.preferences.map((preference) => (
-                  <article className="preference-row" key={preference.key}>
+                  <article className="preference-row" key={`${preference.topicName}-${preference.key}`}>
                     <div>
                       <h3>{preference.key}</h3>
                       <p>{preference.explanation}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        主题：{preference.topicName}
+                      </p>
                     </div>
                     <div className="preference-meta">
                       <Badge variant={preference.weight >= 0 ? "success" : "danger"}>
@@ -61,6 +68,66 @@ export default async function PreferencesPage() {
                         />
                       </div>
                     </div>
+                    <div className="flex items-center gap-1">
+                      <form action={updatePreferenceWeightAction}>
+                        <input type="hidden" name="preferenceKey" value={preference.key} />
+                        <input
+                          type="hidden"
+                          name="topicId"
+                          value={getTopicId(workspace, preference.topicName)}
+                        />
+                        <input
+                          type="hidden"
+                          name="weight"
+                          value={Math.max(-4, preference.weight - 0.5).toFixed(2)}
+                        />
+                        <Button
+                          aria-label="降低权重"
+                          size="icon-xs"
+                          type="submit"
+                          variant="ghost"
+                        >
+                          <Minus aria-hidden="true" size={12} />
+                        </Button>
+                      </form>
+                      <form action={updatePreferenceWeightAction}>
+                        <input type="hidden" name="preferenceKey" value={preference.key} />
+                        <input
+                          type="hidden"
+                          name="topicId"
+                          value={getTopicId(workspace, preference.topicName)}
+                        />
+                        <input
+                          type="hidden"
+                          name="weight"
+                          value={Math.min(4, preference.weight + 0.5).toFixed(2)}
+                        />
+                        <Button
+                          aria-label="提升权重"
+                          size="icon-xs"
+                          type="submit"
+                          variant="ghost"
+                        >
+                          <Plus aria-hidden="true" size={12} />
+                        </Button>
+                      </form>
+                      <form action={deletePreferenceAction}>
+                        <input type="hidden" name="preferenceKey" value={preference.key} />
+                        <input
+                          type="hidden"
+                          name="topicId"
+                          value={getTopicId(workspace, preference.topicName)}
+                        />
+                        <Button
+                          aria-label="删除偏好"
+                          size="icon-xs"
+                          type="submit"
+                          variant="danger"
+                        >
+                          <Trash2 aria-hidden="true" size={12} />
+                        </Button>
+                      </form>
+                    </div>
                   </article>
                 ))}
               </div>
@@ -70,4 +137,11 @@ export default async function PreferencesPage() {
       </div>
     </>
   );
+}
+
+function getTopicId(
+  workspace: { topics: Array<{ id: string; name: string }> },
+  topicName: string,
+): string {
+  return workspace.topics.find((t) => t.name === topicName)?.id ?? "";
 }

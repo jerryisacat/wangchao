@@ -41,11 +41,18 @@ export interface FeedbackSignal {
     | "DISMISS"
     | "EXPORT"
     | "CATEGORY_UP"
-    | "CATEGORY_DOWN";
+    | "CATEGORY_DOWN"
+    | "MORE_LIKE_THIS"
+    | "LESS_LIKE_THIS"
+    | "SOURCE_QUALITY_UP"
+    | "SOURCE_QUALITY_DOWN"
+    | "SCORE_UP"
+    | "SCORE_DOWN";
   sourceId?: string | null;
   sourceName?: string | null;
   topicId: string;
   value?: number | null;
+  createdAt?: Date | null;
 }
 
 export interface PreferenceDelta {
@@ -422,6 +429,7 @@ export function calculateGravityScore(
 
 export function generatePreferenceDeltas(
   signals: FeedbackSignal[],
+  now: Date = new Date(),
 ): PreferenceDelta[] {
   const grouped = new Map<
     string,
@@ -430,6 +438,7 @@ export function generatePreferenceDeltas(
       signalCount: number;
       topicId: string;
       type: "category" | "source";
+      latestSignalAt: Date;
     }
   >();
 
@@ -439,14 +448,20 @@ export function generatePreferenceDeltas(
 
     for (const key of keys) {
       const groupKey = `${signal.topicId}\u0000${key}`;
+      const signalTime = signal.createdAt ?? now;
+      const decayedWeight = applyTimeDecay(weight, signalTime, now);
       const existing = grouped.get(groupKey) ?? {
         score: 0,
         signalCount: 0,
         topicId: signal.topicId,
         type: key.startsWith("source") ? ("source" as const) : ("category" as const),
+        latestSignalAt: signalTime,
       };
-      existing.score += weight;
+      existing.score += decayedWeight;
       existing.signalCount += 1;
+      if (signalTime > existing.latestSignalAt) {
+        existing.latestSignalAt = signalTime;
+      }
       grouped.set(groupKey, existing);
     }
   }
@@ -785,6 +800,31 @@ function preferenceKeysForSignal(signal: FeedbackSignal): string[] {
     return signal.category ? [`category:${signal.category}`] : [];
   }
 
+  if (signal.kind === "MORE_LIKE_THIS" || signal.kind === "LESS_LIKE_THIS") {
+    const keys: string[] = [];
+    if (signal.category) {
+      keys.push(`category:${signal.category}`);
+    }
+    keys.push(...preferenceKeysForEvent({
+      category: signal.category,
+      sourceId: signal.sourceId,
+      sourceName: signal.sourceName,
+    }));
+    return keys;
+  }
+
+  if (signal.kind === "SOURCE_QUALITY_UP" || signal.kind === "SOURCE_QUALITY_DOWN") {
+    return preferenceKeysForEvent({
+      category: null,
+      sourceId: signal.sourceId,
+      sourceName: signal.sourceName,
+    });
+  }
+
+  if (signal.kind === "SCORE_UP" || signal.kind === "SCORE_DOWN") {
+    return signal.category ? [`category:${signal.category}`] : [];
+  }
+
   return preferenceKeysForEvent({
     category: signal.category,
     sourceId: signal.sourceId,
@@ -801,8 +841,24 @@ function feedbackSignalWeight(signal: FeedbackSignal): number {
     return 2;
   }
 
-  if (signal.kind === "CATEGORY_UP") {
+  if (signal.kind === "CATEGORY_UP" || signal.kind === "MORE_LIKE_THIS") {
     return 2;
+  }
+
+  if (signal.kind === "SOURCE_QUALITY_UP") {
+    return 1.5;
+  }
+
+  if (signal.kind === "SCORE_UP") {
+    return 1;
+  }
+
+  if (signal.kind === "SOURCE_QUALITY_DOWN") {
+    return -1.5;
+  }
+
+  if (signal.kind === "SCORE_DOWN") {
+    return -1;
   }
 
   if (signal.kind === "READ") {
@@ -810,6 +866,21 @@ function feedbackSignalWeight(signal: FeedbackSignal): number {
   }
 
   return -2;
+}
+
+const PREFERENCE_DECAY_HALF_LIFE_DAYS = 30;
+
+function applyTimeDecay(
+  weight: number,
+  signalTime: Date,
+  now: Date,
+): number {
+  const ageDays = Math.max(
+    0,
+    (now.getTime() - signalTime.getTime()) / (1000 * 60 * 60 * 24),
+  );
+  const decayFactor = Math.pow(0.5, ageDays / PREFERENCE_DECAY_HALF_LIFE_DAYS);
+  return Number((weight * decayFactor).toFixed(4));
 }
 
 function buildPreferenceExplanation(

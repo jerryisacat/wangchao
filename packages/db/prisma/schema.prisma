@@ -53,8 +53,14 @@ enum FeedbackKind {
   EXPORT
   SOURCE_APPROVE
   SOURCE_REJECT
+  SOURCE_QUALITY_UP
+  SOURCE_QUALITY_DOWN
+  SCORE_UP
+  SCORE_DOWN
   CATEGORY_UP
   CATEGORY_DOWN
+  MORE_LIKE_THIS
+  LESS_LIKE_THIS
 }
 
 enum BriefingPeriod {
@@ -76,6 +82,8 @@ enum TaskRunType {
   AI_EVENT_EXTRACTION
   BRIEFING_GENERATION
   EXPORT_GENERATION
+  REPORT_GENERATION
+  TELEGRAM_DELIVERY
 }
 
 enum TaskRunStatus {
@@ -127,9 +135,30 @@ model Organization {
   sourceObservations SourceObservation[]
   taskRuns           TaskRun[]
   usageEvents        UsageEvent[]
+  deliveryLogs       DeliveryLog[]
+  reports            Report[]
   subscription       Subscription?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
+}
+
+enum DeliveryChannel {
+  TELEGRAM
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
+enum ReportStatus {
+  PENDING
+  GENERATING
+  COMPLETED
+  FAILED
+  INSUFFICIENT_DATA
 }
 
 model Subscription {
@@ -147,6 +176,12 @@ model Subscription {
   searchEncryptedKey String? // AES-256-GCM 密文
   searchProvider     String? // brave 等
   searchKeyHint      String? // 脱敏显示
+
+  // Telegram 投递凭证
+  telegramEncryptedBotToken String? // AES-256-GCM 密文
+  telegramBotTokenHint      String? // 脱敏显示
+  telegramChatId            String? // 目标 Chat ID（非密文）
+  telegramEnabled           Boolean  @default(false)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt    DateTime     @default(now())
@@ -394,6 +429,7 @@ model Briefing {
   topic          Topic               @relation(fields: [topicId], references: [id], onDelete: Cascade)
   events         IntelligenceEvent[] @relation("BriefingEvents")
   exportEvents   ExportEvent[]
+  deliveryLogs   DeliveryLog[]
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
 
@@ -492,4 +528,52 @@ model UsageEvent {
 
   @@index([organizationId, type, createdAt])
   @@index([userId, createdAt])
+}
+
+model DeliveryLog {
+  id             String          @id @default(cuid())
+  organizationId String
+  briefingId     String
+  channel        DeliveryChannel @default(TELEGRAM)
+  status         DeliveryStatus  @default(PENDING)
+  attempt        Int             @default(0)
+  recipientRef   String? // e.g. Telegram chat_id
+  idempotencyKey String? // unique per briefing+channel for dedup
+  errorMessage   String?
+  errorCode      String?
+  sentAt         DateTime?
+  metadata       Json?
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  briefing       Briefing        @relation(fields: [briefingId], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([briefingId, channel])
+  @@index([organizationId, status])
+  @@index([channel, status])
+}
+
+model Report {
+  id             String       @id @default(cuid())
+  organizationId String
+  question       String
+  status         ReportStatus @default(PENDING)
+  markdown       String?
+  summary        String?
+  rangeStart     DateTime?
+  rangeEnd       DateTime?
+  eventCount     Int          @default(0)
+  itemCount      Int          @default(0)
+  topicIds       String[]     @default([])
+  sourceIds      String[]     @default([])
+  coverageNote   String?
+  generatedAt    DateTime?
+  errorMessage   String?
+  metadata       Json?
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@index([organizationId, status])
+  @@index([organizationId, createdAt])
 }

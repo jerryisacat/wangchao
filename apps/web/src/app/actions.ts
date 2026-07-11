@@ -850,6 +850,14 @@ function toUserActionError(error: unknown): string {
     return "搜索 API Key 未随保存请求提交，请重新输入后测试并保存。";
   }
 
+  if (error instanceof Error && error.message === "TELEGRAM_BOT_TOKEN_MISSING") {
+    return "请输入 Telegram Bot Token。";
+  }
+
+  if (error instanceof Error && error.message === "TELEGRAM_CHAT_ID_MISSING") {
+    return "请输入 Telegram Chat ID。";
+  }
+
   if (error instanceof Error && error.message === "AI_BASE_URL_INVALID") {
     return "AI Base URL 必须是有效的 HTTP 或 HTTPS 地址。";
   }
@@ -1801,4 +1809,399 @@ export async function testSearchCredentialAction(
     logActionError("testSearchCredentialAction", error);
     return { message: toUserActionError(error), ok: false };
   }
+}
+
+export async function upsertTelegramCredentialAction(
+  formData: FormData,
+): Promise<void> {
+  let message = "Telegram 投递凭证已更新。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to configure credentials.");
+    }
+
+    const botToken = readOptionalField(formData, "telegramBotToken");
+    if (!botToken) {
+      throw new Error("TELEGRAM_BOT_TOKEN_MISSING");
+    }
+    const chatId = readOptionalField(formData, "telegramChatId");
+    if (!chatId) {
+      throw new Error("TELEGRAM_CHAT_ID_MISSING");
+    }
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      recordUsageEvent,
+      upsertTelegramCredential,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    await upsertTelegramCredential(
+      prisma,
+      { organizationId: workspace.organizationId },
+      { botToken, chatId, enabled: true },
+    );
+
+    await recordUsageEvent(prisma, {
+      metadata: { source: "admin-settings-telegram" },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectType: "subscription",
+      type: "WEB_ACTION",
+      unit: "credential-update",
+      userId: workspace.userId,
+    });
+  } catch (error) {
+    logActionError("upsertTelegramCredentialAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/admin/settings");
+  redirect(actionRedirectHref("/admin/settings", type, message));
+}
+
+export async function deleteTelegramCredentialAction(
+  formData: FormData,
+): Promise<void> {
+  let message = "Telegram 投递凭证已清除。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to manage credentials.");
+    }
+
+    const {
+      assertMembershipRole,
+      deleteTelegramCredential,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      recordUsageEvent,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    await deleteTelegramCredential(prisma, {
+      organizationId: workspace.organizationId,
+    });
+
+    await recordUsageEvent(prisma, {
+      metadata: { source: "admin-settings-telegram" },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectType: "subscription",
+      type: "WEB_ACTION",
+      unit: "credential-delete",
+      userId: workspace.userId,
+    });
+  } catch (error) {
+    logActionError("deleteTelegramCredentialAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/admin/settings");
+  redirect(actionRedirectHref("/admin/settings", type, message));
+}
+
+export async function testTelegramCredentialAction(
+  formData: FormData,
+): Promise<{ message: string; ok: boolean }> {
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to test credentials.");
+    }
+
+    const botToken = readOptionalField(formData, "telegramBotToken");
+    if (!botToken) {
+      return { message: "请输入 Bot Token 后再测试。", ok: false };
+    }
+    const chatId = readOptionalField(formData, "telegramChatId");
+    if (!chatId) {
+      return { message: "请输入 Chat ID 后再测试。", ok: false };
+    }
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      testTelegramCredential,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN"],
+    );
+
+    return testTelegramCredential({ botToken, chatId });
+  } catch (error) {
+    logActionError("testTelegramCredentialAction", error);
+    return { message: toUserActionError(error), ok: false };
+  }
+}
+
+export async function createReportAction(formData: FormData): Promise<void> {
+  const question = readRequiredField(formData, "reportQuestion");
+  let message = "专题报告生成请求已提交。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to create reports.");
+    }
+
+    if (question.length > 500) {
+      throw new Error("问题过长，请限制在 500 字以内。");
+    }
+
+    const {
+      assertMembershipRole,
+      createReport,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      recordUsageEvent,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN", "MEMBER"],
+    );
+
+    const report = await createReport(
+      prisma,
+      { organizationId: workspace.organizationId },
+      { question },
+    );
+
+    await recordUsageEvent(prisma, {
+      metadata: { action: "create-report", question: question.slice(0, 100) },
+      organizationId: workspace.organizationId,
+      quantity: 1,
+      subjectId: report.id,
+      subjectType: "report",
+      type: "WEB_ACTION",
+      unit: "action",
+      userId: workspace.userId,
+    });
+
+    const { runReportGeneration } = await import("@wangchao/worker");
+    runReportGeneration({
+      organizationId: workspace.organizationId,
+      reportId: report.id,
+      userId: workspace.userId,
+    }).catch((error) => {
+      logActionError("createReportAction:runReportGeneration", error);
+    });
+  } catch (error) {
+    logActionError("createReportAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/reports");
+  redirect(actionRedirectHref("/reports", type, message));
+}
+
+export async function deletePreferenceAction(formData: FormData): Promise<void> {
+  const topicId = readRequiredField(formData, "topicId");
+  const key = readRequiredField(formData, "preferenceKey");
+  let message = "偏好已删除。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to delete preferences.");
+    }
+
+    const {
+      assertMembershipRole,
+      deletePreferenceMemory,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN", "MEMBER"],
+    );
+
+    await deletePreferenceMemory(
+      prisma,
+      { organizationId: workspace.organizationId },
+      { key, topicId },
+    );
+  } catch (error) {
+    logActionError("deletePreferenceAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/preferences");
+  redirect(actionRedirectHref("/preferences", type, message));
+}
+
+export async function updatePreferenceWeightAction(
+  formData: FormData,
+): Promise<void> {
+  const topicId = readRequiredField(formData, "topicId");
+  const key = readRequiredField(formData, "preferenceKey");
+  const weightRaw = readOptionalField(formData, "weight");
+  const weight = Number.parseFloat(weightRaw);
+  let message = "偏好权重已更新。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to update preferences.");
+    }
+
+    if (!Number.isFinite(weight)) {
+      throw new Error("Invalid weight value.");
+    }
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      updatePreferenceMemoryWeight,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN", "MEMBER"],
+    );
+
+    await updatePreferenceMemoryWeight(
+      prisma,
+      { organizationId: workspace.organizationId },
+      { key, topicId, weight },
+    );
+  } catch (error) {
+    logActionError("updatePreferenceWeightAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/preferences");
+  redirect(actionRedirectHref("/preferences", type, message));
+}
+
+export async function recordEnhancedFeedbackAction(
+  formData: FormData,
+): Promise<void> {
+  const topicId = readRequiredField(formData, "topicId");
+  const kind = readRequiredField(formData, "feedbackKind") as
+    | "MORE_LIKE_THIS"
+    | "LESS_LIKE_THIS"
+    | "SCORE_UP"
+    | "SCORE_DOWN";
+  const eventId = readOptionalField(formData, "eventId") || undefined;
+  const sourceId = readOptionalField(formData, "sourceId") || undefined;
+  const returnTo = readSafeReturnPath(formData, "returnTo") ?? "/";
+  let message = "反馈已记录。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required for feedback.");
+    }
+
+    if (!["MORE_LIKE_THIS", "LESS_LIKE_THIS", "SCORE_UP", "SCORE_DOWN"].includes(kind)) {
+      throw new Error("Invalid feedback kind.");
+    }
+
+    const {
+      assertMembershipRole,
+      ensureDefaultWorkspace,
+      getPrismaClient,
+      recordEnhancedFeedback,
+    } = await import("@wangchao/db");
+    const prisma = getPrismaClient();
+    const workspace = await ensureDefaultWorkspace(prisma);
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN", "MEMBER"],
+    );
+
+    const valueMap: Record<string, number> = {
+      MORE_LIKE_THIS: 2,
+      LESS_LIKE_THIS: -2,
+      SCORE_UP: 1,
+      SCORE_DOWN: -1,
+    };
+
+    await recordEnhancedFeedback(
+      prisma,
+      { organizationId: workspace.organizationId },
+      {
+        topicId,
+        userId: workspace.userId,
+        kind,
+        eventId,
+        sourceId,
+        value: valueMap[kind],
+      },
+    );
+  } catch (error) {
+    logActionError("recordEnhancedFeedbackAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath(returnTo);
+  revalidatePath("/preferences");
+  redirect(actionRedirectHref(returnTo, type, message));
 }

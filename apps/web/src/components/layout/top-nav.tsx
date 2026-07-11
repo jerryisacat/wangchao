@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Rss, Settings, Sparkles, List } from "lucide-react";
+import { Plus, Rss, Settings, Sparkles, List, FileSearch } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 const mainLinks = [
   { href: "/", label: "未读情报" },
   { href: "/briefings", label: "今日简报" },
+  { href: "/reports", label: "专题报告" },
   { href: "/saved", label: "已保存" },
   { href: "/preferences", label: "偏好" },
 ] as const;

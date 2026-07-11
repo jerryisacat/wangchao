@@ -130,6 +130,12 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 - `AI_BASE_URL`、`AI_API_KEY`、`AI_MODEL_L1`、`AI_MODEL_L2` 用于 OpenAI-compatible AI 调用；当前作为 Admin 后台 `/admin/settings` 未配置时的 fallback。source recommendation 当前使用 `AI_MODEL_L1`，未配置时走 deterministic fallback。
 
+### Telegram 投递
+
+- `TELEGRAM_API_BASE` 可选，控制 Telegram Bot API base URL，默认 `https://api.telegram.org`。自建 Telegram Bot API server 或需走代理时可覆盖。
+- Telegram 凭证（Bot Token + Chat ID）通过 Admin 后台 `/admin/settings` Telegram tab 配置（需要 OWNER/ADMIN 权限），Bot Token 使用 AES-256-GCM 加密存储，不通过环境变量管理。
+- Worker `runTelegramDeliveryCycle` 在 fetch cycle 末尾自动运行：读取已配置凭证，查找近 2 小时未投递的 Briefing，通过 Telegram Bot API 发送，每条 Briefing 每渠道最多一条 DeliveryLog（幂等）。
+
 ### Source Discovery
 
 - `BRAVE_SEARCH_API_KEY` 是 Brave Search API BYOK；当前作为 Admin 后台 `/admin/settings` 未配置时的 fallback。为空时 source discovery 跳过 `keyword-search` 渠道。
@@ -179,7 +185,7 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - `pnpm approve-builds --all` 已用于批准当前依赖链中的 `esbuild`、`sharp`、`prisma` 和 `@prisma/engines` 构建脚本，结果写入 `pnpm-workspace.yaml`。
 - Next.js web app 不使用 `next/font/google`，避免构建期访问外部字体网络。
 - 外部客户端、数据库、Redis 或 SDK 后续必须 lazy init，避免 `next build` 在缺少 runtime env 时失败。
-- 2026-07-06 已修复首版 migration 与 Prisma schema 的 `_BriefingEvents` 漂移；干净库已通过根命令 `pnpm db:migrate`，并生成 `_prisma_migrations` 记录。当前共 7 个 migration，最新为 `0007_source_error_tracking`（Source 表新增 lastError/lastErrorAt/consecutiveFailures 字段用于 Worker 抓取错误追踪）。
+- 2026-07-06 已修复首版 migration 与 Prisma schema 的 `_BriefingEvents` 漂移；干净库已通过根命令 `pnpm db:migrate`，并生成 `_prisma_migrations` 记录。当前共 9 个 migration，最新为 `0009_delivery_report_feedback`（新增 DeliveryLog/Report 模型、Telegram 凭证字段、增强 FeedbackKind 枚举）。
 - 2026-07-06 本地 Docker Postgres 已通过 `db:validate`、`db:generate`、`db:migrate`、`db:seed`、数据库写入 smoke test、Web `/api/health` 和 `worker:health`；浏览器创建主题 + RSS Server Action 已验证写入 Postgres。
 - 当前环境曾出现公网 RSS 抓取 `https://hnrss.org/newest?points=100` 失败并记录 `TaskRun(FAILED)`；后续个人使用前需要用真实可访问 RSS 复测，或手动使用离线 fixture source 验证 worker 闭环。
 - 2026-07-06 生产发现 `apps/web/src/app/page.tsx` 被 Next.js 静态预渲染，导致 Railway 上 `/api/health` database `ok` 但首页仍显示预览 fallback；已通过 `export const dynamic = "force-dynamic"` 修复，后续首页会读取运行时工作区数据。

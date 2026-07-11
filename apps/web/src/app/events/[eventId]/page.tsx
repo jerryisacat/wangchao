@@ -10,10 +10,13 @@ import {
   Sparkles,
   ThumbsDown,
   ThumbsUp,
+  TrendingDown,
+  TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
+  recordEnhancedFeedbackAction,
   regenerateEventSummaryAction,
   updateCategoryPreferenceAction,
   updateDashboardEventStateAction,
@@ -214,6 +217,50 @@ export default async function EventDetailPage({
                 >
                   <ThumbsDown aria-hidden="true" size={14} />
                   少关注这类
+                </Button>
+              </form>
+              <form action={recordEnhancedFeedbackAction}>
+                <input name="topicId" type="hidden" value={event.topicId} />
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="sourceId" type="hidden" value={event.sourceId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <input name="feedbackKind" type="hidden" value="MORE_LIKE_THIS" />
+                <Button
+                  size="sm"
+                  type="submit"
+                  variant="ghost"
+                >
+                  <TrendingUp aria-hidden="true" size={14} />
+                  多看类似
+                </Button>
+              </form>
+              <form action={recordEnhancedFeedbackAction}>
+                <input name="topicId" type="hidden" value={event.topicId} />
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="sourceId" type="hidden" value={event.sourceId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <input name="feedbackKind" type="hidden" value="LESS_LIKE_THIS" />
+                <Button
+                  size="sm"
+                  type="submit"
+                  variant="ghost"
+                >
+                  <TrendingDown aria-hidden="true" size={14} />
+                  少看类似
+                </Button>
+              </form>
+              <form action={recordEnhancedFeedbackAction}>
+                <input name="topicId" type="hidden" value={event.topicId} />
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <input name="feedbackKind" type="hidden" value="SCORE_UP" />
+                <Button
+                  size="sm"
+                  type="submit"
+                  variant="ghost"
+                >
+                  <Sparkles aria-hidden="true" size={14} />
+                  评分偏低
                 </Button>
               </form>
               <form action={regenerateEventSummaryAction}>

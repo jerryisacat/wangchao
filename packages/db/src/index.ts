@@ -11,6 +11,33 @@ export const databaseRuntimeBoundary: DatabaseRuntimeBoundary = {
 export { disconnectPrismaClient, getPrismaClient } from "./client.js";
 export { decryptCredential, encryptCredential, maskKeyHint } from "./crypto.js";
 export {
+  createDeliveryLog,
+  createReport,
+  deletePreferenceMemory,
+  deleteTelegramCredential,
+  completeReport,
+  failReport,
+  findBriefingsForTelegramDelivery,
+  findPendingDeliveryForBriefing,
+  getDecryptedTelegramCredential,
+  getReport,
+  getTelegramCredentialView,
+  listReports,
+  recordEnhancedFeedback,
+  searchReportEvidenceEvents,
+  setTelegramEnabled,
+  testTelegramCredential,
+  updateDeliveryLog,
+  updatePreferenceMemoryWeight,
+  updateReportStatus,
+  upsertTelegramCredential,
+  type DeliveryLogRecord,
+  type DecryptedTelegramCredential,
+  type ReportEvidenceEvent,
+  type ReportRecord,
+  type TelegramCredentialView,
+} from "./extended-repositories.js";
+export {
   attachActiveRssSource,
   assertMembershipRole,
   canonicalizeUrl,

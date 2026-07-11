@@ -13,7 +13,7 @@
 | `User` | 人类账户。当前个人版使用默认用户，不要求真实注册登录。 |
 | `Organization` | 租户和计费边界。当前个人版使用默认组织。 |
 | `Membership` | User-to-Organization 角色映射（OWNER/ADMIN/MEMBER）。 |
-| `Subscription` | Organization 的 1:1 凭证与订阅配置。存储 AES-256-GCM 加密的 AI/搜索 API Key，仅保留脱敏 `keyHint`，不存明文。是 Phase 15 BYOK/订阅模型的前置实体，后续扩展 Plan/Stripe 字段。 |
+| `Subscription` | Organization 的 1:1 凭证与订阅配置。存储 AES-256-GCM 加密的 AI/搜索 API Key 和 Telegram Bot Token，仅保留脱敏 `keyHint`/`botTokenHint`，不存明文。是 Phase 15 BYOK/订阅模型的前置实体，后续扩展 Plan/Stripe 字段。 |
 | `Topic` | 用户创建的情报主题，包含 topic profile、状态和 owner。 |
 | `Source` | RSS/Web 信源注册条目，带 candidate/active/muted/rejected 状态和质量分。 |
 | `Item` | worker 抓取并规范化后的原始条目。 |
@@ -26,6 +26,8 @@
 | `SourceObservation` | 候选/活跃信源的质量观测指标和审核证据。 |
 | `TaskRun` | worker 任务状态、重试、错误和输入输出审计。 |
 | `UsageEvent` | AI 调用、抓取、导出、简报生成等用量记录。 |
+| `DeliveryLog` | 简报投递记录。每条 Briefing 每个投递渠道（当前仅 Telegram）最多一条 DeliveryLog，通过 `briefingId + channel` 唯一约束保证幂等。 |
+| `Report` | 按需专题报告。用户提交自然语言问题，系统从情报库已有事件检索证据，生成结构化 Markdown 报告。 |
 
 ## 关键状态机
 
@@ -120,6 +122,34 @@ create/start ──> RUNNING
 - LLM extraction 失败但规则 fallback 成功时，`AI_EVENT_EXTRACTION=FAILED`，外层 `AI_RELEVANCE=SUCCEEDED` 且 output 标记 `llmFallback=true`；这不是整轮失败，也不会丢失 provider 错误证据。
 - AI UsageEvent 的 quantity 统计逻辑 adapter 调用数（内部 HTTP retry 不重复计数），包括最终失败的调用；成功数和 fallback 数保留在 metadata。
 
+### Report 状态机
+
+```text
+PENDING ──generate──> GENERATING ──success─────────> COMPLETED
+GENERATING ──insufficient──> INSUFFICIENT_DATA
+GENERATING ──error──────────> FAILED
+```
+
+规则：
+- 用户提交问题后创建 `PENDING` 记录，Worker `runReportGeneration()` 接管后转为 `GENERATING`。
+- 证据检索从 `IntelligenceEvent` 和 `Item` 获取，不发起全网搜索。
+- 证据不足时标记 `INSUFFICIENT_DATA` 并写入 `coverageNote`；生成失败标记 `FAILED` 并写入 `errorMessage`。
+- `COMPLETED` 报告携带 `markdown`、`summary`、`eventCount`、`itemCount`、`topicIds`、`sourceIds` 和 `coverageNote`。
+
+### DeliveryLog 状态机
+
+```text
+PENDING ──sent────> SENT
+PENDING ──failed──> FAILED
+PENDING ──skip────> SKIPPED
+```
+
+规则：
+- 每条 Briefing 每个投递渠道（当前仅 `TELEGRAM`）最多一条 DeliveryLog，由 `briefingId + channel` 唯一约束保证幂等。
+- Worker `runTelegramDeliveryCycle` 在 fetch cycle 末尾运行：读取已加密 Telegram 凭证，查找近 2 小时内未投递的 Briefing，按幂等键创建 DeliveryLog。
+- 投递成功写 `SENT` 和 `sentAt`；失败写 `FAILED` 和 `errorMessage`/`errorCode`；已投递或已跳过的记录不再重发。
+- Telegram 凭证未配置或未启用时，cycle 静默跳过，不创建 DeliveryLog。
+
 ### FeedbackKind 枚举
 
 ### Subscription 凭证模型
@@ -139,6 +169,10 @@ create/start ──> RUNNING
 | `searchEncryptedKey` | 搜索 provider API Key 的 AES-256-GCM 密文。 |
 | `searchProvider` | 搜索 provider 标识（如 `brave`）。 |
 | `searchKeyHint` | 搜索 Key 脱敏 hint。 |
+| `telegramEncryptedBotToken` | Telegram Bot Token 的 AES-256-GCM 密文。 |
+| `telegramBotTokenHint` | Telegram Bot Token 脱敏 hint。 |
+| `telegramChatId` | 目标 Chat ID（非密文）。 |
+| `telegramEnabled` | Telegram 投递是否启用。 |
 
 规则：
 - 加解密依赖 `ENCRYPTION_KEY` 环境变量，缺失时凭证相关 worker 任务必须 fail-fast，不得静默降级到明文。
@@ -160,8 +194,14 @@ create/start ──> RUNNING
 | `EXPORT` | 用户导出 | 正反馈，提升相关权重 |
 | `SOURCE_APPROVE` | 管理员批准信源 | 治理审计；不直接进入个人偏好 |
 | `SOURCE_REJECT` | 管理员拒绝信源 | 治理审计；不直接进入个人偏好 |
-| `CATEGORY_UP` | 详情页“多关注这类” | 只提升当前 Topic 的 category 权重，不改变事件状态/source 权重 |
-| `CATEGORY_DOWN` | 详情页“少关注这类” | 只降低当前 Topic 的 category 权重，不改变事件状态/source 权重 |
+| `CATEGORY_UP` | 详情页"多关注这类" | 只提升当前 Topic 的 category 权重，不改变事件状态/source 权重 |
+| `CATEGORY_DOWN` | 详情页"少关注这类" | 只降低当前 Topic 的 category 权重，不改变事件状态/source 权重 |
+| `SOURCE_QUALITY_UP` | 详情页"信源质量高" | 提升当前 Topic 的 source 权重 |
+| `SOURCE_QUALITY_DOWN` | 详情页"信源质量低" | 降低当前 Topic 的 source 权重 |
+| `SCORE_UP` | 详情页"评分偏高" | 提升当前事件分数相关 category/source 权重 |
+| `SCORE_DOWN` | 详情页"评分偏低" | 降低当前事件分数相关 category/source 权重 |
+| `MORE_LIKE_THIS` | 详情页"多看类似" | 提升当前事件相关 category/source/entity 权重 |
+| `LESS_LIKE_THIS` | 详情页"少看类似" | 降低当前事件相关 category/source/entity 权重 |
 
 ## 领域术语表
 
@@ -169,7 +209,7 @@ create/start ──> RUNNING
 |------|------|
 | **Topic Profile** | 主题的机器可读画像。当前已消费并可编辑 keywords/entities/includeScope/excludeScope/importanceRules；新建主题时由 `buildTopicProfile()` 生成初稿。languagePreferences/digestStyle 尚无稳定契约，由 Issue #30 跟踪。 |
 | **Gravity Score** | 情报事件的综合排序分。由 `calculateGravityScore()` 基于 importance、time、source quality 等因子计算，Dashboard 排序的基础分。 |
-| **Preference Memory** | 按主题学到的用户偏好，以 `PreferenceMemory(key/value/confidence/explanation)` 存储。`SAVE/EXPORT` 提升权重，`READ` 轻微提升，`DISMISS` 降低；`CATEGORY_UP/DOWN` 显式调整当前 Topic 的类别。归纳时以 `topicId + key` 隔离。 |
+| **Preference Memory** | 按主题学到的用户偏好，以 `PreferenceMemory(key/value/confidence/explanation)` 存储。`SAVE/EXPORT` 提升权重，`READ` 轻微提升，`DISMISS` 降低；`CATEGORY_UP/DOWN` 显式调整当前 Topic 的类别。增强反馈（`SOURCE_QUALITY_UP/DOWN`、`SCORE_UP/DOWN`、`MORE/LESS_LIKE_THIS`）提供更细粒度的 source/score/entity 信号。偏好信号带 30 天半衰期时间衰减（`generatePreferenceDeltas` 中的 `applyTimeDecay`），旧信号自动衰减。用户可在偏好记忆页编辑权重或删除偏好。归纳时以 `topicId + key` 隔离。 |
 | **Source Observation** | 信源质量观测快照，记录 hitRate/noiseRate/duplicateRate 等指标，作为信源治理审核证据。 |
 | **Event Hash** | 情报事件去重哈希。当前由标题和 URL 生成，配合 `topicId + eventHash` 做幂等 upsert。 |
 | **Content Hash** | Item 内容哈希，用于跨源重复检测。 |
@@ -201,15 +241,19 @@ Organization
   │     │           ├── UserItemState (per User)
   │     │           ├── FeedbackEvent
   │     │           └── Briefing
+  │     │           └── DeliveryLog (per Briefing + channel)
   │     ├── PreferenceMemory (per User)
   │     ├── Briefing
   │     │     └── ExportEvent
+  │     │     └── DeliveryLog
   │     └── TaskRun
   ├── FeedbackEvent
   ├── ExportEvent
   ├── SourceObservation
   ├── TaskRun
-  └── UsageEvent
+  ├── UsageEvent
+  ├── DeliveryLog
+  └── Report
 ```
 
 唯一性约束：
@@ -221,3 +265,4 @@ Organization
 - `Membership`: `(organizationId, userId)` 唯一。
 - `Subscription`: `organizationId` 唯一（1:1 with Organization）。
 - `PreferenceMemory`: `(topicId, userId, key)` 唯一。
+- `DeliveryLog`: `(briefingId, channel)` 唯一。
