@@ -356,6 +356,7 @@ export interface RecordUsageEventInput extends TenantScope {
     | "BRIEFING"
     | "SOURCE_GOVERNANCE"
     | "SOURCE_DISCOVERY"
+    | "INSTANT_PUSH"
     | "WEB_ACTION";
   unit: string;
   userId?: string;
@@ -371,6 +372,7 @@ export interface UsageSummaryRecord {
     | "BRIEFING"
     | "SOURCE_GOVERNANCE"
     | "SOURCE_DISCOVERY"
+    | "INSTANT_PUSH"
     | "WEB_ACTION";
   unit: string;
 }

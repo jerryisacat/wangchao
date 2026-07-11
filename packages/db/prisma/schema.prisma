@@ -84,6 +84,7 @@ enum TaskRunType {
   EXPORT_GENERATION
   REPORT_GENERATION
   TELEGRAM_DELIVERY
+  TELEGRAM_INSTANT_PUSH
 }
 
 enum TaskRunStatus {
@@ -102,6 +103,7 @@ enum UsageEventType {
   SOURCE_GOVERNANCE
   SOURCE_DISCOVERY
   WEB_ACTION
+  INSTANT_PUSH
 }
 
 model User {
@@ -143,6 +145,7 @@ model Organization {
   subscription       Subscription?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
+  instantPushLogs    InstantPushLog[]
 }
 
 enum Plan {
@@ -169,6 +172,14 @@ enum DeliveryStatus {
   SKIPPED
 }
 
+enum InstantPushStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
 enum ReportStatus {
   PENDING
   GENERATING
@@ -178,13 +189,13 @@ enum ReportStatus {
 }
 
 model Subscription {
-  id             String             @id @default(cuid())
-  organizationId String             @unique
+  id             String @id @default(cuid())
+  organizationId String @unique
 
   // 订阅计划
-  plan             Plan             @default(FREE)
-  status           SubscriptionStatus @default(ACTIVE)
-  isSelfHosted     Boolean          @default(false)
+  plan         Plan               @default(FREE)
+  status       SubscriptionStatus @default(ACTIVE)
+  isSelfHosted Boolean            @default(false)
 
   // AI 凭证（系统级 official AI — Free 和 Pro 使用）
   aiEncryptedKey String? // AES-256-GCM 密文
@@ -209,7 +220,9 @@ model Subscription {
   telegramEncryptedBotToken String? // AES-256-GCM 密文
   telegramBotTokenHint      String? // 脱敏显示
   telegramChatId            String? // 目标 Chat ID（非密文）
-  telegramEnabled           Boolean  @default(false)
+  telegramEnabled           Boolean   @default(false)
+  instantPushEnabled        Boolean   @default(false)
+  instantPushEnabledAt      DateTime?
 
   // CCPayment 加密支付
   ccpaymentAppId           String? // CCPayment APP ID（非密文）
@@ -339,36 +352,37 @@ model Item {
 }
 
 model IntelligenceEvent {
-  id                 String          @id @default(cuid())
+  id                 String           @id @default(cuid())
   organizationId     String
   topicId            String
   primaryItemId      String?
-  secondaryItemIds   String[]        @default([])
-  status             EventStatus     @default(UNREAD)
+  secondaryItemIds   String[]         @default([])
+  status             EventStatus      @default(UNREAD)
   title              String
   summary            String
   category           String?
-  score              Float           @default(0)
-  gravityScore       Float           @default(0)
+  score              Float            @default(0)
+  gravityScore       Float            @default(0)
   eventHash          String?
   titleHash          String?
   explanation        String?
-  entities           String[]        @default([])
+  entities           String[]         @default([])
   followUpSuggestion String?
   mergeReason        String?
   occurredAt         DateTime?
   rawAiResponse      Json?
-  organization       Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  topic              Topic           @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  primaryItem        Item?           @relation("PrimaryItem", fields: [primaryItemId], references: [id], onDelete: SetNull)
+  organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic              Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  primaryItem        Item?            @relation("PrimaryItem", fields: [primaryItemId], references: [id], onDelete: SetNull)
   eventItems         EventItem[]
   userStates         UserItemState[]
   feedbackEvents     FeedbackEvent[]
-  briefings          Briefing[]      @relation("BriefingEvents")
+  briefings          Briefing[]       @relation("BriefingEvents")
   exportEvents       ExportEvent[]
   taskRuns           TaskRun[]
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  instantPushLogs    InstantPushLog[]
 
   @@unique([topicId, eventHash])
   @@index([organizationId, status])
@@ -597,6 +611,30 @@ model DeliveryLog {
   @@index([channel, status])
 }
 
+model InstantPushLog {
+  id             String            @id @default(cuid())
+  organizationId String
+  eventId        String
+  channel        DeliveryChannel   @default(TELEGRAM)
+  status         InstantPushStatus @default(PENDING)
+  score          Float
+  attempt        Int               @default(0)
+  recipientRef   String?
+  nextAttemptAt  DateTime?
+  lockedAt       DateTime?
+  sentAt         DateTime?
+  errorMessage   String?
+  errorCode      String?
+  metadata       Json?
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  event          IntelligenceEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@unique([eventId, channel])
+  @@index([organizationId, status, nextAttemptAt])
+}
+
 model Report {
   id             String       @id @default(cuid())
   organizationId String
@@ -623,52 +661,52 @@ model Report {
 }
 
 model Account {
-  id                String  @id @default(cuid())
-  userId            String
-  providerId        String
-  accountId         String
-  refreshToken      String?
-  accessToken       String?
-  expiresAt         DateTime?
-  password          String?
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id           String    @id @default(cuid())
+  userId       String
+  providerId   String
+  accountId    String
+  refreshToken String?
+  accessToken  String?
+  expiresAt    DateTime?
+  password     String?
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@unique([userId, providerId])
   @@index([providerId, accountId])
 }
 
 model Session {
-  id          String   @id @default(cuid())
-  userId      String
-  token       String   @unique
-  expiresAt   DateTime
-  ipAddress   String?
-  userAgent   String?
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
 }
 
 model PaymentInvoice {
-  id             String   @id @default(cuid())
-  organizationId String
-  plan           Plan
-  amount         Float
-  currency       String   @default("USD")
-  status         String   @default("PENDING") // PENDING / PAID / EXPIRED / FAILED
-  provider       String   @default("ccpayment") // ccpayment / stripe
+  id              String       @id @default(cuid())
+  organizationId  String
+  plan            Plan
+  amount          Float
+  currency        String       @default("USD")
+  status          String       @default("PENDING") // PENDING / PAID / EXPIRED / FAILED
+  provider        String       @default("ccpayment") // ccpayment / stripe
   providerOrderId String?
-  invoiceUrl     String?
-  periodStart    DateTime?
-  periodEnd      DateTime?
-  metadata       Json?
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  invoiceUrl      String?
+  periodStart     DateTime?
+  periodEnd       DateTime?
+  metadata        Json?
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
 
   @@index([organizationId, status])
   @@index([provider, providerOrderId])

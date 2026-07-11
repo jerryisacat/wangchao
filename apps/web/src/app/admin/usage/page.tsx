@@ -134,6 +134,7 @@ function formatUsageType(type: UsageSummary["type"]): string {
     BRIEFING: "简报生成",
     EXPORT: "内容导出",
     FETCH: "信源抓取",
+    INSTANT_PUSH: "即时推送",
     SOURCE_DISCOVERY: "信源发现",
     SOURCE_GOVERNANCE: "信源质量观测",
     WEB_ACTION: "管理操作",

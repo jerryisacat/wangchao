@@ -6,6 +6,7 @@ import {
   evaluateRelevance,
   generatePreferenceDeltas,
 } from "./index.js";
+import { checkInstantPushQuota, resolveEffectivePlan } from "./quota.js";
 
 export function runCoreFixtures(): void {
   testUtcDayRangeUsesStableBoundaries();
@@ -20,6 +21,18 @@ export function runCoreFixtures(): void {
   testPreferenceDeltasKeepTopicsIsolated();
   testCategoryFeedbackOnlyChangesCategoryWeight();
   testTopicProfileContextUsesTopicIdentityAndSanitizesLists();
+  testInstantPushPlanAccess();
+}
+
+function testInstantPushPlanAccess(): void {
+  const now = new Date("2026-07-11T00:00:00.000Z");
+  assert(!checkInstantPushQuota("FREE", false).allowed, "Free must not use instant push.");
+  assert(checkInstantPushQuota("PLUS", false).allowed, "Plus must use instant push.");
+  assert(checkInstantPushQuota("PRO", false).allowed, "Pro must use instant push.");
+  assert(checkInstantPushQuota("FREE", true).allowed, "Self-hosted must bypass the plan gate.");
+  assert(resolveEffectivePlan({ plan: "PRO", status: "EXPIRED", isSelfHosted: false, now }) === "FREE", "Expired plans must resolve to Free.");
+  assert(resolveEffectivePlan({ plan: "PLUS", status: "CANCELED", isSelfHosted: false, currentPeriodEnd: "2026-07-12T00:00:00.000Z", now }) === "PLUS", "Canceled plans remain active through their period.");
+  assert(resolveEffectivePlan({ plan: "PLUS", status: "CANCELED", isSelfHosted: false, currentPeriodEnd: "2026-07-10T00:00:00.000Z", now }) === "FREE", "Ended canceled plans must resolve to Free.");
 }
 
 function testExcludedScopeOverridesPositiveSignals(): void {

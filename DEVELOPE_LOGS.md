@@ -4,6 +4,17 @@
 
 ## 2026-07-11
 
+## Phase 15: 高分情报即时推送（#37）
+
+- Phase: 15 — Plus/Pro Telegram Instant Push
+- Scope: effective plan、可靠投递状态机、多租户 Worker cycle、Admin/Usage UI、Railway Cron。
+- Alignment: 遵循 Worker 边界、tenant scope、AES 凭证读取、ACTIVE source 隔离和 GitHub → Railway Config as Code 主路径。
+- Missing: Railway dashboard 中创建并绑定 `wangchao-instant-push` service，属于部署操作。
+- Bugs: 无已知；首次沙箱内 Next/Turbopack build 因内部端口权限失败，授权后沙箱外 production build 通过。
+- Fixes: 避免固定 lookback 丢消息、并发重复投递、EXPIRED 计划绕过和 Telegram 动态 HTML 注入。
+- Verification: schema validate、typecheck、lint、test、production build、diff check、Postgres 16 clean migration 0001-0012、seed、instant-push 空队列 smoke、built Next server Playwright Admin desktop/mobile 2/2 全部通过。
+- Follow-up: 生产部署后观察 Cron duration、429 和积压指标。
+
 ## Phase 12 补充 2: Auth e2e + proxy 迁移（#35, #36）
 
 - Phase: 12 补充 2 — Better Auth 端到端测试 + Next.js 16 proxy convention

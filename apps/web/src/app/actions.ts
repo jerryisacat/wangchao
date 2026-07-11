@@ -937,6 +937,12 @@ function toUserActionError(error: unknown): string {
   if (error instanceof Error && error.message === "TELEGRAM_CHAT_ID_MISSING") {
     return "请输入 Telegram Chat ID。";
   }
+  if (error instanceof Error && error.message === "INSTANT_PUSH_PLAN_BLOCKED") {
+    return "即时推送仅对 Plus、Pro 或自用模式开放。";
+  }
+  if (error instanceof Error && error.message === "INSTANT_PUSH_TELEGRAM_MISSING") {
+    return "请先配置 Telegram Bot Token 与 Chat ID。";
+  }
 
   if (error instanceof Error && error.message === "BYOK_API_KEY_MISSING") {
     return "请输入 BYOK API Key。";
@@ -2735,6 +2741,43 @@ export async function toggleSelfHostedModeAction(
 
   revalidatePath("/admin/settings");
   revalidatePath("/pricing");
+  revalidatePath("/usage");
+  redirect(actionRedirectHref("/admin/settings", type, message));
+}
+
+export async function setInstantPushEnabledAction(formData: FormData): Promise<void> {
+  let message = "即时推送设置已更新。";
+  let type: ActionRedirectType = "notice";
+  try {
+    if (!process.env.DATABASE_URL) throw new Error("Database connection is required.");
+    const enabled = readOptionalField(formData, "enabled") === "true";
+    const { assertMembershipRole, getInstantPushSettings, getPrismaClient, recordUsageEvent, setInstantPushEnabled } = await import("@wangchao/db");
+    const { checkInstantPushQuota, resolveEffectivePlan } = await import("@wangchao/core");
+    const { getSessionWorkspace } = await import("@/lib/session");
+    const prisma = getPrismaClient();
+    const workspace = await getSessionWorkspace();
+    await assertMembershipRole(prisma, { organizationId: workspace.organizationId, userId: workspace.userId }, ["OWNER", "ADMIN"]);
+    const settings = await getInstantPushSettings(prisma, { organizationId: workspace.organizationId });
+    const effectivePlan = resolveEffectivePlan(settings);
+    if (enabled && !checkInstantPushQuota(effectivePlan, settings.isSelfHosted).allowed) throw new Error("INSTANT_PUSH_PLAN_BLOCKED");
+    if (enabled && !settings.hasTelegramCredential) throw new Error("INSTANT_PUSH_TELEGRAM_MISSING");
+    await setInstantPushEnabled(prisma, { organizationId: workspace.organizationId }, enabled);
+    await recordUsageEvent(prisma, {
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
+      type: "WEB_ACTION",
+      quantity: 1,
+      unit: "action",
+      subjectType: "subscription",
+      metadata: { action: enabled ? "enable-instant-push" : "disable-instant-push", source: "admin-settings-telegram" },
+    });
+    message = enabled ? "已开启高优先级情报即时推送。" : "已关闭高优先级情报即时推送。";
+  } catch (error) {
+    logActionError("setInstantPushEnabledAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+  revalidatePath("/admin/settings");
   revalidatePath("/usage");
   redirect(actionRedirectHref("/admin/settings", type, message));
 }

@@ -155,6 +155,19 @@ PENDING ──skip────> SKIPPED
 
 ### Plan 枚举
 
+### InstantPushLog 状态机
+
+```text
+PENDING ──claim──> SENDING ──sent──> SENT
+SENDING ──retryable error──> FAILED ──due claim──> SENDING
+SENDING ──permanent/max attempts──> SKIPPED
+```
+
+- `eventId + channel` 唯一约束与条件更新共同保证并发幂等。
+- `instantPushEnabledAt` 限定首次启用边界；失败重试由 `FAILED + nextAttemptAt` 驱动。
+- Free/到期订阅不可用，有效 Plus/Pro 与自用模式可用；阅读状态不阻止组织级推送。
+- candidate/muted/rejected source 不得进入即时推送候选集。
+
 | 值 | 含义 |
 |------|------|
 | `FREE` | 免费层。基础主题/信源/AI调用/导出配额。 |

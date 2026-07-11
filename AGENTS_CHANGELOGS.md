@@ -1,5 +1,13 @@
 ## 2026-07-11
 
+### #37 高权重情报 Telegram 即时推送
+
+- Cause: Plus/Pro 与自用模式需要在高分情报入库后独立于简报周期发起 Telegram 投递。
+- Changed: 新增 effective-plan gate、InstantPushLog 可靠投递状态机与 0012 migration、共享 Telegram adapter、多组织 Worker `--instant-push` cycle、Admin 开关、用量统计、Railway 15 分钟 Cron 配置和分层文档。
+- Files: `packages/core/src/quota.ts`, `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/0012_instant_push`, `packages/db/src/extended-repositories.ts`, `apps/worker/src/index.ts`, `apps/worker/src/telegram.ts`, `apps/web/src/app/admin/settings`, `apps/web/src/app/usage/page.tsx`, `deploy/railway/instant-push-cron.railway.json`, docs/env/readme files.
+- Verification: `pnpm db:validate`、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`git diff --check` 通过；Postgres 16 干净库成功顺序执行 0001-0012、seed 与 `worker:instant-push` 空队列 smoke；built Next server 上 Playwright Admin settings desktop/mobile smoke 2/2 通过。
+- Notes / Risk: Railway 独立 service 仍需在 dashboard 创建并绑定 Config as Code；15 分钟从事件持久化开始按 Cron best-effort 计算。
+
 ### Batch 7.5: Better Auth e2e 测试 + proxy 迁移（#35, #36）
 
 - Cause: Better Auth 登录流程缺少端到端验证和登出功能；Next.js 16 middleware convention 已废弃

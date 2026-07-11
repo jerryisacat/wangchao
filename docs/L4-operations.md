@@ -135,6 +135,9 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - `TELEGRAM_API_BASE` 可选，控制 Telegram Bot API base URL，默认 `https://api.telegram.org`。自建 Telegram Bot API server 或需走代理时可覆盖。
 - Telegram 凭证（Bot Token + Chat ID）通过 Admin 后台 `/admin/settings` Telegram tab 配置（需要 OWNER/ADMIN 权限），Bot Token 使用 AES-256-GCM 加密存储，不通过环境变量管理。
 - Worker `runTelegramDeliveryCycle` 在 fetch cycle 末尾自动运行：读取已配置凭证，查找近 2 小时未投递的 Briefing，通过 Telegram Bot API 发送，每条 Briefing 每渠道最多一条 DeliveryLog（幂等）。
+- `pnpm worker:instant-push` 独立运行即时推送；Railway 使用 `/deploy/railway/instant-push-cron.railway.json` 每 15 分钟调度。
+- `WANGCHAO_INSTANT_PUSH_SCORE_THRESHOLD` 默认 `90`（0-100），`WANGCHAO_INSTANT_PUSH_MAX_PER_CYCLE` 默认 `10`，`WANGCHAO_INSTANT_PUSH_MAX_ATTEMPTS` 默认 `3`。
+- Railway 必须创建独立 service、绑定上述 Config as Code 路径并引用 `DATABASE_URL`/`ENCRYPTION_KEY`；提交 JSON 不会自动创建 service。
 
 ### Source Discovery
 
@@ -199,7 +202,7 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - `docs/deployment.md` 记录当前 Railway 部署顺序、环境变量、服务配置、日志、备份和回滚策略。
 - `docs/railway-runbook.md` 是 Railway 生产运维主参考：GitHub→Railway 主路径、Cron 运行观测、Postgres 备份/PITR、发布验证 smoke/回滚 runbook、环境变量矩阵、CI/CD。
 - `railway.json` 是 `railway up` 本地紧急 fallback 使用的 Railway root config（通过 `WANGCHAO_RAILWAY_ROLE` 分发）。
-- `deploy/railway/*.railway.json` 是 Railway Config as Code；Web、Worker Cron 和 Source Discovery Cron 分别作为独立 Railway service 设置对应 config file path。
+- `deploy/railway/*.railway.json` 是 Railway Config as Code；Web、Worker Cron、Source Discovery Cron 和 Instant Push Cron 分别作为独立 Railway service 设置对应 config file path。
 - `.github/workflows/ci.yml` 是 GitHub Actions CI workflow，在 push/PR 到 `master` 时运行 lint、typecheck、build、test 和 Prisma schema validate。
 
 ## 验证注意事项

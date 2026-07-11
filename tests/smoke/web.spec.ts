@@ -103,6 +103,11 @@ test("admin credential tabs and client validation remain interactive", async ({ 
     page.getByText("API Key 为必填项，请输入后再测试。"),
   ).toBeVisible();
   await expect(page.getByLabel("API Key (必填)")).toBeFocused();
+
+  await page.getByRole("tab", { name: "Telegram 投递" }).click();
+  await expect(page.getByText("高优先级情报即时推送")).toBeVisible();
+  await expect(page.getByRole("button", { name: "开启即时推送" })).toBeDisabled();
+  await expect(page.getByText(/升级 Plus 或 Pro 后可开启/)).toBeVisible();
 });
 
 test("first intelligence card opens a stable detail page", async ({ page }) => {

@@ -23,6 +23,7 @@ import {
   testSearchCredentialAction,
   testTelegramCredentialAction,
   toggleSelfHostedModeAction,
+  setInstantPushEnabledAction,
   upsertAiCredentialAction,
   upsertByokCredentialAction,
   upsertCcpaymentCredentialAction,
@@ -40,6 +41,7 @@ import { CcpaymentCredentialForm } from "./ccpayment-form";
 import { CredentialForm } from "./credential-form";
 import { SelfHostedToggleForm } from "./self-hosted-form";
 import { TelegramCredentialForm } from "./telegram-form";
+import { InstantPushToggleForm } from "./instant-push-form";
 
 export const dynamic = "force-dynamic";
 
@@ -72,10 +74,16 @@ export default async function AdminSettingsPage({
     organizationId: workspace.organizationId,
   });
 
-  const { getTelegramCredentialView } = await import("@wangchao/db");
+  const { getInstantPushSettings, getTelegramCredentialView } = await import("@wangchao/db");
   const telegramCredential = await getTelegramCredentialView(prisma, {
     organizationId: workspace.organizationId,
   });
+  const instantPushSettings = await getInstantPushSettings(prisma, { organizationId: workspace.organizationId });
+  const { checkInstantPushQuota, resolveEffectivePlan } = await import("@wangchao/core");
+  const instantPushAllowed = checkInstantPushQuota(
+    resolveEffectivePlan(instantPushSettings),
+    instantPushSettings.isSelfHosted,
+  ).allowed;
 
   const subscription = await prisma.subscription.findUnique({
     where: { organizationId: workspace.organizationId },
@@ -354,6 +362,15 @@ export default async function AdminSettingsPage({
                 formAction={upsertTelegramCredentialAction}
                 testAction={testTelegramCredentialAction}
               />
+
+              <div className="mt-4">
+                <InstantPushToggleForm
+                  allowed={instantPushAllowed}
+                  currentEnabled={instantPushSettings.enabled}
+                  formAction={setInstantPushEnabledAction}
+                  hasTelegramCredential={instantPushSettings.hasTelegramCredential}
+                />
+              </div>
 
               {telegramCredential.hasBotToken ? (
                 <div className="mt-3 flex flex-wrap gap-2">

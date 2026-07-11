@@ -127,6 +127,7 @@ export interface UsageSummary {
     | "BRIEFING"
     | "SOURCE_GOVERNANCE"
     | "SOURCE_DISCOVERY"
+    | "INSTANT_PUSH"
     | "WEB_ACTION";
   unit: string;
 }

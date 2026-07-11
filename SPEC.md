@@ -465,6 +465,7 @@ Markdown 示例：
 2. **每日简报**
    - 每个主题每天生成结构化 summary。
    - 支持浏览器、Telegram、Markdown、Obsidian。
+   - Plus/Pro 与自用模式可开启高分情报 Telegram 即时推送；15 分钟从事件成功持久化起按 Cron best-effort 计算，不是来源发布时间后的硬 SLA。
 
 3. **信源质量报告**
    - 新发现候选源。

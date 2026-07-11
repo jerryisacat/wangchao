@@ -26,6 +26,7 @@
     "smoke:web": "playwright test",
     "worker:source-discovery": "pnpm --filter @wangchao/worker source-discovery",
     "worker:health": "pnpm --filter @wangchao/worker health",
+    "worker:instant-push": "pnpm --filter @wangchao/worker instant-push",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"

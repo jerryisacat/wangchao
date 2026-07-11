@@ -100,6 +100,8 @@ export default async function UsagePage() {
     monthSummary.find((s) => s.type === "AI_CALL")?.quantity ?? 0;
   const exportsThisMonth =
     monthSummary.find((s) => s.type === "EXPORT")?.quantity ?? 0;
+  const instantPushThisMonth =
+    monthSummary.find((s) => s.type === "INSTANT_PUSH")?.quantity ?? 0;
 
   return (
     <>
@@ -121,6 +123,15 @@ export default async function UsagePage() {
           {isSelfHosted ? "自用" : limits.label}
         </Badge>
       </div>
+
+      <Card variant="work">
+        <CardHeader>
+          <CardTitle>即时推送（本月）</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <UsageMeter current={instantPushThisMonth} label="成功推送" limit={null} unit="次" />
+        </CardContent>
+      </Card>
 
       {isSelfHosted ? (
         <Card variant="work">

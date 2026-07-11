@@ -28,6 +28,7 @@
 | AI 配额 | 100/天（官方） | 不限（自费） | 20,000/月（官方） |
 | BYOK | ❌ | ✅（必填） | ✅（可选） |
 | 导出 | 10/月 | 50/月 | 不限 |
+| 高分情报即时推送 | ❌ | ✅ | ✅ |
 
 ### 3.2 Free 计划
 
@@ -166,12 +167,7 @@ model Subscription {
 }
 ```
 
-> **当前实现状态（截至 Phase 12）：** `Subscription` 表已通过 migration `0006_subscription_credentials` 创建，但仅包含凭证字段，尚未实现 `Plan`/`SubscriptionStatus` 枚举及 Stripe 相关字段。
-> 实际字段名与上述设计的 `byok*` 命名不同：
-> - 当前使用 `aiEncryptedKey`/`aiBaseUrl`/`aiProvider`/`aiKeyHint` 和 `searchEncryptedKey`/`searchBaseUrl`/`searchProvider`/`searchKeyHint`，对应系统级 Admin 配置的 AI provider 和搜索 provider 凭证。
-> - 这是 Admin 后台配置（见 `AGENTS.md` §5.2），不是 per-user BYOK。
-> - `Plan`/`SubscriptionStatus` 枚举、`byok*` 字段、Stripe/ccpayment 字段、`isSelfHosted` 开关均推迟至 Phase 15 实现。
-> - Phase 15 应在现有表上扩展 `byok*` 字段或重命名以对齐本节设计。
+> **当前实现状态（截至 2026-07-11）：** migration `0010_subscription_plan_auth` 已实现 Plan/SubscriptionStatus、BYOK、CCPayment/Stripe 骨架和自用模式；`0012_instant_push` 新增 Plus/Pro 高分情报即时推送开关与可靠投递审计。系统级 AI/Search 凭证与 per-user BYOK 使用独立字段。
 
 ## 6. 配额检查点
 
@@ -294,7 +290,7 @@ ccpayment Webhook → POST /api/billing/webhook/ccpayment
 
 | 子项 | 状态 | 说明 |
 |------|------|------|
-| Schema + Migration | 部分完成 | `Subscription` 表已通过 migration `0006_subscription_credentials` 创建，但仅含凭证字段，未包含 `Plan`/`SubscriptionStatus` 枚举 |
+| Schema + Migration | 完成 | `0010_subscription_plan_auth` 已包含 Plan/SubscriptionStatus/BYOK/支付字段；`0012_instant_push` 增加即时推送权益 |
 | AES 加密工具 | 完成 | `packages/db/src/crypto.ts`，提供 `encryptCredential` / `decryptCredential` / `maskKeyHint` |
 
-> **字段名差异说明：** 当前实现使用 `aiEncryptedKey` / `searchEncryptedKey` 而非设计中的 `byokEncryptedKey`，因为当前是系统级 Admin 配置（见 `AGENTS.md` §5.2），不是 per-user BYOK。Phase 15 应新增 `byok*` 字段或重命名以对齐 §5.2 设计。
+> **字段边界说明：** `aiEncryptedKey` / `searchEncryptedKey` 是组织级 Admin provider 配置；`byokEncryptedKey` 是订阅用户自己的 AI 凭证，二者互不覆盖。

@@ -25,6 +25,8 @@ import {
   generatePreferenceDeltas,
   PLAN_LIMITS,
   checkAiCallQuota,
+  checkInstantPushQuota,
+  resolveEffectivePlan,
   shouldUseByok,
   renderDailyBriefingMarkdown,
   renderPeriodBriefingMarkdown,
@@ -43,6 +45,7 @@ import {
   createSourceDiscoveryTaskRun,
   createSourceFetchTaskRun,
   createTaskRun,
+  disconnectPrismaClient,
   completeReport,
   ensureDefaultWorkspace,
   failReport,
@@ -50,6 +53,7 @@ import {
   getDecryptedCredentials,
   getDecryptedByokCredential,
   getDecryptedTelegramCredential,
+  getInstantPushSettings,
   getMonthAiCallCount,
   getSubscriptionPlanView,
   getTodayAiCallCount,
@@ -64,6 +68,8 @@ import {
   findPendingDeliveryForBriefing,
   listHighScoreEventPagesForDiscovery,
   listItemsWithoutRawContent,
+  listInstantPushCandidates,
+  listInstantPushOrganizations,
   listPreferenceMemoryForDashboard,
   listRecentActiveSourcePagesForDiscovery,
   listRecentFeedbackSignals,
@@ -72,6 +78,9 @@ import {
   listTimelineEvents,
   listTopicsForSourceDiscovery,
   markItemFiltered,
+  claimInstantPush,
+  markInstantPushFailed,
+  markInstantPushSent,
   mergeSemanticEvents,
   recordUsageEvent,
   recordSourceFetchFailure,
@@ -102,6 +111,11 @@ import {
   type SearchProvider,
   type SearchProviderType,
 } from "@wangchao/sources";
+import {
+  TelegramDeliveryError,
+  formatEventForInstantPush,
+  sendTelegramMessage,
+} from "./telegram.js";
 
 const MAX_FETCH_ATTEMPTS = 3;
 
@@ -200,6 +214,14 @@ export interface WorkerHealthCheckResult {
   status: "ok" | "degraded";
 }
 
+export interface InstantPushCycleResult {
+  organizations: number;
+  attempted: number;
+  delivered: number;
+  failed: number;
+  skipped: number;
+}
+
 export function resolveFilteredNoiseReason(input: {
   llmNoiseReason?: string;
   ruleDecision?: RelevanceDecision | null;
@@ -218,7 +240,7 @@ export function describeWorker(): string {
   return "Wangchao worker";
 }
 
-type WorkerCycleType = "fetch" | "source-discovery" | "health";
+type WorkerCycleType = "fetch" | "source-discovery" | "instant-push" | "health";
 
 interface StructuredLogStart {
   event: "cycle-start";
@@ -274,6 +296,116 @@ export async function runWorkerHealthCheck(): Promise<WorkerHealthCheckResult> {
     service: "wangchao-worker",
     status,
   };
+}
+
+export async function runInstantPushCycle(): Promise<InstantPushCycleResult> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("Database connection is required to run instant push.");
+  }
+  const prisma = getPrismaClient();
+  const result: InstantPushCycleResult = { organizations: 0, attempted: 0, delivered: 0, failed: 0, skipped: 0 };
+  const organizations = await listInstantPushOrganizations(prisma);
+  const scoreThreshold = readBoundedNumberEnv("WANGCHAO_INSTANT_PUSH_SCORE_THRESHOLD", 90, 0, 100);
+  const maxPerCycle = readPositiveIntegerEnv("WANGCHAO_INSTANT_PUSH_MAX_PER_CYCLE", 10);
+  const maxAttempts = readPositiveIntegerEnv("WANGCHAO_INSTANT_PUSH_MAX_ATTEMPTS", 3);
+
+  for (const organization of organizations) {
+    result.organizations += 1;
+    const taskRun = await createTaskRun(prisma, {
+      organizationId: organization.organizationId,
+      type: "TELEGRAM_INSTANT_PUSH",
+      input: { scoreThreshold, maxPerCycle, maxAttempts },
+    });
+    try {
+      const settings = await getInstantPushSettings(prisma, { organizationId: organization.organizationId });
+      const effectivePlan = resolveEffectivePlan({
+        plan: settings.plan,
+        status: settings.status,
+        isSelfHosted: settings.isSelfHosted,
+        currentPeriodEnd: settings.currentPeriodEnd,
+      });
+      const access = checkInstantPushQuota(effectivePlan, settings.isSelfHosted);
+      const credential = access.allowed
+        ? await getDecryptedTelegramCredential(prisma, { organizationId: organization.organizationId })
+        : null;
+      if (!access.allowed || !settings.enabledAt || !credential) {
+        result.skipped += 1;
+        await completeTaskRun(prisma, taskRun.id, {
+          outcome: "skipped",
+          reason: !access.allowed ? access.reason : "Instant push is not fully configured.",
+        });
+        continue;
+      }
+      const candidates = await listInstantPushCandidates(
+        prisma,
+        { organizationId: organization.organizationId },
+        { enabledAt: settings.enabledAt, scoreThreshold, limit: maxPerCycle },
+      );
+      let delivered = 0;
+      let failed = 0;
+      let skipped = 0;
+      for (const candidate of candidates) {
+        const claimed = await claimInstantPush(prisma, {
+          eventId: candidate.eventId,
+          organizationId: organization.organizationId,
+          score: candidate.score,
+          recipientRef: credential.chatId,
+          maxAttempts,
+          staleBefore: new Date(Date.now() - 30 * 60_000),
+        });
+        if (!claimed) {
+          skipped += 1;
+          continue;
+        }
+        result.attempted += 1;
+        try {
+          await sendTelegramMessage(
+            credential.botToken,
+            credential.chatId,
+            formatEventForInstantPush(candidate),
+            "HTML",
+          );
+          await markInstantPushSent(prisma, claimed.id);
+          delivered += 1;
+          result.delivered += 1;
+        } catch (error) {
+          const telegramError = error instanceof TelegramDeliveryError ? error : null;
+          await markInstantPushFailed(prisma, claimed.id, {
+            attempt: claimed.attempt,
+            errorMessage: error instanceof Error ? error.message : "Telegram delivery failed.",
+            errorCode: telegramError?.code,
+            retryAfterMs: telegramError?.retryAfterMs,
+            retryable: (telegramError?.retryable ?? true) && claimed.attempt < maxAttempts,
+          });
+          failed += 1;
+          result.failed += 1;
+        }
+        await sleep(200);
+      }
+      if (delivered > 0 || failed > 0) {
+        await recordUsageEvent(prisma, {
+          organizationId: organization.organizationId,
+          userId: organization.userId ?? undefined,
+          type: "INSTANT_PUSH",
+          quantity: delivered,
+          unit: "delivery",
+          subjectType: "instant-push-cycle",
+          metadata: { attempted: delivered + failed, delivered, failed, skipped },
+        });
+      }
+      result.skipped += skipped;
+      await completeTaskRun(prisma, taskRun.id, { outcome: "completed", delivered, failed, skipped });
+    } catch (error) {
+      result.failed += 1;
+      await failTaskRun(prisma, taskRun.id, error);
+    }
+  }
+  return result;
+}
+
+function readBoundedNumberEnv(name: string, fallback: number, min: number, max: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
 }
 
 export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
@@ -1713,7 +1845,12 @@ async function createAnalysisRuntimeWithPlan(
 ): Promise<AnalysisRuntimeResult | null> {
   const planView = await getSubscriptionPlanView(prisma, { organizationId });
   const isSelfHosted = planView.isSelfHosted;
-  const plan = planView.plan;
+  const plan = resolveEffectivePlan({
+    plan: planView.plan,
+    status: planView.status,
+    isSelfHosted,
+    currentPeriodEnd: planView.currentPeriodEnd,
+  });
 
   const todayCalls = await getTodayAiCallCount(prisma, { organizationId });
   const monthCalls = await getMonthAiCallCount(prisma, { organizationId });
@@ -1952,10 +2089,8 @@ async function checkWorkerDatabase(): Promise<{
   }
 }
 
-const TELEGRAM_API_BASE = process.env.TELEGRAM_API_BASE ?? "https://api.telegram.org";
 const TELEGRAM_DELIVERY_LOOKBACK_HOURS = 2;
 const TELEGRAM_MAX_MESSAGE_LENGTH = 4000;
-const TELEGRAM_DELIVERY_TIMEOUT_MS = 15_000;
 
 export interface TelegramDeliveryResult {
   delivered: number;
@@ -2081,50 +2216,6 @@ function formatBriefingForTelegram(
 
 function escapeTelegramMarkdown(text: string): string {
   return text.replace(/[*_`\[\]]/g, "\\$&");
-}
-
-async function sendTelegramMessage(
-  botToken: string,
-  chatId: string,
-  text: string,
-): Promise<void> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TELEGRAM_DELIVERY_TIMEOUT_MS);
-
-  try {
-    const response = await fetch(
-      `${TELEGRAM_API_BASE}/bot${botToken}/sendMessage`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text,
-          parse_mode: "Markdown",
-          disable_web_page_preview: true,
-        }),
-        signal: controller.signal,
-      },
-    );
-
-    if (!response.ok) {
-      const body = (await response.json().catch(() => null)) as {
-        description?: string;
-        error_code?: number;
-      } | null;
-      const message = body?.description ?? `HTTP ${response.status}`;
-      const error = new Error(`Telegram API error: ${message}`);
-      (error as Error & { code?: string }).code = body?.error_code?.toString() ?? response.status.toString();
-      throw error;
-    }
-  } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Telegram API request timed out.");
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 function extractTelegramErrorCode(error: unknown): string | null {
@@ -2480,10 +2571,13 @@ async function generateReportWithAi(
 if (import.meta.url === `file://${process.argv[1]}`) {
   const isHealth = process.argv.includes("--health");
   const isSourceDiscovery = process.argv.includes("--source-discovery");
+  const isInstantPush = process.argv.includes("--instant-push");
   const cycleType: WorkerCycleType = isHealth
     ? "health"
     : isSourceDiscovery
       ? "source-discovery"
+      : isInstantPush
+        ? "instant-push"
       : "fetch";
 
   const startTime = emitStructuredLogStart(cycleType);
@@ -2492,6 +2586,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     ? runWorkerHealthCheck()
     : isSourceDiscovery
       ? runSourceDiscoveryCycle({ mode: "worker" })
+      : isInstantPush
+        ? runInstantPushCycle()
       : runFetchCycle();
 
   command
@@ -2522,5 +2618,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
         }
       }
       process.exitCode = 1;
-    });
+    })
+    .finally(() => disconnectPrismaClient());
 }

@@ -8,6 +8,7 @@ export interface PlanLimits {
   maxExportsPerMonth: number | null;
   requiresByok: boolean;
   allowsOfficialAi: boolean;
+  allowsInstantPush: boolean;
 }
 
 export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
@@ -19,6 +20,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     maxExportsPerMonth: 10,
     requiresByok: false,
     allowsOfficialAi: true,
+    allowsInstantPush: false,
   },
   PLUS: {
     maxTopics: 5,
@@ -28,6 +30,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     maxExportsPerMonth: 50,
     requiresByok: true,
     allowsOfficialAi: false,
+    allowsInstantPush: true,
   },
   PRO: {
     maxTopics: null,
@@ -37,6 +40,7 @@ export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
     maxExportsPerMonth: null,
     requiresByok: false,
     allowsOfficialAi: true,
+    allowsInstantPush: true,
   },
 };
 
@@ -46,6 +50,40 @@ export interface QuotaCheckResult {
   upgradeHint?: string;
   currentUsage?: number;
   limit?: number | null;
+}
+
+export type SubscriptionStatus = "ACTIVE" | "PAST_DUE" | "CANCELED" | "EXPIRED";
+
+export function resolveEffectivePlan(input: {
+  plan: Plan;
+  status: SubscriptionStatus;
+  isSelfHosted: boolean;
+  currentPeriodEnd?: string | Date | null;
+  now?: Date;
+}): Plan {
+  if (input.isSelfHosted) return input.plan;
+  if (input.status === "EXPIRED") return "FREE";
+  if (input.status !== "CANCELED") return input.plan;
+  if (!input.currentPeriodEnd) return "FREE";
+  const periodEnd = new Date(input.currentPeriodEnd);
+  if (!Number.isFinite(periodEnd.getTime())) return "FREE";
+  return periodEnd.getTime() > (input.now ?? new Date()).getTime()
+    ? input.plan
+    : "FREE";
+}
+
+export function checkInstantPushQuota(
+  plan: Plan,
+  isSelfHosted: boolean,
+): QuotaCheckResult {
+  if (isSelfHosted || PLAN_LIMITS[plan].allowsInstantPush) {
+    return { allowed: true };
+  }
+  return {
+    allowed: false,
+    reason: "Instant push is available on Plus and Pro plans.",
+    upgradeHint: PRICING_HINT,
+  };
 }
 
 const PRICING_HINT = "Visit /pricing to upgrade your plan.";
