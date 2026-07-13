@@ -13,15 +13,16 @@
 | `User` | 人类账户。当前个人版使用默认用户，不要求真实注册登录。 |
 | `Organization` | 租户和计费边界。当前个人版使用默认组织。 |
 | `Membership` | User-to-Organization 角色映射（OWNER/ADMIN/MEMBER）。 |
-| `Subscription` | Organization 的 1:1 凭证与订阅配置。存储 AES-256-GCM 加密的 AI/搜索 API Key 和 Telegram Bot Token，仅保留脱敏 `keyHint`/`botTokenHint`，不存明文。已扩展 Plan/Stripe/CCPayment/BYOK 字段，是 BYOK + 订阅 + 配额模型的承载实体。 |
-| `PaymentInvoice` | 支付订单记录。跟踪 CCPayment 和 Stripe 支付，关联 organization 和 Subscription，含订单号、金额、币种、支付状态和 provider 元数据。 |
+| `Subscription` | Organization 的 1:1 订阅与计费配置。仅承载 plan/status/isSelfHosted/instantPush/Stripe/周期字段，不再存储凭证。凭证已拆分到 OrganizationCredential。 |
+| `OrganizationCredential` | Organization 的凭证分区表。每行一类凭证（AI/SEARCH/BYOK/TELEGRAM/CCPAYMENT），通过 `credentialType` 分区。存储 AES-256-GCM 密文 + 脱敏 hint + provider/model/baseUrl/chatId/appId 等配置字段。`organizationId + credentialType` 唯一。 |
+| `PaymentInvoice` | 支付订单记录。跟踪 CCPayment 和 Stripe 支付，关联 organization，含订单号（`provider + providerOrderId` 唯一）、金额（Decimal）、币种、支付状态和 provider 元数据。 |
 | `Account` | Better Auth 兼容的 OAuth/account 记录。当前用于 email/password 认证，预留第三方 OAuth 扩展。 |
 | `Session` | Better Auth 兼容的会话记录。跟踪用户登录状态和过期时间。 |
 | `Topic` | 用户创建的情报主题，包含 topic profile、状态和 owner。 |
 | `Source` | RSS/Web 信源注册条目，带 candidate/active/muted/rejected 状态和质量分。`observeExpiresAt` 是观察到期时间，用于候选源复审机制。设置为 CANDIDATE 状态时自动设置 14 天观察期；到期后 worker 自动复审（有事件产出则提升为 ACTIVE，否则 REJECTED）。 |
 | `Item` | worker 抓取并规范化后的原始条目。 |
-| `IntelligenceEvent` | AI 抽取、去重、评分后的情报单元。支持多来源合并（primaryItem + secondaryItems），携带实体和后续跟踪建议。 |
-| `UserItemState` | 用户对某条情报的阅读/收藏/忽略状态。 |
+| `IntelligenceEvent` | AI 抽取、去重、评分后的情报单元。通过 EventItem 关联表支持多来源合并（primary + secondary），携带实体和后续跟踪建议。 |
+| `UserItemState` | 用户对某条情报的阅读/收藏/忽略状态。`dismissedAt` 已移除，由 `status=DISMISSED` 隐含。 |
 | `FeedbackEvent` | 原始行为和显式反馈记录，为偏好学习保留信号。 |
 | `PreferenceMemory` | 可解释的、按主题学到的用户偏好记忆。 |
 | `Briefing` | 每日/每周/每月生成的主题简报。 |
@@ -29,7 +30,7 @@
 | `SourceObservation` | 候选/活跃信源的质量观测指标和审核证据。 |
 | `TaskRun` | worker 任务状态、重试、错误和输入输出审计。 |
 | `UsageEvent` | AI 调用、抓取、导出、简报生成等用量记录。 |
-| `DeliveryLog` | 简报投递记录。每条 Briefing 每个投递渠道（当前仅 Telegram）最多一条 DeliveryLog，通过 `briefingId + channel` 唯一约束保证幂等。 |
+| `DeliveryLog` | 简报投递记录。每条 Briefing 每个投递渠道（当前仅 Telegram）最多一条 DeliveryLog，通过 `briefingId + channel` 唯一约束保证幂等。`idempotencyKey` 字段已移除。 |
 | `Report` | 按需专题报告。用户提交自然语言问题，系统从情报库已有事件检索证据，生成结构化 Markdown 报告。 |
 
 ## 关键状态机
@@ -185,37 +186,35 @@ SENDING ──permanent/max attempts──> SKIPPED
 
 ### FeedbackKind 枚举
 
-### Subscription 凭证模型
+### OrganizationCredential 凭证模型
 
-`Subscription` 与 `Organization` 是 1:1 关系（`organizationId @unique`），集中存储该组织下所有 AI 和搜索 provider 的凭证。
+凭证从 `Subscription` 拆分为独立的 `OrganizationCredential` 表，按 `credentialType` 分区（AI/SEARCH/BYOK/TELEGRAM/CCPAYMENT），每行一类凭证。
 
 字段职责：
 
 | 字段 | 职责 |
 |------|------|
-| `organizationId` | 关联 `Organization`，唯一约束，每个组织仅一条 `Subscription`。 |
-| `aiEncryptedKey` | AI provider API Key 的 AES-256-GCM 密文。 |
-| `aiBaseUrl` | OpenAI-compatible base URL。 |
-| `aiProvider` | provider 标识（如 `openai`、`deepseek`），用于 adapter 路由。 |
-| `aiKeyHint` | 脱敏 hint（如 `sk-...xyz`），仅用于 Admin 展示，不可反推明文。 |
-| `aiModel` | 默认 AI 模型名。 |
-| `searchEncryptedKey` | 搜索 provider API Key 的 AES-256-GCM 密文。 |
-| `searchProvider` | 搜索 provider 标识（如 `brave`）。 |
-| `searchKeyHint` | 搜索 Key 脱敏 hint。 |
-| `telegramEncryptedBotToken` | Telegram Bot Token 的 AES-256-GCM 密文。 |
-| `telegramBotTokenHint` | Telegram Bot Token 脱敏 hint。 |
-| `telegramChatId` | 目标 Chat ID（非密文）。 |
-| `telegramEnabled` | Telegram 投递是否启用。 |
+| `organizationId` | 关联 `Organization`，与 `credentialType` 组成唯一约束。 |
+| `credentialType` | 凭证分区类型：`AI`/`SEARCH`/`BYOK`/`TELEGRAM`/`CCPAYMENT`。 |
+| `encryptedKey` | AI/SEARCH/BYOK/Telegram 的 AES-256-GCM 密文。 |
+| `encryptedSecret` | CCPayment App Secret 的 AES-256-GCM 密文。 |
+| `keyHint` | 脱敏 hint（如 `sk-...xyz`），仅用于 Admin 展示。 |
+| `baseUrl` | OpenAI-compatible endpoint URL（AI/BYOK）。 |
+| `provider` | provider 标识（AI/Search/BYOK）。 |
+| `model` | 模型名（AI/BYOK）。 |
+| `appId` | CCPayment App ID（非密文）。 |
+| `chatId` | Telegram 目标 Chat ID（非密文）。 |
+| `enabled` | Telegram 投递是否启用。 |
 
 规则：
 - 加解密依赖 `ENCRYPTION_KEY` 环境变量，缺失时凭证相关 worker 任务必须 fail-fast，不得静默降级到明文。
-- Admin 后台只展示 `aiKeyHint`/`searchKeyHint`，可新增或覆盖 Key，但不可查看明文。
+- Admin 后台只展示 `keyHint`，可新增或覆盖 Key，但不可查看明文。
 - Worker 运行时从 DB 读取并解密 Key → 注入 adapter → 调用完成后丢弃明文，不写入日志。
 - 环境变量（`AI_API_KEY`、`BRAVE_SEARCH_API_KEY` 等）仅作为 DB 未配置时的 fallback，不是主配置方式。
-- AI 模型列表（嗅探自 `GET /models`）为远端派生数据，不持久化到 `Subscription` 表；Admin 页面支持按需刷新并从下拉框选择模型，支持"自定义..."选项回退到自由输入。
-- AI 凭证连接测试在 `GET /models` 不可用时自动回退到 `POST /chat/completions`（最小 payload）兜底验证，确保 Azure、DeepSeek 等非标准 `/models` 端点的凭证也能正常测试。
+- AI 模型列表（嗅探自 `GET /models`）为远端派生数据，不持久化到 `OrganizationCredential` 表；Admin 页面支持按需刷新并从下拉框选择模型，支持"自定义..."选项回退到自由输入。
+- AI 凭证连接测试在 `GET /models` 不可用时自动回退到 `POST /chat/completions`（最小 payload）兜底验证。
 - 自定义 provider 可通过"手动确认" checkbox 跳过自动测试，但服务端仍校验 API Key 非空。
-- `Subscription` 已扩展为完整订阅模型：`plan`/`status`/`currentPeriodStart`/`currentPeriodEnd`/`canceledAt`/`metadata`，以及 per-user BYOK 字段（`byokEncryptedKey`/`byokKeyHint`/`byokBaseUrl`/`byokProvider`/`byokModel`）和支付 provider 字段（`ccpaymentOrderId`/`ccpaymentUserId`、`stripeCustomerId`/`stripeSubscriptionId`）。
+- `Subscription` 保留订阅计划模型：`plan`/`status`/`currentPeriodStart`/`currentPeriodEnd`/`canceledAt`/`metadata`/`stripeCustomerId`/`stripeSubscriptionId`。
 - 自用模式（`isSelfHosted=true`）跳过所有配额检查，适合自部署场景。
 
 ### Subscription Plan 状态机
@@ -321,8 +320,9 @@ Organization
   ├── Membership ── User
   │                 └── Session (Better Auth)
   │                 └── Account (Better Auth)
-  ├── Subscription (1:1, 凭证与订阅配置 + BYOK + Plan + 支付)
+  ├── Subscription (1:1, 计划/状态/支付周期)
   │     └── PaymentInvoice (1:N, 支付订单记录)
+  ├── OrganizationCredential (1:N per type, AI/SEARCH/BYOK/TELEGRAM/CCPAYMENT)
   ├── Topic
   │     ├── Source
   │     │     └── SourceObservation
@@ -350,7 +350,8 @@ Organization
 - `Topic`: `(organizationId, name)` 唯一。
 - `Source`: `(topicId, canonicalUrl)` 唯一。RSS URL 进入唯一性约束前必须 canonicalize。
 - `Item`: `(topicId, canonicalUrl)` 唯一。
-- `IntelligenceEvent`: `(topicId, eventHash)` 唯一。
+- `IntelligenceEvent`: `(topicId, eventHash)` 唯一（不再使用 `secondaryItemIds`，改为 EventItem 关联表）。
+- `OrganizationCredential`: `(organizationId, credentialType)` 唯一。
 - `UserItemState`: `(userId, eventId)` 唯一。
 - `Membership`: `(organizationId, userId)` 唯一。
 - `Subscription`: `organizationId` 唯一（1:1 with Organization）。

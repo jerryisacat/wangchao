@@ -1,5 +1,24 @@
 ## 2026-07-14
 
+## 2026-07-14
+
+### Batch: Module 1 DB/数据模型 Issues 修复 (#38, #41, #50, #51, #53, #54, #55, #59)
+
+- Cause: 修复 Module 1 数据模型相关 8 个 Issue，包括 Subscription 凭证拆分、事务包裹、null 状态区分、updateMany 删除、冗余字段清理、Decimal 金额、复合索引、migration 修复。
+- Changed:
+  - **#38**: Subscription 凭证字段（AI/SEARCH/BYOK/TELEGRAM/CCPAYMENT 共 22 列）拆分为独立 `OrganizationCredential` 表，按 `credentialType` 分区；Subscription 仅保留 plan/status/isSelfHosted/instantPush/Stripe/周期字段
+  - **#41**: `ensureDefaultWorkspace` 三个 upsert（organization/user/membership）用 `prisma.$transaction(async (tx) => Ellipsis)` 包裹
+  - **#50**: `getSubscriptionPlanView` 在无 Subscription 时返回 `status: null` 而非硬编码 `"ACTIVE"`，调用方需用 `?? "ACTIVE"` 兜底
+  - **#51**: `deleteAiCredential`/`deleteSearchCredential` 改用 `deleteMany` 不创建空 Subscription 行
+  - **#53**: 删除 `IntelligenceEvent.secondaryItemIds`（已有 EventItem 关联表）、`DeliveryLog.idempotencyKey`（已有 unique(briefingId, channel)）、`UserItemState.dismissedAt`（status=DISMISSED 已隐含）
+  - **#54**: `PaymentInvoice` 增加 `@@unique([provider, providerOrderId])` 约束
+  - **#55**: FeedbackEvent 增加 `[organizationId, kind, createdAt]` 和 `[topicId, kind, createdAt]` 复合索引
+  - **#59**: PaymentInvoice.amount Float→Decimal(10,2)；Session.expiresAt 索引；TaskRun.output 注释说明 100KB 截断；migration 0002 ALTER TYPE ADD VALUE 加 IF NOT EXISTS；seed 支持 WANGCHAO_SEED_SOURCES_PATH 相对路径覆盖
+- Files: `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/0013_credentials_split/migration.sql`, `packages/db/src/repositories.ts`, `packages/db/src/extended-repositories.ts`, `packages/db/src/index.ts`, `packages/db/prisma/seed.ts`, `apps/web/src/app/actions.ts`, `apps/web/src/app/admin/settings/page.tsx`, `apps/web/src/app/api/billing/ccpayment/webhook/route.ts`, `apps/worker/src/index.ts`, `docs/L2-domain.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `.env_example`
+- Verification: `pnpm typecheck` 通过（7/7 包），`pnpm test` 通过（7/7 包）
+- Notes / Risk: migration 0013 需在业务低峰执行；PaymentInvoice.amount 从 Float 转 Decimal 会重写整列，大表需评估锁时间；`getSubscriptionPlanView` 返回 null status 后所有调用方已用 `?? "ACTIVE"` 兜底
+
+
 ### Issue #100: 第 3 轮开放问题 — 10 项产品/架构决策确认
 
 - Cause: apps/worker 第 3 轮审计提出 10 个待决策的开放问题（cron 频率、报告生成架构、多租户规模、报告 SLA、Telegram 429 处理、并发参数、部分失败处理、RAILWAY_ROLE 归属等）。

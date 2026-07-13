@@ -38,7 +38,9 @@ Relevance 变更必须用 core fixture 覆盖：exclude 与正信号同时命中
 
 Worker/导出链路变更后，应在临时 Postgres 中至少验证 `TaskRun.type/status/attempt/maxAttempts/startedAt/finishedAt/output/errorMessage`。AI provider 失败但规则 fallback 成功时，应同时看到失败的 `AI_EVENT_EXTRACTION`、成功且 `llmFallback=true` 的 `AI_RELEVANCE`，并确认 `UsageEvent(type='AI_CALL').quantity` 包含最终失败的逻辑 adapter 调用（内部 HTTP retry 不重复计数）。
 
-Briefing schema 变更后必须运行 `pnpm db:generate`、`pnpm db:validate` 和 migration 验证。`0008_briefing_idempotency` 会在增加唯一索引前合并同一 `topicId + period + rangeStart` 的历史重复记录，保留最新简报，将既有 `ExportEvent` 指向保留记录，并合并 `_BriefingEvents` 关系；生产发布前不得跳过 migration/predeploy。
+Briefing schema 变更后必须运行 `pnpm db:generate`、`pnpm db:validate` 和 migration 验证。
+
+`0013_credentials_split` 执行前需确认目标库无并发写入：它将 Subscription 表上的 22 个凭证列迁移到新建的 OrganizationCredential 表（按 credentialType 分区），再 DROP 原列。迁移期间短暂持有 ACCESS EXCLUSIVE 锁。合理做法是在业务低峰窗前执行 `prisma migrate deploy`，并在 staging 先验证。该 migration 还删除了 `IntelligenceEvent.secondaryItemIds`、`DeliveryLog.idempotencyKey`、`UserItemState.dismissedAt` 三个冗余列——如已有数据依赖这些列，需先确认再部署。`0008_briefing_idempotency` 会在增加唯一索引前合并同一 `topicId + period + rangeStart` 的历史重复记录，保留最新简报，将既有 `ExportEvent` 指向保留记录，并合并 `_BriefingEvents` 关系；生产发布前不得跳过 migration/predeploy。
 
 ## Railway 部署脚本
 

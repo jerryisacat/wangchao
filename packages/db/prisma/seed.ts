@@ -153,6 +153,15 @@ async function resolveSeedList(): Promise<SeedList> {
     return buildLegacySeedList(legacyName, legacyUrl);
   }
 
+  const seedPath = process.env.WANGCHAO_SEED_SOURCES_PATH;
+  if (seedPath) {
+    const absolute = seedPath.startsWith("/")
+      ? seedPath
+      : resolve(process.cwd(), seedPath);
+    const text = await readFile(absolute, "utf8");
+    return validateSeedList(JSON.parse(text));
+  }
+
   const url = process.env.WANGCHAO_SEED_SOURCES_URL ?? DEFAULT_SEED_SOURCES_URL;
 
   try {
