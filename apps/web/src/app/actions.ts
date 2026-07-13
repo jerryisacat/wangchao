@@ -1533,7 +1533,7 @@ export async function regenerateEventSummaryAction(
 
     if (result.isRelevant && result.summary) {
       await prisma.intelligenceEvent.update({
-        where: { id: eventId },
+        where: { id: event.id, organizationId: workspace.organizationId },
         data: { summary: result.summary },
       });
       message = "摘要已基于 AI 重新生成。";

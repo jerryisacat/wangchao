@@ -5,6 +5,8 @@ const PUBLIC_PATHS = [
   "/register",
   "/api/auth",
   "/api/health",
+  "/api/billing/stripe/webhook",
+  "/api/billing/ccpayment/webhook",
 ];
 
 function isPublicPath(pathname: string): boolean {

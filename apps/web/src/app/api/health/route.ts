@@ -39,8 +39,11 @@ async function checkDatabase(): Promise<HealthCheck> {
     await prisma.$queryRaw`SELECT 1`;
     return { status: "ok" };
   } catch (error) {
+    process.stderr.write(
+      `Health check database error: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
     return {
-      message: error instanceof Error ? error.message : String(error),
+      message: "Database connection failed.",
       status: "down",
     };
   }
