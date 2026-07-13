@@ -563,6 +563,7 @@ a:not([data-slot="button"]):hover {
   color: var(--muted-foreground);
   font-size: 12px;
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .event-copy a {
@@ -903,6 +904,52 @@ a:not([data-slot="button"]):hover {
   gap: 12px;
 }
 
+.source-quality-row > div:first-child {
+  min-width: 0;
+}
+
+.source-batch-toolbar {
+  margin-bottom: 12px;
+}
+
+.source-batch-toolbar form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.source-batch-label {
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.source-batch-input {
+  flex: 1 1 200px;
+  min-width: 0;
+  min-height: 44px;
+  border: 1px solid var(--input);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--foreground);
+  font-size: 13px;
+  outline: none;
+  padding: 11px 12px;
+}
+
+.source-batch-input:focus {
+  border-color: var(--accent);
+}
+
+.source-error-hint {
+  margin: 5px 0 0;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .source-quality-title {
   display: flex;
   flex-wrap: wrap;
@@ -979,6 +1026,13 @@ a:not([data-slot="button"]):hover {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
+}
+
+.briefing-row > div:first-child,
+.membership-row > div:first-child,
+.usage-row > div:first-child,
+.preference-row > div:first-child {
+  min-width: 0;
 }
 
 .preference-row {
@@ -1455,6 +1509,10 @@ a:not([data-slot="button"]):hover {
   flex-shrink: 0;
 }
 
+.intelligence-card-reason span {
+  min-width: 0;
+}
+
 .intelligence-card-actions {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1551,6 +1609,23 @@ a:not([data-slot="button"]):hover {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.event-detail-actions form {
+  min-width: 0;
+}
+
+.event-copy-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.event-copy-meta {
+  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
 /* ===== Empty State v2 ===== */
@@ -1792,6 +1867,10 @@ a:not([data-slot="button"]):hover {
   text-decoration: underline;
 }
 
+.timeline-event-merged {
+  overflow-wrap: anywhere;
+}
+
 .timeline-pagination {
   display: flex;
   min-height: 44px;
@@ -2018,6 +2097,18 @@ a:not([data-slot="button"]):hover {
   .event-actions,
   .source-governance-actions {
     justify-content: flex-start;
+  }
+
+  [data-slot="tabs-list"] {
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  [data-slot="tabs-list"]::-webkit-scrollbar {
+    display: none;
   }
 
   .form-row {
