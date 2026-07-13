@@ -27,6 +27,7 @@
     "worker:source-discovery": "pnpm --filter @wangchao/worker source-discovery",
     "worker:health": "pnpm --filter @wangchao/worker health",
     "worker:instant-push": "pnpm --filter @wangchao/worker instant-push",
+    "worker:report-generation": "pnpm --filter @wangchao/worker report-generation",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"

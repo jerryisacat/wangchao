@@ -24,6 +24,7 @@ CI=true pnpm lint
 CI=true pnpm test
 pnpm worker:health
 pnpm worker:source-discovery
+pnpm worker:report-generation
 pnpm smoke:web
 ```
 
@@ -186,6 +187,7 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 - `WANGCHAO_AUTO_MUTE_THRESHOLD` 控制连续失败自动静音阈值，默认 `10`。ACTIVE source 连续抓取失败次数超过该阈值时自动转为 `MUTED`。
 - `WANGCHAO_CANDIDATE_OBSERVATION_ENABLED` 控制候选源低频观察 fetch 是否启用，默认 `false`。启用后 worker 会按低频周期探测候选源，用于在治理审核前收集质量信号。
+- `WANGCHAO_CANDIDATE_OBSERVATION_CONCURRENCY` 控制候选源观察的并发上限，默认 `3`。实际并发取 `min(WANGCHAO_FETCH_CONCURRENCY, 此值)`，不会超过主抓取并发。
 
 ### Seed Sources
 
@@ -202,7 +204,7 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - `docs/deployment.md` 记录当前 Railway 部署顺序、环境变量、服务配置、日志、备份和回滚策略。
 - `docs/railway-runbook.md` 是 Railway 生产运维主参考：GitHub→Railway 主路径、Cron 运行观测、Postgres 备份/PITR、发布验证 smoke/回滚 runbook、环境变量矩阵、CI/CD。
 - `railway.json` 是 `railway up` 本地紧急 fallback 使用的 Railway root config（通过 `WANGCHAO_RAILWAY_ROLE` 分发）。
-- `deploy/railway/*.railway.json` 是 Railway Config as Code；Web、Worker Cron、Source Discovery Cron 和 Instant Push Cron 分别作为独立 Railway service 设置对应 config file path。
+- `deploy/railway/*.railway.json` 是 Railway Config as Code；Web、Worker Cron、Source Discovery Cron、Instant Push Cron 和 Report Cron 分别作为独立 Railway service 设置对应 config file path。
 - `.github/workflows/ci.yml` 是 GitHub Actions CI workflow，在 push/PR 到 `master` 时运行 lint、typecheck、build、test 和 Prisma schema validate。
 
 ## 验证注意事项

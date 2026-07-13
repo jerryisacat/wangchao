@@ -407,47 +407,50 @@ export async function ensureDefaultWorkspace(
   const ownerEmail =
     readRuntimeEnv("WANGCHAO_DEFAULT_USER_EMAIL") ?? DEFAULT_OWNER_EMAIL;
   const ownerName = readRuntimeEnv("WANGCHAO_DEFAULT_USER_NAME") ?? "个人用户";
-  const organization = await prisma.organization.upsert({
-    where: { slug: organizationSlug },
-    update: {},
-    create: {
-      name: organizationName,
-      slug: organizationSlug,
-    },
-  });
 
-  const user = await prisma.user.upsert({
-    where: { email: ownerEmail },
-    update: {},
-    create: {
-      email: ownerEmail,
-      name: ownerName,
-    },
-  });
+  return prisma.$transaction(async (tx) => {
+    const organization = await tx.organization.upsert({
+      where: { slug: organizationSlug },
+      update: {},
+      create: {
+        name: organizationName,
+        slug: organizationSlug,
+      },
+    });
 
-  const membership = await prisma.membership.upsert({
-    where: {
-      organizationId_userId: {
+    const user = await tx.user.upsert({
+      where: { email: ownerEmail },
+      update: {},
+      create: {
+        email: ownerEmail,
+        name: ownerName,
+      },
+    });
+
+    const membership = await tx.membership.upsert({
+      where: {
+        organizationId_userId: {
+          organizationId: organization.id,
+          userId: user.id,
+        },
+      },
+      update: { role: "OWNER" },
+      create: {
         organizationId: organization.id,
         userId: user.id,
+        role: "OWNER",
       },
-    },
-    update: { role: "OWNER" },
-    create: {
-      organizationId: organization.id,
-      userId: user.id,
-      role: "OWNER",
-    },
-  });
+    });
 
-  return {
-    organizationId: organization.id,
-    organizationName: organization.name,
-    organizationSlug: organization.slug,
-    role: membership.role,
-    userEmail: user.email,
-    userId: user.id,
-  };
+    return {
+      organizationId: organization.id,
+      organizationName: organization.name,
+      organizationSlug: organization.slug,
+      role: membership.role,
+      userEmail: user.email,
+      userId: user.id,
+    };
+  });
 }
 
 export interface UpdateTopicInput {
@@ -1747,7 +1750,6 @@ export async function upsertIntelligenceEventFromItem(
             organizationId: input.organizationId,
             topicId: input.topicId,
             primaryItemId: input.primaryItemId,
-            secondaryItemIds: [],
             status: "UNREAD",
             title: input.title,
             summary: input.summary,
@@ -2648,7 +2650,6 @@ export async function updateDashboardEventState(
           },
         },
         update: {
-          dismissedAt: null,
           saved: false,
           status: restoredStatus,
         },
@@ -2682,13 +2683,11 @@ export async function updateDashboardEventState(
         },
       },
       update: {
-        dismissedAt: target.status === "DISMISSED" ? now : null,
         readAt: target.status === "READ" ? now : undefined,
         saved: preserveSaved || target.status === "SAVED",
         status: nextStatus,
       },
       create: {
-        dismissedAt: target.status === "DISMISSED" ? now : undefined,
         eventId: event.id,
         readAt: target.status === "READ" ? now : undefined,
         saved: preserveSaved || target.status === "SAVED",
@@ -2981,39 +2980,52 @@ export async function getSubscriptionCredentialView(
   prisma: PrismaClient,
   scope: TenantScope,
 ): Promise<SubscriptionCredentialView | null> {
-  const subscription = await prisma.subscription.findUnique({
+  const credentials = await prisma.organizationCredential.findMany({
     where: { organizationId: scope.organizationId },
     select: {
-      aiEncryptedKey: true,
-      aiKeyHint: true,
-      aiBaseUrl: true,
-      aiProvider: true,
-      aiModel: true,
-      searchEncryptedKey: true,
-      searchKeyHint: true,
-      searchProvider: true,
+      credentialType: true,
+      encryptedKey: true,
+      keyHint: true,
+      baseUrl: true,
+      provider: true,
+      model: true,
       updatedAt: true,
     },
   });
 
-  if (!subscription) {
+  if (credentials.length === 0) {
     return null;
   }
 
+  let ai: SubscriptionCredentialView["ai"] | null = null;
+  let search: SubscriptionCredentialView["search"] | null = null;
+  let latestUpdate: Date | null = null;
+
+  for (const cred of credentials) {
+    if (cred.updatedAt && (!latestUpdate || cred.updatedAt > latestUpdate)) {
+      latestUpdate = cred.updatedAt;
+    }
+    if (cred.credentialType === "AI") {
+      ai = {
+        hasKey: Boolean(cred.encryptedKey),
+        keyHint: cred.keyHint,
+        baseUrl: cred.baseUrl,
+        provider: cred.provider,
+        model: cred.model,
+      };
+    } else if (cred.credentialType === "SEARCH") {
+      search = {
+        hasKey: Boolean(cred.encryptedKey),
+        keyHint: cred.keyHint,
+        provider: cred.provider,
+      };
+    }
+  }
+
   return {
-    ai: {
-      hasKey: Boolean(subscription.aiEncryptedKey),
-      keyHint: subscription.aiKeyHint,
-      baseUrl: subscription.aiBaseUrl,
-      provider: subscription.aiProvider,
-      model: subscription.aiModel,
-    },
-    search: {
-      hasKey: Boolean(subscription.searchEncryptedKey),
-      keyHint: subscription.searchKeyHint,
-      provider: subscription.searchProvider,
-    },
-    updatedAt: subscription.updatedAt,
+    ai: ai ?? { hasKey: false, keyHint: null, baseUrl: null, provider: null, model: null },
+    search: search ?? { hasKey: false, keyHint: null, provider: null },
+    updatedAt: latestUpdate ?? new Date(),
   };
 }
 
@@ -3031,22 +3043,28 @@ export async function upsertAiCredential(
   const encryptedKey = encryptCredential(input.apiKey, encryptionKey);
   const keyHint = maskKeyHint(input.apiKey);
 
-  await prisma.subscription.upsert({
-    where: { organizationId: scope.organizationId },
+  await prisma.organizationCredential.upsert({
+    where: {
+      organizationId_credentialType: {
+        organizationId: scope.organizationId,
+        credentialType: "AI",
+      },
+    },
     update: {
-      aiEncryptedKey: encryptedKey,
-      aiKeyHint: keyHint,
-      aiBaseUrl: input.baseUrl ?? null,
-      aiProvider: input.provider ?? null,
-      aiModel: input.model ?? null,
+      encryptedKey,
+      keyHint,
+      baseUrl: input.baseUrl ?? null,
+      provider: input.provider ?? null,
+      model: input.model ?? null,
     },
     create: {
       organizationId: scope.organizationId,
-      aiEncryptedKey: encryptedKey,
-      aiKeyHint: keyHint,
-      aiBaseUrl: input.baseUrl ?? null,
-      aiProvider: input.provider ?? null,
-      aiModel: input.model ?? null,
+      credentialType: "AI",
+      encryptedKey,
+      keyHint,
+      baseUrl: input.baseUrl ?? null,
+      provider: input.provider ?? null,
+      model: input.model ?? null,
     },
   });
 }
@@ -3063,18 +3081,24 @@ export async function upsertSearchCredential(
   const encryptedKey = encryptCredential(input.apiKey, encryptionKey);
   const keyHint = maskKeyHint(input.apiKey);
 
-  await prisma.subscription.upsert({
-    where: { organizationId: scope.organizationId },
+  await prisma.organizationCredential.upsert({
+    where: {
+      organizationId_credentialType: {
+        organizationId: scope.organizationId,
+        credentialType: "SEARCH",
+      },
+    },
     update: {
-      searchEncryptedKey: encryptedKey,
-      searchKeyHint: keyHint,
-      searchProvider: input.provider ?? null,
+      encryptedKey,
+      keyHint,
+      provider: input.provider ?? null,
     },
     create: {
       organizationId: scope.organizationId,
-      searchEncryptedKey: encryptedKey,
-      searchKeyHint: keyHint,
-      searchProvider: input.provider ?? null,
+      credentialType: "SEARCH",
+      encryptedKey,
+      keyHint,
+      provider: input.provider ?? null,
     },
   });
 }
@@ -3083,17 +3107,10 @@ export async function deleteAiCredential(
   prisma: PrismaClient,
   scope: TenantScope,
 ): Promise<void> {
-  await prisma.subscription.upsert({
-    where: { organizationId: scope.organizationId },
-    update: {
-      aiEncryptedKey: null,
-      aiKeyHint: null,
-      aiBaseUrl: null,
-      aiProvider: null,
-      aiModel: null,
-    },
-    create: {
+  await prisma.organizationCredential.deleteMany({
+    where: {
       organizationId: scope.organizationId,
+      credentialType: "AI",
     },
   });
 }
@@ -3102,15 +3119,10 @@ export async function deleteSearchCredential(
   prisma: PrismaClient,
   scope: TenantScope,
 ): Promise<void> {
-  await prisma.subscription.upsert({
-    where: { organizationId: scope.organizationId },
-    update: {
-      searchEncryptedKey: null,
-      searchKeyHint: null,
-      searchProvider: null,
-    },
-    create: {
+  await prisma.organizationCredential.deleteMany({
+    where: {
       organizationId: scope.organizationId,
+      credentialType: "SEARCH",
     },
   });
 }
@@ -3335,31 +3347,33 @@ export async function getDecryptedCredentials(
   prisma: PrismaClient,
   scope: TenantScope,
 ): Promise<DecryptedCredentials | null> {
-  const subscription = await prisma.subscription.findUnique({
-    where: { organizationId: scope.organizationId },
+  const credentials = await prisma.organizationCredential.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      credentialType: { in: ["AI", "SEARCH"] },
+    },
     select: {
-      aiEncryptedKey: true,
-      aiBaseUrl: true,
-      aiModel: true,
-      searchEncryptedKey: true,
-      searchProvider: true,
+      credentialType: true,
+      encryptedKey: true,
+      baseUrl: true,
+      model: true,
+      provider: true,
     },
   });
 
-  if (!subscription) {
-    return { ai: null, search: null };
-  }
+  const aiCred = credentials.find((c) => c.credentialType === "AI");
+  const searchCred = credentials.find((c) => c.credentialType === "SEARCH");
 
   const encryptionKey = readRuntimeEnv("ENCRYPTION_KEY");
 
   let ai: DecryptedAiCredential | null = null;
-  if (subscription.aiEncryptedKey && subscription.aiBaseUrl && encryptionKey) {
+  if (aiCred?.encryptedKey && aiCred.baseUrl && encryptionKey) {
     try {
-      const apiKey = decryptCredential(subscription.aiEncryptedKey, encryptionKey);
+      const apiKey = decryptCredential(aiCred.encryptedKey, encryptionKey);
       ai = {
         apiKey,
-        baseUrl: subscription.aiBaseUrl,
-        model: subscription.aiModel ?? "gpt-4o-mini",
+        baseUrl: aiCred.baseUrl,
+        model: aiCred.model ?? "gpt-4o-mini",
       };
     } catch {
       // Decryption failure -> treat as no credential
@@ -3367,12 +3381,12 @@ export async function getDecryptedCredentials(
   }
 
   let search: DecryptedSearchCredential | null = null;
-  if (subscription.searchEncryptedKey && encryptionKey) {
+  if (searchCred?.encryptedKey && encryptionKey) {
     try {
-      const apiKey = decryptCredential(subscription.searchEncryptedKey, encryptionKey);
+      const apiKey = decryptCredential(searchCred.encryptedKey, encryptionKey);
       search = {
         apiKey,
-        provider: subscription.searchProvider ?? "brave",
+        provider: searchCred.provider ?? "brave",
       };
     } catch {
       // Decryption failure -> treat as no credential

@@ -53,6 +53,7 @@ export {
   markInstantPushSent,
   getTopicCount,
   listReports,
+  listPendingReports,
   recordEnhancedFeedback,
   searchReportEvidenceEvents,
   setSelfHostedMode,

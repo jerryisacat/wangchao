@@ -1,3 +1,18 @@
+## 2026-07-14
+
+### Issue #100: 第 3 轮开放问题 — 10 项产品/架构决策确认
+
+- Cause: apps/worker 第 3 轮审计提出 10 个待决策的开放问题（cron 频率、报告生成架构、多租户规模、报告 SLA、Telegram 429 处理、并发参数、部分失败处理、RAILWAY_ROLE 归属等）。
+- Changed:
+  - **Q1/Q3/Q4/Q6 关闭**（附分析写入 Issue #100 评论）：Railway cron 最小间隔为 1 分钟而非 5 分钟（当前 hourly 正确）；多租户规模当前不需调整（SPEC §3.7 单用户优先）；报告 SLA 分钟级合理（30s timeout + 2000 tokens 足够）；Telegram 429 retry_after 已在 `markInstantPushFailed` + `claimInstantPushFailed` 中正确处理。
+  - **Q7 候选源观察并发参数化**：新增 `WANGCHAO_CANDIDATE_OBSERVATION_CONCURRENCY` 环境变量（默认 3），替换 `runCandidateObservationCycle` 中的硬编码 `3`。
+  - **Q2/Q5/Q10 独立 Report Cron Service**：新增 `deploy/railway/report-cron.railway.json`（每 10 分钟）、worker `--report-generation` CLI 入口和 `runReportGenerationCycle()`；Web `createReportAction` 移除 fire-and-forget 调用，仅写 `PENDING` 状态。新增 `listPendingReports()` db 查询。
+  - **Q8 新建 Issue #124**：追踪 `runFetchCycle` sub-cycle 缺少 error boundary 的改进。
+  - **Q9 文档修正**：`WANGCHAO_RAILWAY_ROLE` 在环境变量矩阵中明确标注仅 root config fallback 使用。
+- Files: `apps/worker/src/index.ts`, `apps/worker/package.json`, `apps/web/src/app/actions.ts`, `packages/db/src/extended-repositories.ts`, `packages/db/src/index.ts`, `package.json`, `deploy/railway/report-cron.railway.json`, `docs/L4-operations.md`, `docs/railway-runbook.md`, `AGENTS.md`, `AGENTS_CHANGELOGS.md`.
+- Verification: `pnpm db:generate` + `pnpm --filter @wangchao/worker typecheck` 通过（除 pre-existing subscription schema 漂移错误外零新增错误）。
+- Notes / Risk: 仓库存在 pre-existing 的 subscription schema 漂移（`repositories.ts` 引用已移除的 `aiBaseUrl`/`aiEncryptedKey`/`searchEncryptedKey`/`searchProvider` 字段），导致 `pnpm build` 失败。这不是本次 Issue #100 改动引入的。Report Cron 需要在 Railway dashboard 手动创建 service 并绑定 `deploy/railway/report-cron.railway.json`。
+
 ## 2026-07-11
 
 ### #37 高权重情报 Telegram 即时推送

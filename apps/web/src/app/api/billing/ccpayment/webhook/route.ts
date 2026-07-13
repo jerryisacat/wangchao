@@ -114,28 +114,25 @@ async function resolveCredential(
   prisma: ReturnType<typeof getPrismaClient>,
   appId: string,
 ): Promise<CcpaymentConfig | null> {
-  const subscription = await prisma.subscription.findFirst({
-    where: { ccpaymentAppId: appId },
+  const cred = await prisma.organizationCredential.findFirst({
+    where: {
+      appId,
+      credentialType: "CCPAYMENT",
+    },
     select: {
-      ccpaymentAppId: true,
-      ccpaymentEncryptedSecret: true,
+      appId: true,
+      encryptedSecret: true,
       organizationId: true,
     },
   });
 
-  if (
-    subscription?.ccpaymentAppId === appId &&
-    subscription.ccpaymentEncryptedSecret
-  ) {
+  if (cred?.appId === appId && cred.encryptedSecret) {
     const encryptionKey = process.env.ENCRYPTION_KEY;
     if (!encryptionKey) return null;
     try {
       const { decryptCredential } = await import("@wangchao/db");
-      const appSecret = decryptCredential(
-        subscription.ccpaymentEncryptedSecret,
-        encryptionKey,
-      );
-      return { appId: subscription.ccpaymentAppId, appSecret };
+      const appSecret = decryptCredential(cred.encryptedSecret, encryptionKey);
+      return { appId: cred.appId, appSecret };
     } catch {
       return null;
     }

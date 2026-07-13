@@ -74,11 +74,23 @@ export default async function AdminSettingsPage({
     organizationId: workspace.organizationId,
   });
 
-  const { getInstantPushSettings, getTelegramCredentialView } = await import("@wangchao/db");
+  const {
+    getByokCredentialView,
+    getCcpaymentCredentialView,
+    getInstantPushSettings,
+    getTelegramCredentialView,
+  } = await import("@wangchao/db");
+
   const telegramCredential = await getTelegramCredentialView(prisma, {
     organizationId: workspace.organizationId,
   });
   const instantPushSettings = await getInstantPushSettings(prisma, { organizationId: workspace.organizationId });
+  const byokCredential = await getByokCredentialView(prisma, {
+    organizationId: workspace.organizationId,
+  });
+  const ccpaymentCredential = await getCcpaymentCredentialView(prisma, {
+    organizationId: workspace.organizationId,
+  });
   const { checkInstantPushQuota, resolveEffectivePlan } = await import("@wangchao/core");
   const instantPushAllowed = checkInstantPushQuota(
     resolveEffectivePlan(instantPushSettings),
@@ -90,12 +102,6 @@ export default async function AdminSettingsPage({
     select: {
       plan: true,
       isSelfHosted: true,
-      byokKeyHint: true,
-      byokBaseUrl: true,
-      byokProvider: true,
-      byokModel: true,
-      ccpaymentAppId: true,
-      ccpaymentSecretHint: true,
       updatedAt: true,
     },
   });
@@ -405,22 +411,22 @@ export default async function AdminSettingsPage({
               <div className="mb-4 rounded-md border border-border bg-surface p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <Badge
-                    variant={subscription?.byokKeyHint ? "success" : "muted"}
+                    variant={byokCredential.hasKey ? "success" : "muted"}
                   >
-                    {subscription?.byokKeyHint ? "已配置" : "未配置"}
+                    {byokCredential.hasKey ? "已配置" : "未配置"}
                   </Badge>
                   <Badge variant="muted">
                     {subscription?.plan ?? "FREE"}
                   </Badge>
                 </div>
-                {subscription?.byokKeyHint ? (
+                {byokCredential.hasKey ? (
                   <dl className="grid gap-1.5 text-xs">
                     <div className="flex gap-2">
                       <dt className="w-16 shrink-0 text-muted-foreground">
                         Key
                       </dt>
                       <dd className="break-all font-mono text-muted-foreground">
-                        {subscription.byokKeyHint}
+                        {byokCredential.keyHint}
                       </dd>
                     </div>
                     <div className="flex gap-2">
@@ -428,7 +434,7 @@ export default async function AdminSettingsPage({
                         端点
                       </dt>
                       <dd className="break-all font-mono text-muted-foreground">
-                        {subscription.byokBaseUrl ?? "未设置"}
+                        {byokCredential.baseUrl ?? "未设置"}
                       </dd>
                     </div>
                     <div className="flex gap-2">
@@ -436,7 +442,7 @@ export default async function AdminSettingsPage({
                         模型
                       </dt>
                       <dd className="break-all font-mono text-muted-foreground">
-                        {subscription.byokModel ?? "未设置"}
+                        {byokCredential.model ?? "未设置"}
                       </dd>
                     </div>
                   </dl>
@@ -453,15 +459,15 @@ export default async function AdminSettingsPage({
 
               <div className="mt-3">
                 <ByokCredentialForm
-                  currentBaseUrl={subscription?.byokBaseUrl ?? null}
-                  currentModel={subscription?.byokModel ?? null}
-                  currentProvider={subscription?.byokProvider ?? null}
+                  currentBaseUrl={byokCredential.baseUrl ?? null}
+                  currentModel={byokCredential.model ?? null}
+                  currentProvider={byokCredential.provider ?? null}
                   formAction={upsertByokCredentialAction}
                   testAction={testByokCredentialAction}
                 />
               </div>
 
-              {subscription?.byokKeyHint ? (
+              {byokCredential.hasKey ? (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <form action={deleteByokCredentialAction}>
                     <Button size="sm" type="submit" variant="danger">
@@ -490,20 +496,20 @@ export default async function AdminSettingsPage({
                 <div className="mb-3 flex items-center justify-between">
                   <Badge
                     variant={
-                      subscription?.ccpaymentAppId ? "success" : "muted"
+                      ccpaymentCredential.hasSecret ? "success" : "muted"
                     }
                   >
-                    {subscription?.ccpaymentAppId ? "已配置" : "未配置"}
+                    {ccpaymentCredential.hasSecret ? "已配置" : "未配置"}
                   </Badge>
                 </div>
-                {subscription?.ccpaymentAppId ? (
+                {ccpaymentCredential.hasSecret ? (
                   <dl className="grid gap-1.5 text-xs">
                     <div className="flex gap-2">
                       <dt className="w-16 shrink-0 text-muted-foreground">
                         App ID
                       </dt>
                       <dd className="break-all font-mono text-muted-foreground">
-                        {subscription.ccpaymentAppId.slice(0, 4)}...{subscription.ccpaymentAppId.slice(-4)}
+                        {ccpaymentCredential.appId?.slice(0, 4)}...{ccpaymentCredential.appId?.slice(-4)}
                       </dd>
                     </div>
                     <div className="flex gap-2">
@@ -511,7 +517,7 @@ export default async function AdminSettingsPage({
                         Secret
                       </dt>
                       <dd className="break-all font-mono text-muted-foreground">
-                        {subscription.ccpaymentSecretHint}
+                        {ccpaymentCredential.secretHint}
                       </dd>
                     </div>
                   </dl>
@@ -519,12 +525,12 @@ export default async function AdminSettingsPage({
               </div>
 
               <CcpaymentCredentialForm
-                currentAppId={subscription?.ccpaymentAppId ?? null}
+                currentAppId={ccpaymentCredential.appId ?? null}
                 formAction={upsertCcpaymentCredentialAction}
                 testAction={testCcpaymentCredentialAction}
               />
 
-              {subscription?.ccpaymentAppId ? (
+              {ccpaymentCredential.hasSecret ? (
                 <div className="mt-3 flex flex-wrap gap-2">
                   <form action={deleteCcpaymentCredentialAction}>
                     <Button size="sm" type="submit" variant="danger">

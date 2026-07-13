@@ -91,6 +91,7 @@
 | Web | `deploy/railway/web.railway.json` | Next.js App Router、Server Actions、export routes、`/api/health` |
 | Worker Cron | `deploy/railway/worker-cron.railway.json` | 定时执行 RSS fetch、analysis、briefing、source observation |
 | Source Discovery Cron | `deploy/railway/source-discovery-cron.railway.json` | 周期执行候选信源发现 |
+| Report Cron | `deploy/railway/report-cron.railway.json` | 定时扫描 PENDING 状态的 Report 并逐个生成 |
 
 默认分支上的 commit / push 可能通过 GitHub 自动同步直接触发 Railway Web、Worker Cron 或 Source Discovery Cron 服务重新部署。
 

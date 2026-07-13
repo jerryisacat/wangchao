@@ -142,7 +142,8 @@ model Organization {
   deliveryLogs       DeliveryLog[]
   reports            Report[]
   paymentInvoices    PaymentInvoice[]
-  subscription       Subscription?
+  subscription       Subscription[]
+  credentials        OrganizationCredential[]
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   instantPushLogs    InstantPushLog[]
@@ -159,6 +160,14 @@ enum SubscriptionStatus {
   PAST_DUE
   CANCELED
   EXPIRED
+}
+
+enum CredentialType {
+  AI
+  SEARCH
+  BYOK
+  TELEGRAM
+  CCPAYMENT
 }
 
 enum DeliveryChannel {
@@ -192,56 +201,53 @@ model Subscription {
   id             String @id @default(cuid())
   organizationId String @unique
 
-  // 订阅计划
-  plan         Plan               @default(FREE)
-  status       SubscriptionStatus @default(ACTIVE)
-  isSelfHosted Boolean            @default(false)
+  plan             Plan               @default(FREE)
+  status           SubscriptionStatus @default(ACTIVE)
+  isSelfHosted     Boolean            @default(false)
+  instantPushEnabled  Boolean   @default(false)
+  instantPushEnabledAt DateTime?
 
-  // AI 凭证（系统级 official AI — Free 和 Pro 使用）
-  aiEncryptedKey String? // AES-256-GCM 密文
-  aiBaseUrl      String? // endpoint URL
-  aiProvider     String? // openai / custom 等
-  aiKeyHint      String? // 脱敏显示，如 "sk-...xyz"
-  aiModel        String? // 模型名
-
-  // Per-user BYOK（Plus 必填，Pro 可选）
-  byokEncryptedKey String? // AES-256-GCM 密文
-  byokBaseUrl      String? // 用户自定义 endpoint
-  byokProvider     String? // openai / anthropic / custom
-  byokKeyHint      String? // 脱敏显示
-  byokModel        String? // 模型名
-
-  // 搜索凭证（Brave Search 等）
-  searchEncryptedKey String? // AES-256-GCM 密文
-  searchProvider     String? // brave 等
-  searchKeyHint      String? // 脱敏显示
-
-  // Telegram 投递凭证
-  telegramEncryptedBotToken String? // AES-256-GCM 密文
-  telegramBotTokenHint      String? // 脱敏显示
-  telegramChatId            String? // 目标 Chat ID（非密文）
-  telegramEnabled           Boolean   @default(false)
-  instantPushEnabled        Boolean   @default(false)
-  instantPushEnabledAt      DateTime?
-
-  // CCPayment 加密支付
-  ccpaymentAppId           String? // CCPayment APP ID（非密文）
-  ccpaymentEncryptedSecret String? // AES-256-GCM 密文
-  ccpaymentSecretHint      String? // 脱敏显示
-
-  // Stripe（骨架，暂不启用真实支付）
   stripeCustomerId     String?
   stripeSubscriptionId String?
 
-  // 订阅周期
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
   canceledAt         DateTime?
   metadata           Json?
 
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+model OrganizationCredential {
+  id              String          @id @default(cuid())
+  organizationId  String
+  credentialType  CredentialType
+
+  encryptedKey    String?
+  encryptedSecret String?
+  keyHint         String?
+
+  baseUrl  String?
+  provider String?
+  model    String?
+
+  appId  String?
+  chatId String?
+
+  enabled             Boolean   @default(false)
+  instantPushEnabled  Boolean   @default(false)
+  instantPushEnabledAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+
+  @@unique([organizationId, credentialType])
+  @@index([organizationId])
+  @@index([credentialType])
 }
 
 model Membership {
@@ -356,7 +362,6 @@ model IntelligenceEvent {
   organizationId     String
   topicId            String
   primaryItemId      String?
-  secondaryItemIds   String[]         @default([])
   status             EventStatus      @default(UNREAD)
   title              String
   summary            String
@@ -414,7 +419,6 @@ model UserItemState {
   status      EventStatus       @default(UNREAD)
   saved       Boolean           @default(false)
   readAt      DateTime?
-  dismissedAt DateTime?
   user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   event       IntelligenceEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
   createdAt   DateTime          @default(now())
@@ -445,8 +449,8 @@ model FeedbackEvent {
   source         Source?            @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   createdAt      DateTime           @default(now())
 
-  @@index([organizationId, createdAt])
-  @@index([topicId, kind])
+  @@index([organizationId, kind, createdAt])
+  @@index([topicId, kind, createdAt])
   @@index([userId])
   @@index([eventId])
   @@index([sourceId])
@@ -556,7 +560,7 @@ model TaskRun {
   finishedAt     DateTime?
   errorMessage   String?
   input          Json?
-  output         Json?
+  output         Json? // Truncated at 100KB before persistence to prevent row size overflow.
   organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   topic          Topic?             @relation(fields: [topicId], references: [id], onDelete: SetNull)
   source         Source?            @relation(fields: [sourceId], references: [id], onDelete: SetNull)
@@ -595,8 +599,7 @@ model DeliveryLog {
   channel        DeliveryChannel @default(TELEGRAM)
   status         DeliveryStatus  @default(PENDING)
   attempt        Int             @default(0)
-  recipientRef   String? // e.g. Telegram chat_id
-  idempotencyKey String? // unique per briefing+channel for dedup
+  recipientRef   String?
   errorMessage   String?
   errorCode      String?
   sentAt         DateTime?
@@ -689,16 +692,17 @@ model Session {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@index([expiresAt])
 }
 
 model PaymentInvoice {
   id              String       @id @default(cuid())
   organizationId  String
   plan            Plan
-  amount          Float
+  amount          Decimal      @db.Decimal(10, 2)
   currency        String       @default("USD")
-  status          String       @default("PENDING") // PENDING / PAID / EXPIRED / FAILED
-  provider        String       @default("ccpayment") // ccpayment / stripe
+  status          String       @default("PENDING")
+  provider        String       @default("ccpayment")
   providerOrderId String?
   invoiceUrl      String?
   periodStart     DateTime?
@@ -708,6 +712,6 @@ model PaymentInvoice {
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
 
+  @@unique([provider, providerOrderId])
   @@index([organizationId, status])
-  @@index([provider, providerOrderId])
 }

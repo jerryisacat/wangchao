@@ -2292,14 +2292,8 @@ export async function createReportAction(formData: FormData): Promise<void> {
       userId: workspace.userId,
     });
 
-    const { runReportGeneration } = await import("@wangchao/worker");
-    runReportGeneration({
-      organizationId: workspace.organizationId,
-      reportId: report.id,
-      userId: workspace.userId,
-    }).catch((error) => {
-      logActionError("createReportAction:runReportGeneration", error);
-    });
+    // Report status is PENDING — the dedicated report-cron Railway service
+    // will pick it up and generate it, fully decoupled from the Web process.
   } catch (error) {
     logActionError("createReportAction", error);
     message = toUserActionError(error);
@@ -2525,27 +2519,14 @@ export async function upsertByokCredentialAction(
       ["OWNER", "ADMIN"],
     );
 
-    const encryptionKey = process.env.ENCRYPTION_KEY!;
-    const encryptedKey = encryptCredential(apiKey, encryptionKey);
-    const keyHint = maskKeyHint(apiKey);
-
-    await prisma.subscription.upsert({
-      where: { organizationId: workspace.organizationId },
-      update: {
-        byokEncryptedKey: encryptedKey,
-        byokKeyHint: keyHint,
-        byokBaseUrl: baseUrl,
-        byokProvider: provider || null,
-        byokModel: model || null,
-      },
-      create: {
-        organizationId: workspace.organizationId,
-        byokEncryptedKey: encryptedKey,
-        byokKeyHint: keyHint,
-        byokBaseUrl: baseUrl,
-        byokProvider: provider || null,
-        byokModel: model || null,
-      },
+    const { upsertByokCredential } = await import("@wangchao/db");
+    await upsertByokCredential(prisma, {
+      organizationId: workspace.organizationId,
+    }, {
+      apiKey,
+      baseUrl,
+      provider: provider || undefined,
+      model: model || undefined,
     });
 
     await recordUsageEvent(prisma, {
@@ -2596,18 +2577,9 @@ export async function deleteByokCredentialAction(
       ["OWNER", "ADMIN"],
     );
 
-    await prisma.subscription.upsert({
-      where: { organizationId: workspace.organizationId },
-      update: {
-        byokEncryptedKey: null,
-        byokKeyHint: null,
-        byokBaseUrl: null,
-        byokProvider: null,
-        byokModel: null,
-      },
-      create: {
-        organizationId: workspace.organizationId,
-      },
+    const { deleteByokCredential } = await import("@wangchao/db");
+    await deleteByokCredential(prisma, {
+      organizationId: workspace.organizationId,
     });
 
     await recordUsageEvent(prisma, {

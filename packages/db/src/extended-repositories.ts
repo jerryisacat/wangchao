@@ -34,27 +34,40 @@ export async function getInstantPushSettings(
   prisma: PrismaClient,
   scope: TenantScope,
 ): Promise<InstantPushSettingsView> {
-  const row = await prisma.subscription.findUnique({
-    where: { organizationId: scope.organizationId },
-    select: {
-      instantPushEnabled: true,
-      instantPushEnabledAt: true,
-      telegramEncryptedBotToken: true,
-      telegramChatId: true,
-      plan: true,
-      status: true,
-      isSelfHosted: true,
-      currentPeriodEnd: true,
-    },
-  });
+  const [subscription, telegramCred] = await Promise.all([
+    prisma.subscription.findUnique({
+      where: { organizationId: scope.organizationId },
+      select: {
+        instantPushEnabled: true,
+        instantPushEnabledAt: true,
+        plan: true,
+        status: true,
+        isSelfHosted: true,
+        currentPeriodEnd: true,
+      },
+    }),
+    prisma.organizationCredential.findUnique({
+      where: {
+        organizationId_credentialType: {
+          organizationId: scope.organizationId,
+          credentialType: "TELEGRAM",
+        },
+      },
+      select: {
+        encryptedKey: true,
+        chatId: true,
+      },
+    }),
+  ]);
+
   return {
-    enabled: row?.instantPushEnabled ?? false,
-    enabledAt: row?.instantPushEnabledAt ?? null,
-    hasTelegramCredential: Boolean(row?.telegramEncryptedBotToken && row.telegramChatId),
-    plan: row?.plan ?? "FREE",
-    status: row?.status ?? "ACTIVE",
-    isSelfHosted: row?.isSelfHosted ?? false,
-    currentPeriodEnd: row?.currentPeriodEnd?.toISOString() ?? null,
+    enabled: subscription?.instantPushEnabled ?? false,
+    enabledAt: subscription?.instantPushEnabledAt ?? null,
+    hasTelegramCredential: Boolean(telegramCred?.encryptedKey && telegramCred.chatId),
+    plan: subscription?.plan ?? "FREE",
+    status: subscription?.status ?? "ACTIVE",
+    isSelfHosted: subscription?.isSelfHosted ?? false,
+    currentPeriodEnd: subscription?.currentPeriodEnd?.toISOString() ?? null,
   };
 }
 
@@ -255,25 +268,30 @@ export async function getTelegramCredentialView(
   prisma: PrismaClient,
   scope: TenantScope,
 ): Promise<TelegramCredentialView> {
-  const subscription = await prisma.subscription.findUnique({
-    where: { organizationId: scope.organizationId },
+  const cred = await prisma.organizationCredential.findUnique({
+    where: {
+      organizationId_credentialType: {
+        organizationId: scope.organizationId,
+        credentialType: "TELEGRAM",
+      },
+    },
     select: {
-      telegramEncryptedBotToken: true,
-      telegramBotTokenHint: true,
-      telegramChatId: true,
-      telegramEnabled: true,
+      encryptedKey: true,
+      keyHint: true,
+      chatId: true,
+      enabled: true,
     },
   });
 
-  if (!subscription) {
+  if (!cred) {
     return { hasBotToken: false, botTokenHint: null, chatId: null, enabled: false };
   }
 
   return {
-    hasBotToken: Boolean(subscription.telegramEncryptedBotToken),
-    botTokenHint: subscription.telegramBotTokenHint,
-    chatId: subscription.telegramChatId,
-    enabled: subscription.telegramEnabled,
+    hasBotToken: Boolean(cred.encryptedKey),
+    botTokenHint: cred.keyHint,
+    chatId: cred.chatId,
+    enabled: cred.enabled,
   };
 }
 
@@ -286,20 +304,26 @@ export async function upsertTelegramCredential(
   const encryptedToken = encryptCredential(input.botToken, encryptionKey);
   const tokenHint = maskKeyHint(input.botToken);
 
-  await prisma.subscription.upsert({
-    where: { organizationId: scope.organizationId },
+  await prisma.organizationCredential.upsert({
+    where: {
+      organizationId_credentialType: {
+        organizationId: scope.organizationId,
+        credentialType: "TELEGRAM",
+      },
+    },
     update: {
-      telegramEncryptedBotToken: encryptedToken,
-      telegramBotTokenHint: tokenHint,
-      telegramChatId: input.chatId,
-      telegramEnabled: input.enabled ?? true,
+      encryptedKey: encryptedToken,
+      keyHint: tokenHint,
+      chatId: input.chatId,
+      enabled: input.enabled ?? true,
     },
     create: {
       organizationId: scope.organizationId,
-      telegramEncryptedBotToken: encryptedToken,
-      telegramBotTokenHint: tokenHint,
-      telegramChatId: input.chatId,
-      telegramEnabled: input.enabled ?? true,
+      credentialType: "TELEGRAM",
+      encryptedKey: encryptedToken,
+      keyHint: tokenHint,
+      chatId: input.chatId,
+      enabled: input.enabled ?? true,
     },
   });
 }
@@ -309,10 +333,23 @@ export async function setTelegramEnabled(
   scope: TenantScope,
   enabled: boolean,
 ): Promise<void> {
-  await prisma.subscription.upsert({
-    where: { organizationId: scope.organizationId },
-    update: { telegramEnabled: enabled },
-    create: { organizationId: scope.organizationId, telegramEnabled: enabled },
+  const existing = await prisma.organizationCredential.findUnique({
+    where: {
+      organizationId_credentialType: {
+        organizationId: scope.organizationId,
+        credentialType: "TELEGRAM",
+      },
+    },
+    select: { id: true },
+  });
+
+  if (!existing) {
+    return;
+  }
+
+  await prisma.organizationCredential.update({
+    where: { id: existing.id },
+    data: { enabled },
   });
 }
 
@@ -320,17 +357,11 @@ export async function deleteTelegramCredential(
   prisma: PrismaClient,
   scope: TenantScope,
 ): Promise<void> {
-  await prisma.subscription.upsert({
-    where: { organizationId: scope.organizationId },
-    update: {
-      telegramEncryptedBotToken: null,
-      telegramBotTokenHint: null,
-      telegramChatId: null,
-      telegramEnabled: false,
-      instantPushEnabled: false,
-      instantPushEnabledAt: null,
+  await prisma.organizationCredential.deleteMany({
+    where: {
+      organizationId: scope.organizationId,
+      credentialType: "TELEGRAM",
     },
-    create: { organizationId: scope.organizationId },
   });
 }
 
@@ -338,21 +369,26 @@ export async function getDecryptedTelegramCredential(
   prisma: PrismaClient,
   scope: TenantScope,
 ): Promise<DecryptedTelegramCredential | null> {
-  const subscription = await prisma.subscription.findUnique({
-    where: { organizationId: scope.organizationId },
+  const cred = await prisma.organizationCredential.findUnique({
+    where: {
+      organizationId_credentialType: {
+        organizationId: scope.organizationId,
+        credentialType: "TELEGRAM",
+      },
+    },
     select: {
-      telegramEncryptedBotToken: true,
-      telegramChatId: true,
-      telegramEnabled: true,
+      encryptedKey: true,
+      chatId: true,
+      enabled: true,
     },
   });
 
-  if (!subscription || !subscription.telegramEnabled) {
+  if (!cred || !cred.enabled) {
     return null;
   }
 
   const encryptionKey = readRuntimeEnv("ENCRYPTION_KEY");
-  if (!subscription.telegramEncryptedBotToken || !subscription.telegramChatId) {
+  if (!cred.encryptedKey || !cred.chatId) {
     return null;
   }
   if (!encryptionKey) {
@@ -360,11 +396,8 @@ export async function getDecryptedTelegramCredential(
   }
 
   try {
-    const botToken = decryptCredential(
-      subscription.telegramEncryptedBotToken,
-      encryptionKey,
-    );
-    return { botToken, chatId: subscription.telegramChatId };
+    const botToken = decryptCredential(cred.encryptedKey, encryptionKey);
+    return { botToken, chatId: cred.chatId };
   } catch {
     return null;
   }
@@ -480,7 +513,6 @@ export async function createDeliveryLog(
       errorCode: input.errorCode ?? null,
       sentAt: input.status === "SENT" ? new Date() : null,
       metadata: input.metadata as never,
-      idempotencyKey: `${input.briefingId}:${input.channel}`,
     },
   });
 
@@ -702,6 +734,19 @@ export async function failReport(
     where: { id: reportId },
     data: { status: "FAILED", errorMessage },
   });
+}
+
+export async function listPendingReports(
+  prisma: PrismaClient,
+  limit = 10,
+): Promise<Array<{ id: string; organizationId: string; question: string }>> {
+  const reports = await prisma.report.findMany({
+    where: { status: "PENDING" },
+    orderBy: { createdAt: "asc" },
+    take: limit,
+    select: { id: true, organizationId: true, question: true },
+  });
+  return reports;
 }
 
 export interface ReportEvidenceEvent {
@@ -958,18 +1003,23 @@ export async function getByokCredentialView(
   prisma: PrismaClient,
   scope: TenantScope,
 ): Promise<ByokCredentialView> {
-  const subscription = await prisma.subscription.findUnique({
-    where: { organizationId: scope.organizationId },
+  const cred = await prisma.organizationCredential.findUnique({
+    where: {
+      organizationId_credentialType: {
+        organizationId: scope.organizationId,
+        credentialType: "BYOK",
+      },
+    },
     select: {
-      byokEncryptedKey: true,
-      byokKeyHint: true,
-      byokBaseUrl: true,
-      byokProvider: true,
-      byokModel: true,
+      encryptedKey: true,
+      keyHint: true,
+      baseUrl: true,
+      provider: true,
+      model: true,
     },
   });
 
-  if (!subscription) {
+  if (!cred) {
     return {
       hasKey: false,
       keyHint: null,
@@ -980,11 +1030,11 @@ export async function getByokCredentialView(
   }
 
   return {
-    hasKey: Boolean(subscription.byokEncryptedKey),
-    keyHint: subscription.byokKeyHint,
-    baseUrl: subscription.byokBaseUrl,
-    provider: subscription.byokProvider,
-    model: subscription.byokModel,
+    hasKey: Boolean(cred.encryptedKey),
+    keyHint: cred.keyHint,
+    baseUrl: cred.baseUrl,
+    provider: cred.provider,
+    model: cred.model,
   };
 }
 
@@ -1002,22 +1052,28 @@ export async function upsertByokCredential(
   const encryptedKey = encryptCredential(input.apiKey, encryptionKey);
   const keyHint = maskKeyHint(input.apiKey);
 
-  await prisma.subscription.upsert({
-    where: { organizationId: scope.organizationId },
+  await prisma.organizationCredential.upsert({
+    where: {
+      organizationId_credentialType: {
+        organizationId: scope.organizationId,
+        credentialType: "BYOK",
+      },
+    },
     update: {
-      byokEncryptedKey: encryptedKey,
-      byokKeyHint: keyHint,
-      byokBaseUrl: input.baseUrl ?? null,
-      byokProvider: input.provider ?? null,
-      byokModel: input.model ?? null,
+      encryptedKey,
+      keyHint,
+      baseUrl: input.baseUrl ?? null,
+      provider: input.provider ?? null,
+      model: input.model ?? null,
     },
     create: {
       organizationId: scope.organizationId,
-      byokEncryptedKey: encryptedKey,
-      byokKeyHint: keyHint,
-      byokBaseUrl: input.baseUrl ?? null,
-      byokProvider: input.provider ?? null,
-      byokModel: input.model ?? null,
+      credentialType: "BYOK",
+      encryptedKey,
+      keyHint,
+      baseUrl: input.baseUrl ?? null,
+      provider: input.provider ?? null,
+      model: input.model ?? null,
     },
   });
 }
@@ -1026,16 +1082,11 @@ export async function deleteByokCredential(
   prisma: PrismaClient,
   scope: TenantScope,
 ): Promise<void> {
-  await prisma.subscription.upsert({
-    where: { organizationId: scope.organizationId },
-    update: {
-      byokEncryptedKey: null,
-      byokKeyHint: null,
-      byokBaseUrl: null,
-      byokProvider: null,
-      byokModel: null,
+  await prisma.organizationCredential.deleteMany({
+    where: {
+      organizationId: scope.organizationId,
+      credentialType: "BYOK",
     },
-    create: { organizationId: scope.organizationId },
   });
 }
 
@@ -1043,16 +1094,21 @@ export async function getDecryptedByokCredential(
   prisma: PrismaClient,
   scope: TenantScope,
 ): Promise<DecryptedByokCredential | null> {
-  const subscription = await prisma.subscription.findUnique({
-    where: { organizationId: scope.organizationId },
+  const cred = await prisma.organizationCredential.findUnique({
+    where: {
+      organizationId_credentialType: {
+        organizationId: scope.organizationId,
+        credentialType: "BYOK",
+      },
+    },
     select: {
-      byokEncryptedKey: true,
-      byokBaseUrl: true,
-      byokModel: true,
+      encryptedKey: true,
+      baseUrl: true,
+      model: true,
     },
   });
 
-  if (!subscription || !subscription.byokEncryptedKey) {
+  if (!cred || !cred.encryptedKey) {
     return null;
   }
 
@@ -1062,14 +1118,11 @@ export async function getDecryptedByokCredential(
   }
 
   try {
-    const apiKey = decryptCredential(
-      subscription.byokEncryptedKey,
-      encryptionKey,
-    );
+    const apiKey = decryptCredential(cred.encryptedKey, encryptionKey);
     return {
       apiKey,
-      baseUrl: subscription.byokBaseUrl ?? "",
-      model: subscription.byokModel ?? "gpt-4o-mini",
+      baseUrl: cred.baseUrl ?? "",
+      model: cred.model ?? "gpt-4o-mini",
     };
   } catch {
     return null;
@@ -1078,7 +1131,7 @@ export async function getDecryptedByokCredential(
 
 export interface SubscriptionPlanView {
   plan: "FREE" | "PLUS" | "PRO";
-  status: "ACTIVE" | "PAST_DUE" | "CANCELED" | "EXPIRED";
+  status: "ACTIVE" | "PAST_DUE" | "CANCELED" | "EXPIRED" | null;
   isSelfHosted: boolean;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
@@ -1102,7 +1155,7 @@ export async function getSubscriptionPlanView(
   if (!subscription) {
     return {
       plan: "FREE",
-      status: "ACTIVE",
+      status: null,
       isSelfHosted: false,
       currentPeriodStart: null,
       currentPeriodEnd: null,
@@ -1246,23 +1299,28 @@ export async function getCcpaymentCredentialView(
   prisma: PrismaClient,
   scope: TenantScope,
 ): Promise<CcpaymentCredentialView> {
-  const subscription = await prisma.subscription.findUnique({
-    where: { organizationId: scope.organizationId },
+  const cred = await prisma.organizationCredential.findUnique({
+    where: {
+      organizationId_credentialType: {
+        organizationId: scope.organizationId,
+        credentialType: "CCPAYMENT",
+      },
+    },
     select: {
-      ccpaymentAppId: true,
-      ccpaymentEncryptedSecret: true,
-      ccpaymentSecretHint: true,
+      appId: true,
+      encryptedSecret: true,
+      keyHint: true,
     },
   });
 
-  if (!subscription) {
+  if (!cred) {
     return { hasSecret: false, secretHint: null, appId: null };
   }
 
   return {
-    hasSecret: Boolean(subscription.ccpaymentEncryptedSecret),
-    secretHint: subscription.ccpaymentSecretHint,
-    appId: subscription.ccpaymentAppId,
+    hasSecret: Boolean(cred.encryptedSecret),
+    secretHint: cred.keyHint,
+    appId: cred.appId,
   };
 }
 
@@ -1275,18 +1333,24 @@ export async function upsertCcpaymentCredential(
   const encryptedSecret = encryptCredential(input.appSecret, encryptionKey);
   const secretHint = maskKeyHint(input.appSecret);
 
-  await prisma.subscription.upsert({
-    where: { organizationId: scope.organizationId },
+  await prisma.organizationCredential.upsert({
+    where: {
+      organizationId_credentialType: {
+        organizationId: scope.organizationId,
+        credentialType: "CCPAYMENT",
+      },
+    },
     update: {
-      ccpaymentAppId: input.appId,
-      ccpaymentEncryptedSecret: encryptedSecret,
-      ccpaymentSecretHint: secretHint,
+      appId: input.appId,
+      encryptedSecret,
+      keyHint: secretHint,
     },
     create: {
       organizationId: scope.organizationId,
-      ccpaymentAppId: input.appId,
-      ccpaymentEncryptedSecret: encryptedSecret,
-      ccpaymentSecretHint: secretHint,
+      credentialType: "CCPAYMENT",
+      appId: input.appId,
+      encryptedSecret,
+      keyHint: secretHint,
     },
   });
 }
@@ -1295,15 +1359,10 @@ export async function deleteCcpaymentCredential(
   prisma: PrismaClient,
   scope: TenantScope,
 ): Promise<void> {
-  await prisma.subscription.upsert({
-    where: { organizationId: scope.organizationId },
-    update: {
-      ccpaymentAppId: null,
-      ccpaymentEncryptedSecret: null,
-      ccpaymentSecretHint: null,
-    },
-    create: {
+  await prisma.organizationCredential.deleteMany({
+    where: {
       organizationId: scope.organizationId,
+      credentialType: "CCPAYMENT",
     },
   });
 }
@@ -1312,15 +1371,20 @@ export async function getDecryptedCcpaymentCredential(
   prisma: PrismaClient,
   scope: TenantScope,
 ): Promise<{ appId: string; appSecret: string } | null> {
-  const subscription = await prisma.subscription.findUnique({
-    where: { organizationId: scope.organizationId },
+  const cred = await prisma.organizationCredential.findUnique({
+    where: {
+      organizationId_credentialType: {
+        organizationId: scope.organizationId,
+        credentialType: "CCPAYMENT",
+      },
+    },
     select: {
-      ccpaymentAppId: true,
-      ccpaymentEncryptedSecret: true,
+      appId: true,
+      encryptedSecret: true,
     },
   });
 
-  if (!subscription || !subscription.ccpaymentAppId || !subscription.ccpaymentEncryptedSecret) {
+  if (!cred || !cred.appId || !cred.encryptedSecret) {
     return null;
   }
 
@@ -1330,11 +1394,8 @@ export async function getDecryptedCcpaymentCredential(
   }
 
   try {
-    const appSecret = decryptCredential(
-      subscription.ccpaymentEncryptedSecret,
-      encryptionKey,
-    );
-    return { appId: subscription.ccpaymentAppId, appSecret };
+    const appSecret = decryptCredential(cred.encryptedSecret, encryptionKey);
+    return { appId: cred.appId, appSecret };
   } catch {
     return null;
   }
@@ -1344,7 +1405,7 @@ export interface PaymentInvoiceRecord {
   id: string;
   organizationId: string;
   plan: "FREE" | "PLUS" | "PRO";
-  amount: number;
+  amount: string;
   currency: string;
   status: string;
   provider: string;
@@ -1373,7 +1434,7 @@ export async function createPaymentInvoice(
     data: {
       organizationId: input.organizationId,
       plan: input.plan,
-      amount: input.amount,
+      amount: input.amount as never,
       currency: input.currency ?? "USD",
       status: "PENDING",
       provider: input.provider ?? "ccpayment",
@@ -1442,7 +1503,7 @@ function toPaymentInvoiceRecord(row: {
   id: string;
   organizationId: string;
   plan: "FREE" | "PLUS" | "PRO";
-  amount: number;
+  amount: { toNumber(): number; toString(): string } | number;
   currency: string;
   status: string;
   provider: string;
@@ -1452,11 +1513,12 @@ function toPaymentInvoiceRecord(row: {
   periodEnd: Date | null;
   createdAt: Date;
 }): PaymentInvoiceRecord {
+  const amountStr = typeof row.amount === "number" ? row.amount.toString() : row.amount.toString();
   return {
     id: row.id,
     organizationId: row.organizationId,
     plan: row.plan,
-    amount: row.amount,
+    amount: amountStr,
     currency: row.currency,
     status: row.status,
     provider: row.provider,

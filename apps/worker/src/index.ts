@@ -74,6 +74,7 @@ import {
   listRecentActiveSourcePagesForDiscovery,
   listRecentFeedbackSignals,
   listReports,
+  listPendingReports,
   listSourceGovernanceReport,
   listTimelineEvents,
   listTopicsForSourceDiscovery,
@@ -124,6 +125,17 @@ function getFetchConcurrency(): number {
   if (!raw) return 5;
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+}
+
+function getCandidateObservationConcurrency(): number {
+  const raw = process.env.WANGCHAO_CANDIDATE_OBSERVATION_CONCURRENCY;
+  if (!raw) return 3;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 3;
+}
+
+function getCandidateObservationLimit(): number {
+  return Math.min(getFetchConcurrency(), getCandidateObservationConcurrency());
 }
 
 function getBackoffBaseMs(): number {
@@ -240,7 +252,7 @@ export function describeWorker(): string {
   return "Wangchao worker";
 }
 
-type WorkerCycleType = "fetch" | "source-discovery" | "instant-push" | "health";
+type WorkerCycleType = "fetch" | "source-discovery" | "instant-push" | "report-generation" | "health";
 
 interface StructuredLogStart {
   event: "cycle-start";
@@ -1385,7 +1397,7 @@ async function runCandidateObservationCycle(
   const candidates = await listCandidateRssSourcesForObservation(prisma, { organizationId });
   if (candidates.length === 0) return result;
 
-  const limit = pLimit(Math.min(getFetchConcurrency(), 3));
+  const limit = pLimit(getCandidateObservationLimit());
 
   const candidateResults = await Promise.all(
     candidates.map((source) => limit(async () => {
@@ -1847,7 +1859,7 @@ async function createAnalysisRuntimeWithPlan(
   const isSelfHosted = planView.isSelfHosted;
   const plan = resolveEffectivePlan({
     plan: planView.plan,
-    status: planView.status,
+    status: planView.status ?? "ACTIVE",
     isSelfHosted,
     currentPeriodEnd: planView.currentPeriodEnd,
   });
@@ -2351,6 +2363,42 @@ export async function runReportGeneration(
   }
 }
 
+export interface ReportGenerationCycleResult {
+  scanned: number;
+  generated: number;
+  failed: number;
+}
+
+/**
+ * 扫描所有 PENDING 报告并逐个生成。
+ * 作为独立 Railway Cron service 运行，与 Web 进程解耦。
+ * 每个报告独立处理，单个失败不影响后续报告。
+ */
+export async function runReportGenerationCycle(
+  limit = 10,
+): Promise<ReportGenerationCycleResult> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error("Database connection is required to generate reports.");
+  }
+  const prisma = getPrismaClient();
+  const pending = await listPendingReports(prisma, limit);
+  const result: ReportGenerationCycleResult = { scanned: pending.length, generated: 0, failed: 0 };
+  for (const report of pending) {
+    try {
+      await runReportGeneration({
+        reportId: report.id,
+        organizationId: report.organizationId,
+        userId: "report-cron",
+      });
+      result.generated += 1;
+    } catch {
+      // runReportGeneration 内部已 failReport + failTaskRun，这里只计数
+      result.failed += 1;
+    }
+  }
+  return result;
+}
+
 function extractReportKeywords(question: string): string[] {
   const cleaned = question
     .replace(/[？?！!。，,.;:：、\s]+/g, " ")
@@ -2572,12 +2620,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const isHealth = process.argv.includes("--health");
   const isSourceDiscovery = process.argv.includes("--source-discovery");
   const isInstantPush = process.argv.includes("--instant-push");
+  const isReportGeneration = process.argv.includes("--report-generation");
   const cycleType: WorkerCycleType = isHealth
     ? "health"
     : isSourceDiscovery
       ? "source-discovery"
       : isInstantPush
         ? "instant-push"
+      : isReportGeneration
+        ? "report-generation"
       : "fetch";
 
   const startTime = emitStructuredLogStart(cycleType);
@@ -2588,6 +2639,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       ? runSourceDiscoveryCycle({ mode: "worker" })
       : isInstantPush
         ? runInstantPushCycle()
+      : isReportGeneration
+        ? runReportGenerationCycle()
       : runFetchCycle();
 
   command
