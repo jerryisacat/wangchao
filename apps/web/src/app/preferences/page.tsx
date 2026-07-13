@@ -1,4 +1,4 @@
-import { Brain, Minus, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Brain, Minus, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import {
   deletePreferenceAction,
@@ -48,8 +48,9 @@ export default async function PreferencesPage() {
                       </p>
                     </div>
                     <div className="preference-meta">
-                      <Badge variant={preference.weight >= 0 ? "success" : "danger"}>
-                        {preference.weight >= 0 ? "+" : ""}
+                      <Badge variant={preference.weight > 0 ? "success" : preference.weight < 0 ? "warning" : "muted"}>
+                        {preference.weight > 0 ? <ArrowUp aria-hidden="true" size={10} /> : preference.weight < 0 ? <ArrowDown aria-hidden="true" size={10} /> : null}
+                        {preference.weight > 0 ? "+" : ""}
                         {preference.weight}
                       </Badge>
                       <span>{Math.round(preference.confidence * 100)}%</span>

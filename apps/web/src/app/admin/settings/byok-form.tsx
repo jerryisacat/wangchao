@@ -148,7 +148,7 @@ export function ByokCredentialForm({
         >
           {AI_PROVIDERS.map((p) => (
             <option
-              className="bg-[#121216] text-foreground"
+              className="bg-surface text-foreground"
               key={p.value}
               value={p.value}
             >

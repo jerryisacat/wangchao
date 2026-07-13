@@ -135,7 +135,7 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                     <span className="source-batch-label">批量治理</span>
                     <input
                       name="sourceIds"
-                      placeholder="粘贴 sourceId，逗号分隔"
+                      placeholder="粘贴信源 ID，逗号分隔"
                       required
                       className="source-batch-input"
                     />

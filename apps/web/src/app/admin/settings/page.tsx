@@ -503,7 +503,7 @@ export default async function AdminSettingsPage({
                         App ID
                       </dt>
                       <dd className="break-all font-mono text-muted-foreground">
-                        {subscription.ccpaymentAppId}
+                        {subscription.ccpaymentAppId.slice(0, 4)}...{subscription.ccpaymentAppId.slice(-4)}
                       </dd>
                     </div>
                     <div className="flex gap-2">

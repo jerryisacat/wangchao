@@ -237,7 +237,7 @@ export function CredentialForm({
         >
           {providers.map((p) => (
             <option
-              className="bg-[#121216] text-foreground"
+              className="bg-surface text-foreground"
               key={p.value}
               value={p.value}
             >
@@ -296,19 +296,19 @@ export function CredentialForm({
                 }}
                 value={selectedModel}
               >
-                <option className="bg-[#121216] text-foreground" value="">
+                <option className="bg-surface text-foreground" value="">
                   请选择模型
                 </option>
                 {availableModels.map((m) => (
                   <option
-                    className="bg-[#121216] text-foreground"
+                    className="bg-surface text-foreground"
                     key={m.id}
                     value={m.id}
                   >
                     {m.id}{m.ownedBy ? ` (${m.ownedBy})` : ""}
                   </option>
                 ))}
-                <option className="bg-[#121216] text-foreground" value="__custom__">
+                <option className="bg-surface text-foreground" value="__custom__">
                   自定义...
                 </option>
               </select>

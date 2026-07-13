@@ -100,7 +100,7 @@ export default async function WorkspaceUsagePage() {
                   <article className="usage-row" key={`${usage.type}:${usage.unit}`}>
                     <div>
                       <h3>{formatUsageType(usage.type)}</h3>
-                      <p>{usage.count} 条 UsageEvent</p>
+                      <p>{usage.count} 条用量记录</p>
                     </div>
                     <strong className="workspace-usage-quantity">
                       {usage.quantity} {formatUsageUnit(usage.unit)}
