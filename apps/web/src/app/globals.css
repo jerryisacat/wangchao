@@ -1573,6 +1573,10 @@ a:not([data-slot="button"]):hover {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: start;
   gap: 16px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 20px;
 }
 
 .topic-list-item-main {
@@ -1625,7 +1629,9 @@ a:not([data-slot="button"]):hover {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
+  min-width: 0;
 }
 
 /* ===== Topic Detail ===== */
