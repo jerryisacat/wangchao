@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, Plus, Rss, Settings, Sparkles, List, FileSearch } from "lucide-react";
+import { LogOut, Plus, Rss, Settings, Sparkles, List } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -14,7 +14,6 @@ const mainLinks = [
   { href: "/reports", label: "专题报告" },
   { href: "/saved", label: "已保存" },
   { href: "/preferences", label: "偏好" },
-  { href: "/usage", label: "用量" },
 ] as const;
 
 interface TopNavProps {
@@ -100,7 +99,7 @@ export function TopNav({ authEnabled = false, className }: TopNavProps) {
           </Button>
           <Button asChild className="top-nav-action" size="sm" variant="ghost">
             <Link
-              aria-current={pathname.startsWith("/admin") ? "page" : undefined}
+              aria-current={pathname.startsWith("/admin") || pathname.startsWith("/usage") ? "page" : undefined}
               href="/admin/settings"
             >
               <Settings aria-hidden="true" size={14} />
@@ -117,7 +116,7 @@ export function TopNav({ authEnabled = false, className }: TopNavProps) {
               variant="ghost"
             >
               <LogOut aria-hidden="true" size={14} />
-              <span>{loggingOut ? "…" : "登出"}</span>
+              <span>{loggingOut ? "正在登出" : "登出"}</span>
             </Button>
           ) : null}
         </div>

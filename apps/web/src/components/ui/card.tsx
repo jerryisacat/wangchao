@@ -9,8 +9,8 @@ const cardVariants = cva(
     variants: {
       variant: {
         default: "py-6 shadow-sm",
-        work: "bg-[rgb(18_18_22/0.96)] py-6",
-        kinetic: "border-2 rounded-[4px] bg-[#101013] py-6",
+        work: "bg-card py-6",
+        kinetic: "border-2 rounded-[4px] bg-surface py-6 transition-[border-color,box-shadow] hover:border-accent/65",
       },
     },
     defaultVariants: {

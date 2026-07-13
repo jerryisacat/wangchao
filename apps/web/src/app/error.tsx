@@ -1,6 +1,7 @@
 "use client";
 
-import { RotateCcw } from "lucide-react";
+import { Home, RotateCcw } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 export default function Error({
@@ -10,16 +11,24 @@ export default function Error({
   reset: () => void;
 }) {
   return (
-    <section className="error-panel" aria-labelledby="error-title" style={{ margin: "48px auto" }}>
+    <section aria-labelledby="error-title" className="error-panel">
       <div className="eyebrow">运行状态</div>
       <h1 id="error-title">页面加载失败</h1>
       <p className="muted">
-        请重试当前视图。如果问题持续存在，请检查数据库连接和 worker 状态。
+        请稍后重试，或返回未读情报继续阅读。如果问题持续存在，请联系管理员。
       </p>
-      <Button onClick={reset} variant="primary">
-        <RotateCcw aria-hidden="true" size={16} />
-        重试
-      </Button>
+      <div className="event-detail-actions">
+        <Button onClick={reset} variant="primary">
+          <RotateCcw aria-hidden="true" size={16} />
+          重试
+        </Button>
+        <Button asChild variant="ghost">
+          <Link href="/">
+            <Home aria-hidden="true" size={16} />
+            返回未读情报
+          </Link>
+        </Button>
+      </div>
     </section>
   );
 }
