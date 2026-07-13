@@ -48,6 +48,13 @@ export function IntelligenceCard({
         <Badge className="intelligence-card-topic" variant="default">
           {event.topicName}
         </Badge>
+        {event.entities && event.entities.length > 0
+          ? event.entities.slice(0, 3).map((entity) => (
+              <Badge key={entity} variant="outline">
+                {entity}
+              </Badge>
+            ))
+          : null}
         <span className="intelligence-card-source">
           {sourceLinkUrl ? (
             <a href={sourceLinkUrl} rel="noreferrer" target="_blank">
@@ -57,7 +64,7 @@ export function IntelligenceCard({
             event.sourceName
           )}
           {event.mergedSourceCount > 1 ? (
-            <span className="intelligence-card-merged">
+            <span>
               · 另有 {event.mergedSourceCount - 1} 个来源报道
             </span>
           ) : null}

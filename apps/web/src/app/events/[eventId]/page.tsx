@@ -6,7 +6,6 @@ import {
   Download,
   EyeOff,
   ExternalLink,
-  RefreshCw,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
@@ -17,7 +16,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   recordEnhancedFeedbackAction,
-  regenerateEventSummaryAction,
   updateCategoryPreferenceAction,
   updateDashboardEventStateAction,
 } from "@/app/actions";
@@ -101,7 +99,6 @@ export default async function EventDetailPage({
                 ))
               : null}
             {event.userSaved ? <Badge variant="accent">已收藏</Badge> : null}
-            <span>重要度 {event.score}</span>
           </div>
           <CardTitle>{event.title}</CardTitle>
         </CardHeader>
@@ -142,10 +139,6 @@ export default async function EventDetailPage({
                 <dt>更新时间</dt>
                 <dd>{formatDateTime(event.updatedAt)}</dd>
               </div>
-              <div>
-                <dt>排序分</dt>
-                <dd>{event.gravityScore.toFixed(1)}</dd>
-              </div>
             </dl>
 
             <div className="event-detail-actions">
@@ -185,12 +178,15 @@ export default async function EventDetailPage({
                   size="sm"
                   type="submit"
                   value="dismiss"
-                  variant="secondary"
+                  variant="danger"
                 >
                   <EyeOff aria-hidden="true" size={14} />
                   忽略此条
                 </Button>
               </form>
+            </div>
+
+            <div className="event-detail-actions">
               <form action={updateCategoryPreferenceAction}>
                 <input name="eventId" type="hidden" value={event.eventId} />
                 <input name="returnTo" type="hidden" value={returnTo} />
@@ -199,7 +195,7 @@ export default async function EventDetailPage({
                   size="sm"
                   type="submit"
                   value="up"
-                  variant="secondary"
+                  variant="ghost"
                 >
                   <ThumbsUp aria-hidden="true" size={14} />
                   多关注这类
@@ -213,7 +209,7 @@ export default async function EventDetailPage({
                   size="sm"
                   type="submit"
                   value="down"
-                  variant="secondary"
+                  variant="ghost"
                 >
                   <ThumbsDown aria-hidden="true" size={14} />
                   少关注这类
@@ -249,34 +245,9 @@ export default async function EventDetailPage({
                   少看类似
                 </Button>
               </form>
-              <form action={recordEnhancedFeedbackAction}>
-                <input name="topicId" type="hidden" value={event.topicId} />
-                <input name="eventId" type="hidden" value={event.eventId} />
-                <input name="returnTo" type="hidden" value={returnTo} />
-                <input name="feedbackKind" type="hidden" value="SCORE_UP" />
-                <Button
-                  size="sm"
-                  type="submit"
-                  variant="ghost"
-                >
-                  <Sparkles aria-hidden="true" size={14} />
-                  评分偏低
-                </Button>
-              </form>
-              <form action={regenerateEventSummaryAction}>
-                <input name="eventId" type="hidden" value={event.eventId} />
-                <input name="returnTo" type="hidden" value={returnTo} />
-                <Button
-                  name="action"
-                  size="sm"
-                  type="submit"
-                  value="regenerate"
-                  variant="secondary"
-                >
-                  <RefreshCw aria-hidden="true" size={14} />
-                  重新生成摘要
-                </Button>
-              </form>
+            </div>
+
+            <div className="event-detail-actions">
               <Button asChild size="sm" variant="primary">
                 <a href={`/exports/events/${event.eventId}`}>
                   <Download aria-hidden="true" size={14} />

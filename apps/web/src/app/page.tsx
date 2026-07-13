@@ -40,6 +40,10 @@ export default async function HomePage({ searchParams }: HomePageProps) {
   });
 
   const unreadCount = workspace.events.length;
+  const latestUpdate = workspace.events.reduce(
+    (latest, event) => (event.updatedAt > latest ? event.updatedAt : latest),
+    workspace.events[0]?.updatedAt ?? "",
+  );
 
   return (
     <>
@@ -47,7 +51,9 @@ export default async function HomePage({ searchParams }: HomePageProps) {
         eyebrow="主题情报工作台"
         meta={
           <span>
-            未读 {unreadCount} 条{workspace.topics.length > 0 ? ` · ${workspace.topics.length} 个主题` : ""}
+            未读 {unreadCount} 条
+            {workspace.topics.length > 0 ? ` · ${workspace.topics.length} 个主题` : ""}
+            {latestUpdate ? ` · 更新于 ${formatDateTime(latestUpdate)}` : ""}
           </span>
         }
         title="未读情报"
@@ -164,4 +170,13 @@ function matchesQuery(query: string, ...values: Array<string | undefined>): bool
 
   const normalizedQuery = query.toLowerCase();
   return values.some((value) => value?.toLowerCase().includes(normalizedQuery));
+}
+
+function formatDateTime(value: string): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+  }).format(new Date(value));
 }

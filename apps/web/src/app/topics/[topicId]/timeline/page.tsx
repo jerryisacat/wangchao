@@ -83,6 +83,7 @@ export default async function TopicTimelinePage({ params, searchParams }: Timeli
                               hour: "2-digit",
                               minute: "2-digit",
                               month: "2-digit",
+                              year: "numeric",
                             }).format(new Date(event.occurredAt))
                           : "未知时间"}
                       </time>
@@ -96,7 +97,6 @@ export default async function TopicTimelinePage({ params, searchParams }: Timeli
                       </div>
                       <p className="timeline-event-summary">{event.summary}</p>
                       <div className="timeline-event-meta">
-                        <span>Score: {Math.round(event.score)}</span>
                         <span>来源: {event.sourceName ?? "Unknown"}</span>
                         {event.url ? (
                           <a href={event.url} target="_blank" rel="noopener noreferrer">
