@@ -1,6 +1,27 @@
 ## 2026-07-15
 
-### Batch: Module 7 重构/清理/辅助 (#43, #49, #71, #81, #95)
+### Batch: Module 8 文档/产品决策 + 收尾 (#58, #79, #80, #85, #99)
+
+- Cause: 文档与 schema 不一致、fallbackSourceRecommendation 不确定区间、quota 引擎缺陷、开放问题决策。
+- Changed:
+  - **#58**: L2-domain.md 已反映所有 schema 变更（通过 Modules 1-6 各轮更新），无需额外修改
+  - **#79**: fallbackSourceRecommendation 改用 topic-term 匹配浮动分数（0.4 + boost），替代固定 0.55
+  - **#80**: quota 引擎修复 — 80% 阈值分支完善、preference score clamp（#68 in Module 6）、PAST_DUE 宽限期文档化
+  - **#85**: 10 项产品/架构开放问题全部确认或已实现（evaluateRelevance fallback, dedup 阈值参数化, LRU 持久化, gravity half-life 衰减, dedup candidate 上限等）
+  - **#99**: Worker modules 独立可测，无需额外 fixture 文件
+- Files: `packages/ai/src/source-recommendation.ts`, `packages/core/src/quota.ts`
+- Verification: 所有测试通过
+
+### Batch: Module 8 补充修复 (#82 关键问题)
+
+- Cause: Markdown 长文本、hash 契约不一致、dedup ID 校验缺失、parseEventExtraction 错误降级问题。
+- Changed:
+  - **#82.1**: 新增 `truncateNarrative()` 函数（cap 4000字符），应用于 `renderEventMarkdown` 和 `renderDailyBriefingMarkdown`
+  - **#82.2**: `packages/sources/src/adapters.ts` 统一 `createContentHash` 输入格式（始终含 summary）
+  - **#82.3**: `parseSemanticDedupResponse` 新增可选 `candidateEventIds` 参数，验证 duplicateEventId 在候选集内
+  - **#82.4**: `parseEventExtractionResponse` 对空 title/summary 降级为 isRelevant=false + noiseReason（而非 throw 触发 fallback）
+- Files: `packages/core/src/index.ts`, `packages/ai/src/semantic-dedup.ts`, `packages/ai/src/event-extraction.ts`, `packages/sources/src/adapters.ts`
+- Verification: typecheck 7/7 通过，test 7/7 通过
 
 - Cause: 代码重复、死代码、边界校验缺失等清理类问题。
 - Changed:

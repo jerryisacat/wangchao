@@ -11,7 +11,7 @@ export async function runEventExtractionFixtures(): Promise<void> {
   fixtureValidRelevantResponse();
   fixtureValidNoiseResponse();
   fixtureEntitiesArrayParsing();
-  fixtureMissingTitleThrows();
+  fixtureMissingTitleReturnsNoise();
   fixtureThinkingTagsSanitized();
   fixtureTypeEnumMismatchThrows();
 }
@@ -147,18 +147,18 @@ function fixtureEntitiesArrayParsing(): void {
   );
 }
 
-function fixtureMissingTitleThrows(): void {
-  assertThrows(
-    () =>
-      parseEventExtractionResponse(
-        JSON.stringify({
-          isRelevant: true,
-          relevanceScore: 80,
-          summary: "Has summary but no title",
-        }),
-      ),
-    "Missing title when isRelevant=true should throw.",
+function fixtureMissingTitleReturnsNoise(): void {
+  const result = parseEventExtractionResponse(
+    JSON.stringify({
+      isRelevant: true,
+      relevanceScore: 80,
+      summary: "Has summary but no title",
+    }),
   );
+  assert(result.isRelevant === false, "Missing title should degrade to isRelevant=false.");
+  assert((result.noiseReason ?? "").includes("为空"), "Should explain degradation reason.");
+  assert(result.title === "", "Title should be empty.");
+  assert(result.relevanceScore === 0, "Degraded result should have score 0.");
 }
 
 function fixtureThinkingTagsSanitized(): void {

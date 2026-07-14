@@ -90,11 +90,12 @@ export async function dedupEvent(
     temperature: options.temperature ?? 0.1,
   });
 
-  return parseSemanticDedupResponse(response.content);
+  return parseSemanticDedupResponse(response.content, input.candidateEvents.map((e) => e.eventId));
 }
 
 export function parseSemanticDedupResponse(
   content: string,
+  candidateEventIds?: string[],
 ): SemanticDedupResult {
   const parsed = parseJsonObject(content);
   const validation = validateJsonObject(parsed, SEMANTIC_DEDUP_SCHEMA);
@@ -112,6 +113,11 @@ export function parseSemanticDedupResponse(
     typeof parsed.duplicateEventId === "string" && parsed.duplicateEventId
       ? parsed.duplicateEventId
       : "";
+
+  if (isDuplicate && candidateEventIds && duplicateEventId && !candidateEventIds.includes(duplicateEventId)) {
+    return { duplicateEventId: null, confidence: 0, reason: "Duplicate event ID not found in candidates, treating as not duplicate." };
+  }
+
   const confidence =
     typeof parsed.confidence === "number"
       ? Math.min(1, Math.max(0, parsed.confidence))

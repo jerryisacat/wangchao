@@ -70,7 +70,7 @@ function parseArxivEntry(entryXml: string): NormalizedSourceItem | null {
     summary: summary?.replace(/\s+/g, " ").trim(),
     author,
     publishedAt,
-    contentHash: createContentHash(`${title}\n${canonicalUrl}`),
+    contentHash: createContentHash(`${title}\n${canonicalUrl}\n${summary ?? ""}`),
     rawContent: summary?.replace(/\s+/g, " ").trim().slice(0, 20_000),
     rawMetadata: {
       publishedText,
@@ -161,7 +161,7 @@ export async function fetchGitHubReleases(
           summary,
           author: repo,
           publishedAt,
-          contentHash: createContentHash(`${title}\n${canonicalUrl}`),
+          contentHash: createContentHash(`${title}\n${canonicalUrl}\n${summary ?? ""}`),
           rawContent: summary?.slice(0, 20_000),
           rawMetadata: {
             repo,

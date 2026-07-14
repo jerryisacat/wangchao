@@ -207,9 +207,19 @@ export function parseEventExtractionResponse(
   );
 
   if (!title || !summary) {
-    throw new Error(
-      "Event extraction returned isRelevant=true but missing title or summary.",
-    );
+    return {
+      category: "noise",
+      entities: [],
+      followUpSuggestion: "",
+      importanceExplanation: "",
+      isRelevant: false,
+      matchedKeywords: [],
+      noiseReason: "AI 返回 isRelevant=true 但 title 或 summary 为空，降级为不相关。",
+      raw: parsed,
+      relevanceScore: 0,
+      summary: "",
+      title: "",
+    };
   }
 
   return {

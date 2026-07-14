@@ -272,12 +272,19 @@ export function shouldUseByok(
       };
     }
 
-    const threshold = limits.maxAiCallsPerMonth * 0.8;
+    const threshold = Math.ceil(limits.maxAiCallsPerMonth * 0.8);
     if (monthAiCalls >= threshold && hasByok) {
       return {
         useByok: true,
         fallbackToOfficial: true,
         reason: `Pro plan: monthly usage ${monthAiCalls} reached 80% of ${limits.maxAiCallsPerMonth}, switching to BYOK.`,
+      };
+    }
+    if (monthAiCalls >= threshold && !hasByok) {
+      return {
+        useByok: false,
+        fallbackToOfficial: true,
+        reason: `Pro plan: monthly usage ${monthAiCalls} near ${limits.maxAiCallsPerMonth} limit, using official AI.`,
       };
     }
 

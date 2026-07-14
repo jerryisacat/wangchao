@@ -546,11 +546,11 @@ export function renderEventMarkdown(
     "",
     "## Summary",
     "",
-    event.summary,
+    truncateNarrative(event.summary),
     "",
     "## Why It Matters",
     "",
-    event.explanation || "No explanation was generated for this event yet.",
+    truncateNarrative(event.explanation || "No explanation was generated for this event yet."),
     "",
     "## Metadata",
     "",
@@ -616,7 +616,7 @@ export function renderDailyBriefingMarkdown(input: DailyBriefingInput): string {
   if (style.structure === "compact") {
     lines.push(
       ...topEvents.flatMap((event, index) => [
-        `${index + 1}. **${event.title}** — ${event.summary}`,
+        `${index + 1}. **${event.title}** — ${truncateNarrative(event.summary, 500)}`,
         event.url ? `   - Original: ${event.url}` : undefined,
         "",
       ]),
@@ -626,7 +626,7 @@ export function renderDailyBriefingMarkdown(input: DailyBriefingInput): string {
       ...topEvents.flatMap((event, index) => [
         `### ${index + 1}. ${event.title}`,
         "",
-        event.summary,
+        truncateNarrative(event.summary),
         "",
         `- Score: ${Math.round(event.score)}`,
         `- Category: ${event.category ?? "general"}`,
@@ -637,7 +637,7 @@ export function renderDailyBriefingMarkdown(input: DailyBriefingInput): string {
             )
           : []),
         event.url ? `- Original: ${event.url}` : undefined,
-        event.explanation ? `- Why it matters: ${event.explanation}` : undefined,
+        event.explanation ? `- Why it matters: ${truncateNarrative(event.explanation, 500)}` : undefined,
         "",
       ]),
     );
@@ -916,6 +916,13 @@ function buildPreferenceExplanation(
 
 function escapeYaml(value: string): string {
   return JSON.stringify(value);
+}
+
+const MAX_NARRATIVE_LENGTH = 4000;
+
+function truncateNarrative(value: string, maxLength = MAX_NARRATIVE_LENGTH): string {
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength)}\n\n…（内容已截断）`;
 }
 
 function normalizeTitle(title: string): string {

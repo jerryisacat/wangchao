@@ -120,16 +120,21 @@ export function parseSourceRecommendationResponse(
 export function fallbackSourceRecommendation(
   input: SourceRecommendationInput,
 ): SourceRecommendation {
+  const haystack = `${input.sourceName}\n${input.topicDescription ?? ""}`.toLowerCase();
+  const topicTerms = input.topicName.toLowerCase().split(/\s+/);
+  const matchCount = topicTerms.filter((term) => term.length > 1 && haystack.includes(term)).length;
+  const boost = Math.min(0.2, matchCount * 0.05);
+  const relevanceScore = Number((0.4 + boost).toFixed(2));
   const reason = `${input.sourceName} 与「${input.topicName}」相关，建议先作为候选源观察其稳定性和信号质量。`;
 
   return {
     raw: {
       mode: "deterministic-fallback",
       reason,
-      relevanceScore: 0.55,
+      relevanceScore,
     },
     reason,
-    relevanceScore: 0.55,
+    relevanceScore,
   };
 }
 
