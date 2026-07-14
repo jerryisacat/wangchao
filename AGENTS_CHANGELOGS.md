@@ -9,7 +9,7 @@
   - **#71 + #81**: buildTopicProfile 限制 description ≤500字符；buildTopicProfileContext 增加字段数量上限（keywords≤20, entities≤12, scopes≤8, rules≤6）
   - **#95**: formatEventForInstantPush 输出经 truncateTelegramMessage 截断，确保不超 Telegram 4000 字符限制
 - Files: `packages/db/src/repositories/export.ts`, `packages/db/src/extended-repositories.ts`, `packages/core/src/index.ts`, `apps/worker/src/telegram.ts`
-- Verification: typecheck/test/lint 待执行
+- Verification: typecheck 7/7 通过，test 7/7 通过
 
 ### Batch: Module 6 Worker 运维与可靠性修复 (#86, #87, #88, #89, #90, #91, #93, #94, #96, #97, #98)
 
