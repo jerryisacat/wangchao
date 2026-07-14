@@ -221,6 +221,13 @@ export async function updateTopic(
   scope: TenantScope & { topicId: string },
   input: UpdateTopicInput,
 ) {
+  const existing = await prisma.topic.findFirst({
+    where: { id: scope.topicId, organizationId: scope.organizationId },
+  });
+  if (!existing) {
+    throw new Error(`Topic ${scope.topicId} not found in organization ${scope.organizationId}`);
+  }
+
   const data: Prisma.TopicUpdateInput = {};
   if (input.name !== undefined) {
     data.name = input.name;
@@ -246,6 +253,13 @@ export async function updateTopicStatus(
   scope: TenantScope & { topicId: string },
   status: "ACTIVE" | "PAUSED" | "ARCHIVED",
 ) {
+  const existing = await prisma.topic.findFirst({
+    where: { id: scope.topicId, organizationId: scope.organizationId },
+  });
+  if (!existing) {
+    throw new Error(`Topic ${scope.topicId} not found in organization ${scope.organizationId}`);
+  }
+
   return prisma.topic.update({
     where: {
       id: scope.topicId,
@@ -259,6 +273,13 @@ export async function deleteTopic(
   prisma: PrismaClient,
   scope: TenantScope & { topicId: string },
 ) {
+  const existing = await prisma.topic.findFirst({
+    where: { id: scope.topicId, organizationId: scope.organizationId },
+  });
+  if (!existing) {
+    throw new Error(`Topic ${scope.topicId} not found in organization ${scope.organizationId}`);
+  }
+
   return prisma.topic.delete({
     where: {
       id: scope.topicId,

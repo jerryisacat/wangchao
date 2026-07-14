@@ -4,7 +4,6 @@ import {
   updatePaymentInvoiceStatus,
   verifyCcpaymentWebhookSignature,
   findPaymentInvoiceByOrderId,
-  type CcpaymentConfig,
 } from "@wangchao/db";
 
 interface WebhookPayload {
@@ -36,7 +35,7 @@ export async function POST(request: Request) {
   }
 
   const valid = verifyCcpaymentWebhookSignature(
-    credential,
+    { appId: credential.appId, appSecret: credential.appSecret },
     timestamp,
     rawBody,
     signature,
@@ -66,7 +65,7 @@ export async function POST(request: Request) {
   try {
     const orderInfo = await getCcpaymentOrderInfo(credential, orderId);
 
-    const invoice = await findPaymentInvoiceByOrderId(prisma, orderId);
+    const invoice = await findPaymentInvoiceByOrderId(prisma, "ccpayment", credential.organizationId, orderId);
     if (!invoice) {
       return webhookSuccess();
     }
@@ -113,7 +112,7 @@ export async function POST(request: Request) {
 async function resolveCredential(
   prisma: ReturnType<typeof getPrismaClient>,
   appId: string,
-): Promise<CcpaymentConfig | null> {
+): Promise<{ appId: string; appSecret: string; organizationId: string } | null> {
   const cred = await prisma.organizationCredential.findFirst({
     where: {
       appId,
@@ -132,16 +131,10 @@ async function resolveCredential(
     try {
       const { decryptCredential } = await import("@wangchao/db");
       const appSecret = decryptCredential(cred.encryptedSecret, encryptionKey);
-      return { appId: cred.appId, appSecret };
+      return { appId: cred.appId, appSecret, organizationId: cred.organizationId };
     } catch {
       return null;
     }
-  }
-
-  const envAppId = process.env.CCPAYMENT_APP_ID;
-  const envAppSecret = process.env.CCPAYMENT_APP_SECRET;
-  if (envAppId && envAppSecret && envAppId === appId) {
-    return { appId: envAppId, appSecret: envAppSecret };
   }
 
   return null;

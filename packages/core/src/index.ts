@@ -836,7 +836,7 @@ function preferenceKeysForSignal(signal: FeedbackSignal): string[] {
 
 function feedbackSignalWeight(signal: FeedbackSignal): number {
   if (typeof signal.value === "number") {
-    return signal.value;
+    return Math.max(-4, Math.min(4, signal.value));
   }
 
   if (signal.kind === "SAVE" || signal.kind === "EXPORT") {

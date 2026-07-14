@@ -159,6 +159,14 @@ export function verifyCcpaymentWebhookSignature(
     return false;
   }
 
+  const timestampMs = Number.parseInt(timestamp, 10);
+  if (!Number.isFinite(timestampMs)) return false;
+  const now = Date.now();
+  const FIVE_MINUTES = 5 * 60 * 1000;
+  if (Math.abs(now - timestampMs) > FIVE_MINUTES) {
+    return false;
+  }
+
   const expected = signRequest(config, timestamp, rawBody);
 
   if (expected.length !== signature.length) {

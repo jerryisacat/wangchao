@@ -34,6 +34,13 @@ export async function attachActiveRssSource(
   prisma: PrismaClient,
   input: AttachRssSourceInput,
 ) {
+  const topic = await prisma.topic.findFirst({
+    where: { id: input.topicId, organizationId: input.organizationId },
+  });
+  if (!topic) {
+    throw new Error(`Topic ${input.topicId} not found in organization ${input.organizationId}`);
+  }
+
   const canonicalUrl = canonicalizeUrl(input.url);
 
   return prisma.source.upsert({
@@ -324,7 +331,7 @@ export async function updateSourceGovernanceStatus(
   input: UpdateSourceGovernanceStatusInput,
 ) {
   const targetStatus = sourceActionToStatus(input.action);
-  const source = await prisma.source.findFirstOrThrow({
+  const source = await prisma.source.findFirst({
     where: {
       id: input.sourceId,
       organizationId: input.organizationId,
@@ -334,6 +341,9 @@ export async function updateSourceGovernanceStatus(
       topicId: true,
     },
   });
+  if (!source) {
+    throw new Error(`Source ${input.sourceId} not found in organization ${input.organizationId}`);
+  }
 
   await prisma.$transaction(async (transaction) => {
     await transaction.source.update({
@@ -385,7 +395,7 @@ export async function batchUpdateSourceGovernanceStatus(
 
   for (const sourceId of input.sourceIds) {
     try {
-      const source = await prisma.source.findFirstOrThrow({
+      const source = await prisma.source.findFirst({
         where: {
           id: sourceId,
           organizationId: input.organizationId,
@@ -395,6 +405,13 @@ export async function batchUpdateSourceGovernanceStatus(
           topicId: true,
         },
       });
+      if (!source) {
+        errors.push({
+          error: `Source ${sourceId} not found in organization ${input.organizationId}`,
+          sourceId,
+        });
+        continue;
+      }
 
       await prisma.$transaction(async (transaction) => {
         const updateData: Prisma.SourceUpdateInput = {

@@ -1450,10 +1450,12 @@ export async function createPaymentInvoice(
 
 export async function findPaymentInvoiceByOrderId(
   prisma: PrismaClient,
+  provider: string,
+  organizationId: string,
   providerOrderId: string,
 ): Promise<PaymentInvoiceRecord | null> {
   const invoice = await prisma.paymentInvoice.findFirst({
-    where: { providerOrderId },
+    where: { provider, organizationId, providerOrderId },
   });
 
   return invoice ? toPaymentInvoiceRecord(invoice) : null;

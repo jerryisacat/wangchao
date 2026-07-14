@@ -32,6 +32,23 @@ export class OpenAiCompatibleAdapter {
 
   constructor(options: OpenAiCompatibleAdapterOptions) {
     this.apiKey = options.apiKey;
+
+    let parsed: URL;
+    try {
+      parsed = new URL(options.baseUrl);
+    } catch {
+      throw new Error(`Invalid baseUrl: ${options.baseUrl}`);
+    }
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error(`Invalid baseUrl protocol: ${parsed.protocol}. Only http/https allowed.`);
+    }
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0" ||
+        hostname.startsWith("169.254.") || hostname.startsWith("10.") ||
+        hostname.startsWith("192.168.") || hostname.match(/^172\.(1[6-9]|2\d|3[01])\./)) {
+      throw new Error(`Private/internal IP addresses are not allowed in baseUrl: ${hostname}`);
+    }
+
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.maxRetries = options.maxRetries ?? 2;

@@ -1,5 +1,17 @@
 ## 2026-07-14
 
+### Batch: Module 3 安全/租户隔离/凭证修复 (#40, #45, #48, #62, #68)
+
+- Cause: 5 个安全相关 Issue 需修复，涉及租户隔离、加密强化、webhook 校验、SSRF 防护、反馈权重上限。
+- Changed:
+  - **#40**: `updateTopic`/`updateTopicStatus`/`deleteTopic`/`updateSourceGovernanceStatus`/`batchUpdateSourceGovernanceStatus`/`attachActiveRssSource` 增加 organizationId 防御性 findFirst 校验
+  - **#45**: crypto.ts `deriveKey` 改用 scryptSync KDF；新增 `validateApiKeyFormat()` 和 `fingerprintKey()`；保留向后兼容
+  - **#48**: `verifyCcpaymentWebhookSignature` 增加时间戳 ±5 分钟新鲜度校验；`findPaymentInvoiceByOrderId` 增加 organizationId + provider 查询条件
+  - **#62**: OpenAiCompatibleAdapter constructor 校验 baseUrl 协议（仅 http/https）并阻止内网 IP（SSRF 防护）
+  - **#68**: `feedbackSignalWeight` 对用户提供的 value 做 [-4, 4] 区间 clamp，防止滥用推高 confidence
+- Files: `packages/db/src/crypto.ts`, `packages/db/src/ccpayment.ts`, `packages/db/src/extended-repositories.ts`, `packages/db/src/repositories/topic.ts`, `packages/db/src/repositories/source.ts`, `packages/ai/src/openai-compatible.ts`, `packages/core/src/index.ts`, `packages/db/src/repositories.fixtures.ts`, `packages/db/src/index.ts`
+- Verification: `pnpm typecheck` 7/7 通过，`pnpm test` 7/7 通过，`pnpm lint` 7/7 通过
+
 ### Batch: Module 2 repositories.ts 拆分与事务治理 (#42, #44, #46, #47, #56)
 
 - Cause: repositories.ts 3397 行超大文件需按领域拆分；多个事务和批量操作存在性能和数据一致性缺陷。

@@ -59,6 +59,7 @@ async function verifyTopicUpdateAndAnalysisContextStayTenantScoped(): Promise<vo
       },
     },
     topic: {
+      findFirst: async (_args: unknown) => ({ id: "topic-1", organizationId: "org-1" }),
       update: async (args: unknown) => {
         calls.push({ args, method: "topic.update" });
         return {};

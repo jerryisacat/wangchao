@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, scryptSync, createHash } from "node:crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 12;
@@ -48,15 +48,17 @@ export function maskKeyHint(plaintext: string): string {
   return `${prefix}...${suffix}`;
 }
 
+export function validateApiKeyFormat(apiKey: string): { valid: boolean; reason?: string } {
+  if (apiKey.length < 16) return { valid: false, reason: "API key too short" };
+  if (apiKey.length > 2048) return { valid: false, reason: "API key too long" };
+  if (apiKey.includes(" ") || apiKey.includes("\n")) return { valid: false, reason: "API key contains whitespace" };
+  return { valid: true };
+}
+
+export function fingerprintKey(apiKey: string): string {
+  return createHash("sha256").update(apiKey).digest("hex").slice(0, 16);
+}
+
 function deriveKey(encryptionKey: string): Buffer {
-  if (encryptionKey.length === KEY_LENGTH) {
-    return Buffer.from(encryptionKey, "utf8");
-  }
-  const buf = Buffer.from(encryptionKey, "hex");
-  if (buf.length === KEY_LENGTH) {
-    return buf;
-  }
-  throw new Error(
-    `ENCRYPTION_KEY must be ${KEY_LENGTH} bytes as UTF-8 string or ${KEY_LENGTH * 2} hex characters. Received ${encryptionKey.length} characters.`,
-  );
+  return scryptSync(encryptionKey, "wangchao-credential-salt-v1", 32);
 }
