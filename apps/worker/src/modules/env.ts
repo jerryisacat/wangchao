@@ -1,0 +1,114 @@
+const MAX_FETCH_ATTEMPTS = 3;
+
+let _fetchConcurrency: number | null = null;
+let _candidateObservationConcurrency: number | null = null;
+let _backoffBaseMs: number | null = null;
+let _softTimeoutMs: number | null = null;
+let _totalConcurrency: number | null = null;
+
+export function getMaxFetchAttempts(): number {
+  return MAX_FETCH_ATTEMPTS;
+}
+
+export function getFetchConcurrency(): number {
+  if (_fetchConcurrency !== null) return _fetchConcurrency;
+  const raw = process.env.WANGCHAO_FETCH_CONCURRENCY;
+  if (!raw) { _fetchConcurrency = 5; return _fetchConcurrency; }
+  const parsed = Number.parseInt(raw, 10);
+  _fetchConcurrency = Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+  return _fetchConcurrency;
+}
+
+export function getCandidateObservationConcurrency(): number {
+  if (_candidateObservationConcurrency !== null) return _candidateObservationConcurrency;
+  const raw = process.env.WANGCHAO_CANDIDATE_OBSERVATION_CONCURRENCY;
+  if (!raw) { _candidateObservationConcurrency = 3; return _candidateObservationConcurrency; }
+  const parsed = Number.parseInt(raw, 10);
+  _candidateObservationConcurrency = Number.isFinite(parsed) && parsed > 0 ? parsed : 3;
+  return _candidateObservationConcurrency;
+}
+
+export function getCandidateObservationLimit(): number {
+  return Math.min(getFetchConcurrency(), getCandidateObservationConcurrency());
+}
+
+export function getBackoffBaseMs(): number {
+  if (_backoffBaseMs !== null) return _backoffBaseMs;
+  const raw = process.env.WANGCHAO_FETCH_BACKOFF_BASE_MS;
+  if (!raw) { _backoffBaseMs = 1000; return _backoffBaseMs; }
+  const parsed = Number.parseInt(raw, 10);
+  _backoffBaseMs = Number.isFinite(parsed) && parsed > 0 ? parsed : 1000;
+  return _backoffBaseMs;
+}
+
+export function getSoftTimeoutMs(): number {
+  if (_softTimeoutMs !== null) return _softTimeoutMs;
+  const raw = process.env.WANGCHAO_WORKER_CYCLE_SOFT_TIMEOUT_MS;
+  if (!raw) { _softTimeoutMs = 4 * 60 * 1000; return _softTimeoutMs; }
+  const parsed = Number.parseInt(raw, 10);
+  _softTimeoutMs = Number.isFinite(parsed) && parsed > 0 ? parsed : 4 * 60 * 1000;
+  return _softTimeoutMs;
+}
+
+export function getTotalConcurrency(): number {
+  if (_totalConcurrency !== null) return _totalConcurrency;
+  const raw = process.env.WANGCHAO_WORKER_TOTAL_CONCURRENCY;
+  if (!raw) { _totalConcurrency = 5; return _totalConcurrency; }
+  const parsed = Number.parseInt(raw, 10);
+  _totalConcurrency = Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+  return _totalConcurrency;
+}
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function pLimit(concurrency: number): <T>(fn: () => Promise<T>) => Promise<T> {
+  const queue: Array<() => void> = [];
+  let activeCount = 0;
+
+  const next = () => {
+    activeCount--;
+    if (queue.length > 0) {
+      queue.shift()!();
+    }
+  };
+
+  return <T>(fn: () => Promise<T>): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      const run = () => {
+        activeCount++;
+        fn().then(
+          (result) => {
+            resolve(result);
+            next();
+          },
+          (error) => {
+            reject(error);
+            next();
+          },
+        );
+      };
+
+      if (activeCount < concurrency) {
+        run();
+      } else {
+        queue.push(run);
+      }
+    });
+}
+
+export function readPositiveIntegerEnv(key: string, fallback: number): number {
+  const value = Number.parseInt(process.env[key] ?? "", 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+export function readFloatEnv(key: string, fallback: number): number {
+  const value = Number.parseFloat(process.env[key] ?? "");
+  return Number.isFinite(value) ? value : fallback;
+}
+
+export function readBoundedNumberEnv(name: string, fallback: number, min: number, max: number): number {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
+}

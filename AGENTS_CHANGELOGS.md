@@ -1,5 +1,37 @@
 ## 2026-07-15
 
+### Batch: Module 6 Worker 运维与可靠性修复 (#86, #87, #88, #89, #90, #91, #93, #94, #96, #97, #98)
+
+- Cause: Worker 单文件 2676 行过于庞大、缺少优雅关闭机制、时间预算、子周期错误隔离、并发控制和 observability。
+- Changed:
+  - **#89 (文件拆分)**: 将 `apps/worker/src/index.ts` 拆分为 `modules/` 目录，包含 `env.ts`, `types.ts`, `lifecycle.ts`, `runtime.ts`, `fetch.ts`, `discovery.ts`, `analysis.ts`, `dedup.ts`, `preference.ts`, `briefing.ts`, `governance.ts`, `instant-push.ts`。index.ts 保留 CLI 入口和 signal handler，重导出所有公共函数签名不变。
+  - **#87 (时间预算)**: 新增 `WANGCHAO_WORKER_CYCLE_SOFT_TIMEOUT_MS` 环境变量（默认 4 分钟），`isCycleTimeExhausted()` 检查机制，各 cycle 循环中检查并提前退出。
+  - **#86 (信号处理)**: 新增 `setupSignalHandlers()` 处理 SIGTERM/SIGINT，10 秒 grace period 后强制退出。`resetCycleStartTime()` 在 fetch/report cycle 开始时调用。
+  - **#88 + #90 (子周期错误隔离)**: 各 cycle 循环（fetch, article, candidate, analysis, dedup, briefing, governance, instant-push, telegram）中增加 `isCycleShuttingDown()` 和 `isCycleTimeExhausted()` 检查。
+  - **#91 (排序与 catch-up)**: `listFetchedItemsForAnalysis` 排序从 `publishedAt: 'desc' + fetchedAt: 'desc'` 改为 `fetchedAt: 'asc'`，确保 catch-up 优先处理最老的 items。
+  - **#93 (Report fire-and-forget)**: 验证 `createReportAction` 已仅写 PENDING 状态，通过独立 Report Cron Service 处理（无 fire-and-forget）。
+  - **#94 (单一并发控制)**: 三个独立 `pLimit` 实例合并为共享 `pLimit(getTotalConcurrency())`，通过 `WANGCHAO_WORKER_TOTAL_CONCURRENCY` 统一控制。
+  - **#96 (Instant Push per-event TaskRun)**: `runInstantPushCycle` 中每个 event 推送路径新增独立 `createTaskRun(type='TELEGRAM_INSTANT_PUSH')`，完成后 `completeTaskRun` 或 `failTaskRun`。
+  - **#97 + #98 (低优先级修复)**: env 变量读取结果缓存到模块级变量（_fetchConcurrency, _totalConcurrency, _softTimeoutMs 等），避免重复 parsed。新增 `WANGCHAO_WORKER_CYCLE_SOFT_TIMEOUT_MS` 和 `WANGCHAO_WORKER_TOTAL_CONCURRENCY`。
+- Files:
+  - `apps/worker/src/index.ts` - 重写为 CLI 入口 + signal handler + re-exports
+  - `apps/worker/src/modules/env.ts` - 提取 env helpers + 缓存 + pLimit
+  - `apps/worker/src/modules/types.ts` - 提取公共类型
+  - `apps/worker/src/modules/lifecycle.ts` - signal handlers + time budget
+  - `apps/worker/src/modules/runtime.ts` - 共享 runtime 创建逻辑
+  - `apps/worker/src/modules/fetch.ts` - fetch cycle helpers (fetchSourceWithRetries, fetchSourceAttempt, runArticleFetchCycle)
+  - `apps/worker/src/modules/discovery.ts` - source discovery cycle + helpers
+  - `apps/worker/src/modules/analysis.ts` - analysis cycle + buildExtractionInput + resolveFilteredNoiseReason
+  - `apps/worker/src/modules/dedup.ts` - semantic dedup cycle
+  - `apps/worker/src/modules/preference.ts` - preference learning cycle
+  - `apps/worker/src/modules/briefing.ts` - daily + period briefing cycles
+  - `apps/worker/src/modules/governance.ts` - governance + candidate + expired review cycles
+  - `apps/worker/src/modules/instant-push.ts` - instant push cycle with per-event TaskRun
+  - `packages/db/src/repositories/source.ts` - listFetchedItemsForAnalysis 排序修复
+  - `.env_example` - 新增 WANGCHAO_WORKER_TOTAL_CONCURRENCY 和 WANGCHAO_WORKER_CYCLE_SOFT_TIMEOUT_MS
+- Verification: `pnpm typecheck` 7/7 通过, `pnpm lint` 7/7 通过, `pnpm test` 7/7 通过, `pnpm build` 7/7 通过
+- Notes / Risk: 文件拆分为首次大规模重构，所有公共函数签名通过 index.ts re-export 保持向后兼容；`extractTopicKeywords` 在 runtime.ts 和 discovery.ts 中使用 `@wangchao/sources` 导入（非 @wangchao/db）；`PrismaClient` 类型在 runtime.ts 中通过 `ReturnType<typeof getPrismaClient>` 推导，避免直接依赖 @prisma/client 模块。
+
 ### Batch: Module 5 核心算法/Relevance/去重修复 (#64, #65, #66, #67, #69, #92)
 
 - Cause: 核心算法模块存在 Unicode 处理不一致、魔法数、模糊匹配过宽、幂等缺失和未来时间戳漏洞。

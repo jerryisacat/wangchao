@@ -857,7 +857,7 @@ export async function listFetchedItemsForAnalysis(
         },
       },
     },
-    orderBy: [{ publishedAt: "desc" }, { fetchedAt: "desc" }],
+    orderBy: [{ fetchedAt: "asc" }],
     take: limit,
   });
 

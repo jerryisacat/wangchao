@@ -118,159 +118,88 @@ import {
   sendTelegramMessage,
 } from "./telegram.js";
 
-const MAX_FETCH_ATTEMPTS = 3;
+import { setupSignalHandlers, resetCycleStartTime, isCycleShuttingDown, isCycleTimeExhausted } from "./modules/lifecycle.js";
+import { runInstantPushCycle } from "./modules/instant-push.js";
+import { runSourceDiscoveryCycle } from "./modules/discovery.js";
+import { runAnalysisCycle, resolveFilteredNoiseReason } from "./modules/analysis.js";
+import { runSemanticDedupCycle } from "./modules/dedup.js";
+import { runPreferenceLearningCycle } from "./modules/preference.js";
+import { runDailyBriefingCycle, runPeriodBriefingCycle } from "./modules/briefing.js";
+import { fetchSourceWithRetries, runArticleFetchCycle } from "./modules/fetch.js";
+import { createAnalysisRuntimeWithPlan, createSourceRecommendationRuntime } from "./modules/runtime.js";
+import {
+  runSourceGovernanceObservationCycle,
+  runCandidateObservationCycle,
+  runExpiredCandidateReviewCycle,
+} from "./modules/governance.js";
+import { pLimit, getFetchConcurrency, readPositiveIntegerEnv, getTotalConcurrency } from "./modules/env.js";
 
-function getFetchConcurrency(): number {
-  const raw = process.env.WANGCHAO_FETCH_CONCURRENCY;
-  if (!raw) return 5;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
-}
+import type {
+  WorkerFetchCycleResult,
+  SourceDiscoveryCycleResult,
+  SourceDiscoveryCycleOptions,
+  WorkerHealthCheckResult,
+  InstantPushCycleResult,
+  TelegramDeliveryResult,
+  ReportGenerationCycleResult,
+  ReportGenerationInput,
+  DiscoveryChannel,
+} from "./modules/types.js";
 
-function getCandidateObservationConcurrency(): number {
-  const raw = process.env.WANGCHAO_CANDIDATE_OBSERVATION_CONCURRENCY;
-  if (!raw) return 3;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 3;
-}
+export type {
+  WorkerFetchCycleResult,
+  SourceDiscoveryCycleResult,
+  SourceDiscoveryCycleOptions,
+  WorkerHealthCheckResult,
+  InstantPushCycleResult,
+  TelegramDeliveryResult,
+  ReportGenerationCycleResult,
+  ReportGenerationInput,
+  DiscoveryChannel,
+};
 
-function getCandidateObservationLimit(): number {
-  return Math.min(getFetchConcurrency(), getCandidateObservationConcurrency());
-}
+export {
+  resolveFilteredNoiseReason,
+  runInstantPushCycle,
+  runSourceDiscoveryCycle,
+  runAnalysisCycle,
+  runSemanticDedupCycle,
+  runPreferenceLearningCycle,
+  runDailyBriefingCycle,
+  runPeriodBriefingCycle,
+  runSourceGovernanceObservationCycle,
+  runCandidateObservationCycle,
+  runExpiredCandidateReviewCycle,
+  fetchSourceWithRetries,
+  runArticleFetchCycle,
+};
 
-function getBackoffBaseMs(): number {
-  const raw = process.env.WANGCHAO_FETCH_BACKOFF_BASE_MS;
-  if (!raw) return 1000;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1000;
-}
+export { createAnalysisRuntimeWithPlan, createSourceRecommendationRuntime };
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function pLimit(concurrency: number): <T>(fn: () => Promise<T>) => Promise<T> {
-  const queue: Array<() => void> = [];
-  let activeCount = 0;
-
-  const next = () => {
-    activeCount--;
-    if (queue.length > 0) {
-      queue.shift()!();
-    }
-  };
-
-  return <T>(fn: () => Promise<T>): Promise<T> =>
-    new Promise<T>((resolve, reject) => {
-      const run = () => {
-        activeCount++;
-        fn().then(
-          (result) => {
-            resolve(result);
-            next();
-          },
-          (error) => {
-            reject(error);
-            next();
-          },
-        );
-      };
-
-      if (activeCount < concurrency) {
-        run();
-      } else {
-        queue.push(run);
-      }
-    });
-}
-
-export interface WorkerFetchCycleResult {
-  analyzedItems: number;
-  createdOrUpdatedEvents: number;
-  fetchedSources: number;
-  failedSources: number;
-  filteredItems: number;
-  generatedBriefings: number;
-  generatedMonthlyBriefings: number;
-  generatedWeeklyBriefings: number;
-  insertedOrUpdatedItems: number;
-  lastError?: unknown;
-  recordedSourceObservations: number;
-  updatedPreferenceMemories: number;
-}
-
-export interface SourceDiscoveryCycleResult {
-  aiRecommendationAttempts: number;
-  aiRecommendationFallbacks: number;
-  aiRecommendations: number;
-  backlinkedCandidates: number;
-  candidateSourcesWritten: number;
-  existingSourcesObserved: number;
-  failedCandidates: number;
-  keywordCandidates: number;
-  outlinkCandidates: number;
-  skippedKeywordSearch: boolean;
-  taskRunId: string;
-  topicsScanned: number;
-}
-
-export interface SourceDiscoveryCycleOptions {
-  mode?: "manual" | "worker";
-  userId?: string;
-}
-
-export interface WorkerHealthCheckResult {
-  checks: Record<string, { message?: string; status: "ok" | "down" | "skipped" }>;
-  generatedAt: string;
-  service: "wangchao-worker";
-  status: "ok" | "degraded";
-}
-
-export interface InstantPushCycleResult {
-  organizations: number;
-  attempted: number;
-  delivered: number;
-  failed: number;
-  skipped: number;
-}
-
-export function resolveFilteredNoiseReason(input: {
-  llmNoiseReason?: string;
-  ruleDecision?: RelevanceDecision | null;
-  usedFallback: boolean;
-}): string {
-  return (
-    input.ruleDecision?.noiseReason ??
-    input.llmNoiseReason ??
-    (input.usedFallback
-      ? "AI 分析失败且规则判定为噪声。"
-      : "Item did not pass relevance threshold.")
-  );
-}
+const TELEGRAM_DELIVERY_LOOKBACK_HOURS = 2;
+const TELEGRAM_MAX_MESSAGE_LENGTH = 4000;
 
 export function describeWorker(): string {
   return "Wangchao worker";
 }
 
-type WorkerCycleType = "fetch" | "source-discovery" | "instant-push" | "report-generation" | "health";
-
-interface StructuredLogStart {
+export interface StructuredLogStart {
   event: "cycle-start";
-  cycle: WorkerCycleType;
+  cycle: string;
   timestamp: string;
 }
 
-interface StructuredLogEnd {
+export interface StructuredLogEnd {
   event: "cycle-end";
-  cycle: WorkerCycleType;
+  cycle: string;
   timestamp: string;
   durationMs: number;
   status: "ok" | "degraded" | "error";
   [key: string]: unknown;
 }
 
-function emitStructuredLogStart(cycle: WorkerCycleType): number {
-  const log: StructuredLogStart = {
+function emitStructuredLogStart(cycle: string): number {
+  const log = {
     cycle,
     event: "cycle-start",
     timestamp: new Date().toISOString(),
@@ -280,12 +209,12 @@ function emitStructuredLogStart(cycle: WorkerCycleType): number {
 }
 
 function emitStructuredLogEnd(
-  cycle: WorkerCycleType,
+  cycle: string,
   startTime: number,
   status: "ok" | "degraded" | "error",
   metrics: Record<string, unknown>,
 ): void {
-  const log: StructuredLogEnd = {
+  const log = {
     cycle,
     durationMs: Date.now() - startTime,
     event: "cycle-end",
@@ -294,6 +223,29 @@ function emitStructuredLogEnd(
     ...metrics,
   };
   process.stdout.write(`${JSON.stringify(log)}\n`);
+}
+
+async function checkWorkerDatabase(): Promise<{
+  message?: string;
+  status: "ok" | "down" | "skipped";
+}> {
+  if (!process.env.DATABASE_URL) {
+    return {
+      message: "Database connection is not configured.",
+      status: "skipped",
+    };
+  }
+
+  try {
+    const prisma = getPrismaClient();
+    await prisma.$queryRaw`SELECT 1`;
+    return { status: "ok" };
+  } catch (error) {
+    return {
+      message: error instanceof Error ? error.message : String(error),
+      status: "down",
+    };
+  }
 }
 
 export async function runWorkerHealthCheck(): Promise<WorkerHealthCheckResult> {
@@ -310,117 +262,8 @@ export async function runWorkerHealthCheck(): Promise<WorkerHealthCheckResult> {
   };
 }
 
-export async function runInstantPushCycle(): Promise<InstantPushCycleResult> {
-  if (!process.env.DATABASE_URL) {
-    throw new Error("Database connection is required to run instant push.");
-  }
-  const prisma = getPrismaClient();
-  const result: InstantPushCycleResult = { organizations: 0, attempted: 0, delivered: 0, failed: 0, skipped: 0 };
-  const organizations = await listInstantPushOrganizations(prisma);
-  const scoreThreshold = readBoundedNumberEnv("WANGCHAO_INSTANT_PUSH_SCORE_THRESHOLD", 90, 0, 100);
-  const maxPerCycle = readPositiveIntegerEnv("WANGCHAO_INSTANT_PUSH_MAX_PER_CYCLE", 10);
-  const maxAttempts = readPositiveIntegerEnv("WANGCHAO_INSTANT_PUSH_MAX_ATTEMPTS", 3);
-
-  for (const organization of organizations) {
-    result.organizations += 1;
-    const taskRun = await createTaskRun(prisma, {
-      organizationId: organization.organizationId,
-      type: "TELEGRAM_INSTANT_PUSH",
-      input: { scoreThreshold, maxPerCycle, maxAttempts },
-    });
-    try {
-      const settings = await getInstantPushSettings(prisma, { organizationId: organization.organizationId });
-      const effectivePlan = resolveEffectivePlan({
-        plan: settings.plan,
-        status: settings.status,
-        isSelfHosted: settings.isSelfHosted,
-        currentPeriodEnd: settings.currentPeriodEnd,
-      });
-      const access = checkInstantPushQuota(effectivePlan, settings.isSelfHosted);
-      const credential = access.allowed
-        ? await getDecryptedTelegramCredential(prisma, { organizationId: organization.organizationId })
-        : null;
-      if (!access.allowed || !settings.enabledAt || !credential) {
-        result.skipped += 1;
-        await completeTaskRun(prisma, taskRun.id, {
-          outcome: "skipped",
-          reason: !access.allowed ? access.reason : "Instant push is not fully configured.",
-        });
-        continue;
-      }
-      const candidates = await listInstantPushCandidates(
-        prisma,
-        { organizationId: organization.organizationId },
-        { enabledAt: settings.enabledAt, scoreThreshold, limit: maxPerCycle },
-      );
-      let delivered = 0;
-      let failed = 0;
-      let skipped = 0;
-      for (const candidate of candidates) {
-        const claimed = await claimInstantPush(prisma, {
-          eventId: candidate.eventId,
-          organizationId: organization.organizationId,
-          score: candidate.score,
-          recipientRef: credential.chatId,
-          maxAttempts,
-          staleBefore: new Date(Date.now() - 30 * 60_000),
-        });
-        if (!claimed) {
-          skipped += 1;
-          continue;
-        }
-        result.attempted += 1;
-        try {
-          await sendTelegramMessage(
-            credential.botToken,
-            credential.chatId,
-            formatEventForInstantPush(candidate),
-            "HTML",
-          );
-          await markInstantPushSent(prisma, claimed.id);
-          delivered += 1;
-          result.delivered += 1;
-        } catch (error) {
-          const telegramError = error instanceof TelegramDeliveryError ? error : null;
-          await markInstantPushFailed(prisma, claimed.id, {
-            attempt: claimed.attempt,
-            errorMessage: error instanceof Error ? error.message : "Telegram delivery failed.",
-            errorCode: telegramError?.code,
-            retryAfterMs: telegramError?.retryAfterMs,
-            retryable: (telegramError?.retryable ?? true) && claimed.attempt < maxAttempts,
-          });
-          failed += 1;
-          result.failed += 1;
-        }
-        await sleep(200);
-      }
-      if (delivered > 0 || failed > 0) {
-        await recordUsageEvent(prisma, {
-          organizationId: organization.organizationId,
-          userId: organization.userId ?? undefined,
-          type: "INSTANT_PUSH",
-          quantity: delivered,
-          unit: "delivery",
-          subjectType: "instant-push-cycle",
-          metadata: { attempted: delivered + failed, delivered, failed, skipped },
-        });
-      }
-      result.skipped += skipped;
-      await completeTaskRun(prisma, taskRun.id, { outcome: "completed", delivered, failed, skipped });
-    } catch (error) {
-      result.failed += 1;
-      await failTaskRun(prisma, taskRun.id, error);
-    }
-  }
-  return result;
-}
-
-function readBoundedNumberEnv(name: string, fallback: number, min: number, max: number): number {
-  const value = Number(process.env[name]);
-  return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
-}
-
 export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
+  resetCycleStartTime();
   if (!process.env.DATABASE_URL) {
     throw new Error("Database connection is required to run the worker fetch pipeline.");
   }
@@ -444,7 +287,7 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     updatedPreferenceMemories: 0,
   };
 
-  const limit = pLimit(getFetchConcurrency());
+  const limit = pLimit(getTotalConcurrency());
   const sourceResults = await Promise.all(
     sources.map((source) => limit(() => fetchSourceWithRetries(prisma, source))),
   );
@@ -494,6 +337,8 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
 
   await runArticleFetchCycle(prisma, workspace.organizationId);
 
+  if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
+
   const analysisResult = await runAnalysisCycle(
     prisma,
     workspace.organizationId,
@@ -502,6 +347,9 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
   result.analyzedItems = analysisResult.analyzedItems;
   result.createdOrUpdatedEvents = analysisResult.createdOrUpdatedEvents;
   result.filteredItems = analysisResult.filteredItems;
+
+  if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
+
   const semanticDedupResult = await runSemanticDedupCycle(
     prisma,
     workspace.organizationId,
@@ -521,11 +369,17 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
       userId: workspace.userId,
     });
   }
+
+  if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
+
   result.updatedPreferenceMemories = await runPreferenceLearningCycle(
     prisma,
     workspace.organizationId,
     workspace.userId,
   );
+
+  if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
+
   result.generatedBriefings = await runDailyBriefingCycle(
     prisma,
     workspace.organizationId,
@@ -544,6 +398,9 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
       userId: workspace.userId,
     });
   }
+
+  if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
+
   result.generatedWeeklyBriefings = await runPeriodBriefingCycle(
     prisma,
     workspace.organizationId,
@@ -561,6 +418,9 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
       userId: workspace.userId,
     });
   }
+
+  if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
+
   result.generatedMonthlyBriefings = await runPeriodBriefingCycle(
     prisma,
     workspace.organizationId,
@@ -578,6 +438,9 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
       userId: workspace.userId,
     });
   }
+
+  if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
+
   result.recordedSourceObservations = await runSourceGovernanceObservationCycle(
     prisma,
     workspace.organizationId,
@@ -595,6 +458,8 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
       userId: workspace.userId,
     });
   }
+
+  if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
 
   const expiryResult = await runExpiredCandidateReviewCycle(
     prisma,
@@ -616,6 +481,8 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
       userId: workspace.userId,
     });
   }
+
+  if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
 
   const telegramResult = await runTelegramDeliveryCycle(
     prisma,
@@ -640,1485 +507,6 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
   }
 
   return result;
-}
-
-async function runArticleFetchCycle(
-  prisma: ReturnType<typeof getPrismaClient>,
-  organizationId: string,
-): Promise<{ fetched: number; failed: number }> {
-  const result = { fetched: 0, failed: 0 };
-  const items = await listItemsWithoutRawContent(prisma, { organizationId });
-
-  if (items.length === 0) return result;
-
-  const limit = pLimit(getFetchConcurrency());
-  const articleResults = await Promise.all(
-    items.map((item) =>
-      limit(async () => {
-        try {
-          const content = await fetchArticleContent(item.url);
-          if (content) {
-            await updateItemRawContent(prisma, item.id, content);
-            result.fetched += 1;
-          }
-        } catch {
-          result.failed += 1;
-        }
-      }),
-    ),
-  );
-  void articleResults;
-
-  return result;
-}
-
-export async function runSourceDiscoveryCycle(
-  options: SourceDiscoveryCycleOptions = {},
-): Promise<SourceDiscoveryCycleResult> {
-  if (!process.env.DATABASE_URL) {
-    throw new Error("Database connection is required to run source discovery.");
-  }
-
-  const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
-  const taskRun = await createSourceDiscoveryTaskRun(prisma, {
-    input: {
-      mode: options.mode ?? "worker",
-    },
-    organizationId: workspace.organizationId,
-    userId: options.userId ?? workspace.userId,
-  });
-  const result: SourceDiscoveryCycleResult = {
-    aiRecommendationAttempts: 0,
-    aiRecommendationFallbacks: 0,
-    aiRecommendations: 0,
-    backlinkedCandidates: 0,
-    candidateSourcesWritten: 0,
-    existingSourcesObserved: 0,
-    failedCandidates: 0,
-    keywordCandidates: 0,
-    outlinkCandidates: 0,
-    skippedKeywordSearch: false,
-    taskRunId: taskRun.id,
-    topicsScanned: 0,
-  };
-
-  try {
-    const topics = await listTopicsForSourceDiscovery(prisma, {
-      organizationId: workspace.organizationId,
-    });
-    result.topicsScanned = topics.length;
-    const searchProvider = await createSearchProvider(prisma, workspace.organizationId);
-    const ai = await createSourceRecommendationRuntime(prisma, workspace.organizationId);
-    const candidates: DiscoveryCandidate[] = [];
-
-    if (searchProvider) {
-      candidates.push(...(await discoverFromKeywordSearch(topics, searchProvider)));
-    } else {
-      result.skippedKeywordSearch = true;
-    }
-
-    candidates.push(
-      ...(await discoverFromHighScoreBacklinks(workspace.organizationId, topics)),
-      ...(await discoverFromActiveSourceOutlinks(workspace.organizationId, topics)),
-    );
-
-    const limitedCandidates = limitCandidatesPerTopic(
-      dedupeDiscoveryCandidates(candidates),
-      readPositiveIntegerEnv("WANGCHAO_DISCOVERY_WEEKLY_LIMIT", 5),
-    );
-
-    for (const candidate of limitedCandidates) {
-      const recommendation = await getSourceRecommendation(candidate, ai);
-      result.aiRecommendationAttempts += recommendation.attemptedAi ? 1 : 0;
-      result.aiRecommendationFallbacks +=
-        recommendation.attemptedAi && !recommendation.usedAi ? 1 : 0;
-      result.aiRecommendations += recommendation.usedAi ? 1 : 0;
-
-      try {
-        const source = await createCandidateRssSource(prisma, {
-          description: candidate.evidence.snippet
-            ? String(candidate.evidence.snippet).slice(0, 240)
-            : undefined,
-          discoveryChannel: candidate.channel,
-          evidence: {
-            ...candidate.evidence,
-            recommendationMode: recommendation.usedAi ? "llm" : "fallback",
-            source: "source-discovery-cycle",
-          },
-          name: candidate.name,
-          organizationId: candidate.topic.organizationId,
-          recommendationReason: recommendation.value.reason,
-          relevanceScore: recommendation.value.relevanceScore,
-          topicId: candidate.topic.id,
-          url: candidate.feedUrl,
-        });
-
-        if (source.status === "CANDIDATE") {
-          result.candidateSourcesWritten += 1;
-          if (candidate.channel === "keyword-search") result.keywordCandidates += 1;
-          if (candidate.channel === "backlink-from-highscore") {
-            result.backlinkedCandidates += 1;
-          }
-          if (candidate.channel === "outlink-network") result.outlinkCandidates += 1;
-        } else {
-          result.existingSourcesObserved += 1;
-        }
-      } catch {
-        result.failedCandidates += 1;
-      }
-    }
-
-    if (result.aiRecommendationAttempts > 0) {
-      await recordUsageEvent(prisma, {
-        metadata: {
-          fallbackCalls: result.aiRecommendationFallbacks,
-          source: "worker-source-recommendation",
-          successfulCalls: result.aiRecommendations,
-          taskRunId: taskRun.id,
-        },
-        organizationId: workspace.organizationId,
-        quantity: result.aiRecommendationAttempts,
-        subjectId: taskRun.id,
-        subjectType: "task-run",
-        type: "AI_CALL",
-        unit: "call",
-        userId: options.userId ?? workspace.userId,
-      });
-    }
-
-    await completeTaskRun(prisma, taskRun.id, { ...result });
-    await recordUsageEvent(prisma, {
-      metadata: {
-        mode: options.mode ?? "worker",
-        taskRunId: taskRun.id,
-      },
-      organizationId: workspace.organizationId,
-      quantity: result.candidateSourcesWritten,
-      subjectId: taskRun.id,
-      subjectType: "task-run",
-      type: "SOURCE_DISCOVERY",
-      unit: "candidate",
-      userId: options.userId ?? workspace.userId,
-    });
-
-    return result;
-  } catch (error) {
-    await failTaskRun(prisma, taskRun.id, error);
-    throw error;
-  }
-}
-
-async function runAnalysisCycle(
-  prisma: ReturnType<typeof getPrismaClient>,
-  organizationId: string,
-  userId: string,
-): Promise<Pick<
-  WorkerFetchCycleResult,
-  "analyzedItems" | "createdOrUpdatedEvents" | "filteredItems"
->> {
-  const items = await listFetchedItemsForAnalysis(prisma, { organizationId });
-  const aiRuntime = await createAnalysisRuntimeWithPlan(prisma, organizationId);
-  const ai = aiRuntime
-    ? { adapter: aiRuntime.adapter, model: aiRuntime.model }
-    : null;
-  const aiSource = aiRuntime?.source ?? "official";
-  const result = {
-    analyzedItems: 0,
-    createdOrUpdatedEvents: 0,
-    filteredItems: 0,
-    llmAttempts: 0,
-    llmItems: 0,
-    llmFallbackItems: 0,
-  };
-
-  for (const item of items) {
-    const relevanceTask = await createTaskRun(prisma, {
-      input: {
-        mode: ai ? "llm-with-rules-fallback" : "explainable-rules",
-      },
-      itemId: item.id,
-      organizationId,
-      topicId: item.topicId,
-      type: "AI_RELEVANCE",
-    });
-
-    try {
-      let draft = null;
-      let rawAiResponse: Record<string, unknown> = {
-        mode: "uninitialized",
-      };
-      let ruleDecision: RelevanceDecision | null = null;
-      let llmNoiseReason: string | undefined;
-      let usedLlm = false;
-      let usedFallback = false;
-
-      if (ai) {
-        result.llmAttempts += 1;
-        const extractionTask = await createTaskRun(prisma, {
-          input: { model: ai.model },
-          itemId: item.id,
-          organizationId,
-          topicId: item.topicId,
-          type: "AI_EVENT_EXTRACTION",
-        });
-
-        try {
-          const extractionInput = buildExtractionInput(item, item.topicProfile);
-          const extraction = await extractEvent(extractionInput, {
-            adapter: ai.adapter,
-            model: ai.model,
-          });
-          draft = createIntelligenceEventDraftFromExtraction(
-            {
-              fetchedAt: item.fetchedAt,
-              id: item.id,
-              publishedAt: item.publishedAt,
-              summary: item.summary,
-              title: item.title,
-              topicProfile: item.topicProfile,
-              url: item.url,
-            },
-            extractionToAiEventExtraction(extraction),
-          );
-          rawAiResponse = { mode: "llm", extraction };
-          llmNoiseReason = extraction.noiseReason;
-          usedLlm = true;
-          await completeTaskRun(prisma, extractionTask.id, {
-            isRelevant: extraction.isRelevant,
-            model: ai.model,
-            noiseReason: extraction.noiseReason,
-            outcome: draft ? "draft-created" : "filtered",
-          });
-        } catch (error) {
-          usedFallback = true;
-          await failTaskRun(prisma, extractionTask.id, error);
-          process.stderr.write(
-            `[analysis-cycle] LLM extraction failed for item ${item.id} (topic ${item.topicId}): ${error instanceof Error ? error.message : String(error)}\n`,
-          );
-        }
-      }
-
-      if (!usedLlm) {
-        ruleDecision = evaluateRelevance({
-          fetchedAt: item.fetchedAt,
-          id: item.id,
-          publishedAt: item.publishedAt,
-          summary: item.summary,
-          title: item.title,
-          topicProfile: item.topicProfile,
-          url: item.url,
-        });
-        draft = createIntelligenceEventDraft(
-          {
-            fetchedAt: item.fetchedAt,
-            id: item.id,
-            publishedAt: item.publishedAt,
-            summary: item.summary,
-            title: item.title,
-            topicProfile: item.topicProfile,
-            url: item.url,
-          },
-          ruleDecision,
-        );
-        rawAiResponse = {
-          mode: "explainable-rules",
-          relevance: ruleDecision,
-          ...(usedFallback ? { llmFallback: true } : {}),
-        };
-      }
-
-      result.analyzedItems += 1;
-      if (usedLlm) result.llmItems += 1;
-      if (usedFallback) result.llmFallbackItems += 1;
-
-      if (!draft) {
-        const noiseReason = resolveFilteredNoiseReason({
-          llmNoiseReason,
-          ruleDecision,
-          usedFallback,
-        });
-        await markItemFiltered(prisma, item.id, noiseReason);
-        result.filteredItems += 1;
-        await completeTaskRun(prisma, relevanceTask.id, {
-          llmFallback: usedFallback,
-          mode: usedLlm ? "llm" : "explainable-rules",
-          noiseReason,
-          outcome: "filtered",
-        });
-        continue;
-      }
-
-      const event = await upsertIntelligenceEventFromItem(prisma, {
-        organizationId: item.organizationId,
-        topicId: item.topicId,
-        primaryItemId: item.id,
-        title: draft.title,
-        summary: draft.summary,
-        category: draft.category,
-        entities: draft.entities,
-        score: draft.score,
-        gravityScore: draft.gravityScore,
-        eventHash: draft.eventHash,
-        titleHash: draft.titleHash,
-        explanation: draft.explanation,
-        followUpSuggestion: draft.followUpSuggestion,
-        mergeReason: draft.mergeReason,
-        occurredAt: draft.occurredAt,
-        rawAiResponse,
-      });
-      result.createdOrUpdatedEvents += 1;
-      await completeTaskRun(prisma, relevanceTask.id, {
-        eventId: event.id,
-        llmFallback: usedFallback,
-        mode: usedLlm ? "llm" : "explainable-rules",
-        outcome: "event-upserted",
-      });
-    } catch (error) {
-      await failTaskRun(prisma, relevanceTask.id, error);
-      throw error;
-    }
-  }
-
-  if (ai && result.llmAttempts > 0) {
-    await recordUsageEvent(prisma, {
-      metadata: {
-        aiSource,
-        attemptedItems: result.llmAttempts,
-        filteredItems: result.filteredItems,
-        fallbackItems: result.llmFallbackItems,
-        source: "worker-analysis-cycle",
-        successfulItems: result.llmItems,
-      },
-      organizationId,
-      quantity: result.llmAttempts,
-      subjectType: "analysis-cycle",
-      type: "AI_CALL",
-      unit: "item",
-      userId,
-    });
-  }
-
-  return result;
-}
-
-async function runSemanticDedupCycle(
-  prisma: ReturnType<typeof getPrismaClient>,
-  organizationId: string,
-): Promise<{ merged: number; llmCalls: number; skipped: number }> {
-  const result = { merged: 0, llmCalls: 0, skipped: 0 };
-
-  const aiRuntime = await createAnalysisRuntimeWithPlan(prisma, organizationId);
-  if (!aiRuntime) return result;
-  const ai = { adapter: aiRuntime.adapter, model: aiRuntime.model };
-
-  const DEDUP_THRESHOLD = readFloatEnv("WANGCHAO_SEMANTIC_DEDUP_THRESHOLD", 0.7);
-  const MAX_DEDUP_COMPARISONS = readPositiveIntegerEnv("WANGCHAO_DEDUP_MAX_COMPARISONS", 20);
-  const MAX_CANDIDATES_PER_EVENT = readPositiveIntegerEnv("WANGCHAO_DEDUP_MAX_CANDIDATES", 10);
-
-  const since = new Date();
-  since.setHours(since.getHours() - 48);
-
-  const recentEvents = await prisma.intelligenceEvent.findMany({
-    where: {
-      organizationId,
-      status: "UNREAD",
-      createdAt: { gte: since },
-    },
-    include: {
-      eventItems: {
-        include: {
-          item: {
-            select: {
-              sourceId: true,
-              source: { select: { name: true } },
-            },
-          },
-        },
-      },
-      primaryItem: {
-        select: {
-          sourceId: true,
-          source: { select: { name: true } },
-        },
-      },
-      topic: {
-        select: { name: true, description: true },
-      },
-    },
-    orderBy: [{ createdAt: "asc" }],
-  });
-
-  if (recentEvents.length < 2) return result;
-
-  const eventsByTopic = new Map<string, typeof recentEvents>();
-  for (const event of recentEvents) {
-    const list = eventsByTopic.get(event.topicId) ?? [];
-    list.push(event);
-    eventsByTopic.set(event.topicId, list);
-  }
-
-  for (const [, topicEvents] of eventsByTopic) {
-    if (topicEvents.length < 2) continue;
-
-    let comparisons = 0;
-    for (let i = 1; i < topicEvents.length; i += 1) {
-      if (comparisons >= MAX_DEDUP_COMPARISONS) {
-        console.warn(`[dedup] Topic reached max comparisons (${MAX_DEDUP_COMPARISONS}), stopping.`);
-        break;
-      }
-
-      const currentEvent = topicEvents[i]!;
-      const candidates = topicEvents.slice(0, i).filter((candidate) => {
-        const newSourceId = currentEvent.primaryItem?.sourceId;
-        const candSourceId = candidate.primaryItem?.sourceId;
-        if (newSourceId && candSourceId && newSourceId === candSourceId) {
-          return false;
-        }
-        const shareEntity = currentEvent.entities.some((e) =>
-          candidate.entities.includes(e),
-        );
-        return shareEntity || candidate.entities.length === 0;
-      }).slice(0, MAX_CANDIDATES_PER_EVENT);
-
-      if (candidates.length === 0) continue;
-
-      try {
-        comparisons += 1;
-        result.llmCalls += 1;
-        const dedupResult = await dedupEvent(
-          {
-            newEvent: {
-              eventId: currentEvent.id,
-              title: currentEvent.title,
-              summary: currentEvent.summary,
-              sourceName: currentEvent.primaryItem?.source.name ?? null,
-              occurredAt: currentEvent.occurredAt?.toISOString() ?? null,
-            },
-            candidateEvents: candidates.map((c) => ({
-              eventId: c.id,
-              title: c.title,
-              summary: c.summary,
-              sourceName: c.primaryItem?.source.name ?? null,
-              occurredAt: c.occurredAt?.toISOString() ?? null,
-            })),
-            topicName: currentEvent.topic?.name ?? "",
-          },
-          {
-            adapter: ai.adapter,
-            model: ai.model,
-          },
-        );
-        if (dedupResult.duplicateEventId && dedupResult.confidence >= DEDUP_THRESHOLD) {
-          await mergeSemanticEvents(prisma, {
-            keepEventId: dedupResult.duplicateEventId,
-            mergeEventIds: [currentEvent.id],
-            reason: `LLM语义聚类 (置信度 ${dedupResult.confidence.toFixed(2)}): ${dedupResult.reason}`,
-          });
-          result.merged += 1;
-        }
-      } catch (error) {
-        console.warn(`[dedup] LLM dedup failed for event ${currentEvent.id}: ${error instanceof Error ? error.message : String(error)}`);
-        result.skipped += 1;
-      }
-    }
-  }
-
-  return result;
-}
-
-async function runPreferenceLearningCycle(
-  prisma: ReturnType<typeof getPrismaClient>,
-  organizationId: string,
-  userId: string,
-): Promise<number> {
-  const signals = await listRecentFeedbackSignals(prisma, {
-    organizationId,
-    userId,
-  });
-  const deltas = generatePreferenceDeltas(signals);
-
-  await Promise.all(
-    deltas.map((delta) =>
-      upsertPreferenceMemory(prisma, {
-        confidence: delta.confidence,
-        explanation: delta.explanation,
-        key: delta.key,
-        organizationId,
-        topicId: delta.topicId,
-        userId,
-        value: delta.value,
-      }),
-    ),
-  );
-
-  return deltas.length;
-}
-
-async function runDailyBriefingCycle(
-  prisma: ReturnType<typeof getPrismaClient>,
-  organizationId: string,
-  userId: string,
-): Promise<number> {
-  const topics = await listActiveTopics(prisma, { organizationId });
-  let generatedBriefings = 0;
-
-  for (const topic of topics) {
-    const generatedAt = new Date();
-    const { rangeEnd, rangeStart } = createUtcDayRange(generatedAt);
-    const taskRun = await createTaskRun(prisma, {
-      input: {
-        period: "DAILY",
-        rangeEnd: rangeEnd.toISOString(),
-        rangeStart: rangeStart.toISOString(),
-      },
-      organizationId,
-      topicId: topic.id,
-      type: "BRIEFING_GENERATION",
-    });
-
-    try {
-      const [events, preferences] = await Promise.all([
-        listEventsForDailyBriefing(prisma, {
-          organizationId,
-          rangeEnd,
-          rangeStart,
-          topicId: topic.id,
-        }),
-        listPreferenceMemoryForDashboard(prisma, { organizationId, userId }),
-      ]);
-
-      if (events.length === 0) {
-        await completeTaskRun(prisma, taskRun.id, {
-          eventCount: 0,
-          outcome: "skipped-no-events",
-        });
-        continue;
-      }
-
-      const context = buildTopicProfileContext(topic.profile, {
-        description: topic.description,
-        name: topic.name,
-      });
-
-      const markdown = renderDailyBriefingMarkdown({
-        digestStyle: context.digestStyle ?? DEFAULT_DIGEST_STYLE,
-        events: events.map((event) => ({
-          category: event.category,
-          explanation: event.explanation,
-          occurredAt: event.occurredAt,
-          score: event.score,
-          sourceName: event.sourceName,
-          sourceUrl: event.sourceUrl,
-          summary: event.summary,
-          title: event.title,
-          url: event.url,
-        })),
-        generatedAt,
-        preferences: preferences
-          .filter((preference) => preference.topicId === topic.id)
-          .map((preference) => ({
-            explanation: preference.explanation,
-            key: preference.key,
-            weight: preference.weight,
-          })),
-        topicName: topic.name,
-      });
-      const briefing = await createDailyBriefing(prisma, {
-        content: markdown,
-        eventIds: events.map((event) => event.eventId),
-        generatedAt,
-        markdown,
-        metadata: {
-          contentHash: createContentHash(markdown),
-          mode: "explainable-rules",
-        },
-        organizationId,
-        rangeEnd,
-        rangeStart,
-        title: `${topic.name} Daily Briefing`,
-        topicId: topic.id,
-      });
-      await completeTaskRun(prisma, taskRun.id, {
-        briefingId: briefing.id,
-        eventCount: events.length,
-        outcome: "upserted",
-      });
-      generatedBriefings += 1;
-    } catch (error) {
-      await failTaskRun(prisma, taskRun.id, error);
-      throw error;
-    }
-  }
-
-  return generatedBriefings;
-}
-
-async function runPeriodBriefingCycle(
-  prisma: ReturnType<typeof getPrismaClient>,
-  organizationId: string,
-  userId: string,
-  period: "WEEKLY" | "MONTHLY",
-): Promise<number> {
-  const topics = await listActiveTopics(prisma, { organizationId });
-  let generatedBriefings = 0;
-
-  for (const topic of topics) {
-    const generatedAt = new Date();
-    const { rangeEnd, rangeStart } =
-      period === "WEEKLY"
-        ? createUtcWeekRange(generatedAt)
-        : createUtcMonthRange(generatedAt);
-
-    const taskRun = await createTaskRun(prisma, {
-      input: {
-        period,
-        rangeEnd: rangeEnd.toISOString(),
-        rangeStart: rangeStart.toISOString(),
-      },
-      organizationId,
-      topicId: topic.id,
-      type: "BRIEFING_GENERATION",
-    });
-
-    try {
-      const timelineResult = await listTimelineEvents(
-        prisma,
-        { organizationId, rangeEnd, rangeStart, topicId: topic.id },
-        1,
-        100,
-      );
-      const events = timelineResult.events;
-
-      if (events.length === 0) {
-        await completeTaskRun(prisma, taskRun.id, {
-          eventCount: 0,
-          outcome: "skipped-no-events",
-          period,
-        });
-        continue;
-      }
-
-      const preferences = (
-        await listPreferenceMemoryForDashboard(prisma, { organizationId, userId })
-      )
-        .filter((preference) => preference.topicId === topic.id)
-        .map((preference) => ({
-          explanation: preference.explanation,
-          key: preference.key,
-          weight: preference.weight,
-        }));
-
-      const context = buildTopicProfileContext(topic.profile, {
-        description: topic.description,
-        name: topic.name,
-      });
-
-      const markdown = renderPeriodBriefingMarkdown({
-        digestStyle: context.digestStyle ?? DEFAULT_DIGEST_STYLE,
-        events: events.map((event) => ({
-          category: event.category,
-          explanation: event.explanation,
-          occurredAt: event.occurredAt,
-          score: event.score,
-          sourceName: event.sourceName,
-          sourceUrl: event.sourceUrl,
-          summary: event.summary,
-          title: event.title,
-          url: event.url,
-        })),
-        generatedAt,
-        period,
-        preferences,
-        rangeEnd,
-        rangeStart,
-        topicName: topic.name,
-      });
-      const titleSuffix = period === "WEEKLY" ? "Weekly Briefing" : "Monthly Briefing";
-      const briefing = await createPeriodBriefing(prisma, {
-        content: markdown,
-        eventIds: events.map((event) => event.eventId),
-        generatedAt,
-        markdown,
-        metadata: {
-          contentHash: createContentHash(markdown),
-          mode: "explainable-rules",
-          period,
-        },
-        organizationId,
-        period,
-        rangeEnd,
-        rangeStart,
-        title: `${topic.name} ${titleSuffix}`,
-        topicId: topic.id,
-      });
-      await completeTaskRun(prisma, taskRun.id, {
-        briefingId: briefing.id,
-        eventCount: events.length,
-        outcome: "upserted",
-        period,
-      });
-      generatedBriefings += 1;
-    } catch (error) {
-      await failTaskRun(prisma, taskRun.id, error);
-      throw error;
-    }
-  }
-
-  return generatedBriefings;
-}
-
-async function runSourceGovernanceObservationCycle(
-  prisma: ReturnType<typeof getPrismaClient>,
-  organizationId: string,
-): Promise<number> {
-  const report = await listSourceGovernanceReport(prisma, { organizationId });
-
-  await Promise.all(
-    report.map((source) =>
-      recordSourceQualityObservation(prisma, {
-        duplicateRate: source.duplicateRate,
-        evidence: {
-          qualityScore: source.qualityScore,
-          recommendation: source.recommendation,
-          totalItems: source.totalItems,
-        },
-        hitRate: source.hitRate,
-        noiseRate: source.noiseRate,
-        organizationId,
-        sourceId: source.sourceId,
-        topicId: source.topicId,
-      }),
-    ),
-  );
-
-  return report.length;
-}
-
-async function runCandidateObservationCycle(
-  prisma: ReturnType<typeof getPrismaClient>,
-  organizationId: string,
-): Promise<{ observedCandidates: number; failedCandidates: number; insertedItems: number }> {
-  const result = { observedCandidates: 0, failedCandidates: 0, insertedItems: 0 };
-
-  if (process.env.WANGCHAO_CANDIDATE_OBSERVATION_ENABLED !== "true") {
-    return result;
-  }
-
-  const candidates = await listCandidateRssSourcesForObservation(prisma, { organizationId });
-  if (candidates.length === 0) return result;
-
-  const limit = pLimit(getCandidateObservationLimit());
-
-  const candidateResults = await Promise.all(
-    candidates.map((source) => limit(async () => {
-      try {
-        const items = await fetchRssFeed(source.url);
-        const writtenItems = await upsertFetchedItems(prisma, items.map((item) => ({
-          organizationId: source.organizationId,
-          topicId: source.topicId,
-          sourceId: source.id,
-          title: item.title,
-          url: item.url,
-          canonicalUrl: item.canonicalUrl,
-          summary: item.summary,
-          author: item.author,
-          publishedAt: item.publishedAt,
-          contentHash: item.contentHash,
-          rawMetadata: { ...item.rawMetadata, candidateObservation: true },
-        })));
-        await recordSourceFetchSuccess(prisma, source.id);
-        result.observedCandidates += 1;
-        result.insertedItems += writtenItems.length;
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        await recordSourceFetchFailure(prisma, source.id, errorMessage);
-        result.failedCandidates += 1;
-      }
-    })),
-  );
-  void candidateResults;
-
-  return result;
-}
-
-async function runExpiredCandidateReviewCycle(
-  prisma: ReturnType<typeof getPrismaClient>,
-  organizationId: string,
-): Promise<{ reviewed: number; autoApproved: number; autoRejected: number }> {
-  const result = { reviewed: 0, autoApproved: 0, autoRejected: 0 };
-
-  const expired = await listExpiredCandidateSources(prisma, { organizationId });
-  if (expired.length === 0) return result;
-
-  for (const candidate of expired) {
-    result.reviewed += 1;
-
-    const itemCount = await prisma.item.count({
-      where: {
-        sourceId: candidate.sourceId,
-        intelligenceEvents: { some: {} },
-      },
-    });
-
-    if (itemCount > 0) {
-      await prisma.source.update({
-        data: { status: "ACTIVE", observeExpiresAt: null },
-        where: { id: candidate.sourceId },
-      });
-      result.autoApproved += 1;
-    } else {
-      await prisma.source.update({
-        data: { status: "REJECTED", observeExpiresAt: null },
-        where: { id: candidate.sourceId },
-      });
-      result.autoRejected += 1;
-    }
-  }
-
-  return result;
-}
-
-async function fetchSourceWithRetries(
-  prisma: ReturnType<typeof getPrismaClient>,
-  source: FetchedSourceRecord,
-): Promise<WorkerFetchCycleResult> {
-  let lastError: unknown;
-
-  for (let attempt = 1; attempt <= MAX_FETCH_ATTEMPTS; attempt += 1) {
-    const result = await fetchSourceAttempt(prisma, source, attempt);
-
-    if (result.fetchedSources === 1) {
-      return result;
-    }
-
-    lastError = result.lastError;
-
-    if (!isFetchRssRetryable(lastError)) {
-      break;
-    }
-
-    if (attempt < MAX_FETCH_ATTEMPTS) {
-      const backoffMs = getBackoffBaseMs() * 2 ** (attempt - 1);
-      const jitterMs = backoffMs * (0.5 + Math.random() * 0.5);
-      await sleep(Math.round(jitterMs));
-    }
-  }
-
-  return {
-    analyzedItems: 0,
-    createdOrUpdatedEvents: 0,
-    failedSources: 1,
-    fetchedSources: 0,
-    filteredItems: 0,
-    generatedBriefings: 0,
-    generatedMonthlyBriefings: 0,
-    generatedWeeklyBriefings: 0,
-    insertedOrUpdatedItems: 0,
-    lastError,
-    recordedSourceObservations: 0,
-    updatedPreferenceMemories: 0,
-  };
-}
-
-async function fetchSourceAttempt(
-  prisma: ReturnType<typeof getPrismaClient>,
-  source: FetchedSourceRecord,
-  attempt: number,
-): Promise<WorkerFetchCycleResult & { lastError?: unknown }> {
-  const taskRun = await createSourceFetchTaskRun(prisma, source, {
-    attempt,
-    maxAttempts: MAX_FETCH_ATTEMPTS,
-  });
-
-  try {
-    const items = await fetchRssFeed(source.url);
-    const writtenItems = await upsertFetchedItems(
-      prisma,
-      items.map((item) => ({
-        organizationId: source.organizationId,
-        topicId: source.topicId,
-        sourceId: source.id,
-        title: item.title,
-        url: item.url,
-        canonicalUrl: item.canonicalUrl,
-        summary: item.summary,
-        author: item.author,
-        publishedAt: item.publishedAt,
-        contentHash: item.contentHash,
-        rawMetadata: item.rawMetadata,
-      })),
-    );
-
-    await recordSourceFetchSuccess(prisma, source.id);
-    await completeTaskRun(prisma, taskRun.id, {
-      fetchedItems: items.length,
-      writtenItems: writtenItems.length,
-    });
-
-    return {
-      analyzedItems: 0,
-      createdOrUpdatedEvents: 0,
-      failedSources: 0,
-      fetchedSources: 1,
-      filteredItems: 0,
-      generatedBriefings: 0,
-      generatedMonthlyBriefings: 0,
-      generatedWeeklyBriefings: 0,
-      insertedOrUpdatedItems: writtenItems.length,
-      recordedSourceObservations: 0,
-      updatedPreferenceMemories: 0,
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    await failTaskRun(prisma, taskRun.id, error);
-    await recordSourceFetchFailure(prisma, source.id, errorMessage);
-
-    return {
-      analyzedItems: 0,
-      createdOrUpdatedEvents: 0,
-      failedSources: 0,
-      fetchedSources: 0,
-      filteredItems: 0,
-      generatedBriefings: 0,
-      generatedMonthlyBriefings: 0,
-      generatedWeeklyBriefings: 0,
-      insertedOrUpdatedItems: 0,
-      lastError: error,
-      recordedSourceObservations: 0,
-      updatedPreferenceMemories: 0,
-    };
-  }
-}
-
-type DiscoveryChannel =
-  | "backlink-from-highscore"
-  | "keyword-search"
-  | "outlink-network";
-
-interface DiscoveryCandidate {
-  channel: DiscoveryChannel;
-  evidence: Record<string, unknown>;
-  feedUrl: string;
-  name: string;
-  pageUrl: string;
-  topic: SourceDiscoveryTopicRecord;
-}
-
-async function discoverFromKeywordSearch(
-  topics: SourceDiscoveryTopicRecord[],
-  searchProvider: SearchProvider,
-): Promise<DiscoveryCandidate[]> {
-  const candidates: DiscoveryCandidate[] = [];
-
-  for (const topic of topics) {
-    const queries = buildTopicSearchQueries({
-      keywords: extractTopicKeywords(topic.profile),
-      topicName: topic.name,
-    });
-
-    for (const query of queries) {
-      try {
-        const results = await searchProvider.searchSources(query, { count: 5 });
-        for (const result of results) {
-          const feeds = await discoverFeedCandidatesFromSearchResult(result, {
-            maxCandidates: 4,
-          });
-          candidates.push(
-            ...feeds.map((feed) =>
-              feedCandidateToDiscoveryCandidate(feed, topic, "keyword-search", {
-                query,
-                snippet: result.snippet,
-              }),
-            ),
-          );
-        }
-      } catch {
-        continue;
-      }
-    }
-  }
-
-  return candidates;
-}
-
-async function discoverFromHighScoreBacklinks(
-  organizationId: string,
-  topics: SourceDiscoveryTopicRecord[],
-): Promise<DiscoveryCandidate[]> {
-  const topicById = mapTopicsById(topics);
-  const pages = await listHighScoreEventPagesForDiscovery(getPrismaClient(), {
-    days: readPositiveIntegerEnv("WANGCHAO_DISCOVERY_LOOKBACK_DAYS", 14),
-    organizationId,
-    threshold: readFloatEnv("WANGCHAO_DISCOVERY_HIGHSCORE_THRESHOLD", 0.7),
-  }, readPositiveIntegerEnv("WANGCHAO_DISCOVERY_HIGHSCORE_PAGE_LIMIT", 10));
-  const candidates: DiscoveryCandidate[] = [];
-
-  for (const page of pages) {
-    const topic = topicById.get(page.topicId);
-    if (!topic) {
-      continue;
-    }
-
-    try {
-      const feeds = await discoverFeedCandidatesFromPage(page.url, {
-        maxCandidates: 4,
-        timeoutMs: readPositiveIntegerEnv("WANGCHAO_DISCOVERY_FETCH_TIMEOUT_MS", 5_000),
-      });
-      candidates.push(
-        ...feeds.map((feed) =>
-          feedCandidateToDiscoveryCandidate(feed, topic, "backlink-from-highscore", {
-            primaryItemUrl: page.url,
-          }),
-        ),
-      );
-    } catch {
-      continue;
-    }
-  }
-
-  return candidates;
-}
-
-async function discoverFromActiveSourceOutlinks(
-  organizationId: string,
-  topics: SourceDiscoveryTopicRecord[],
-): Promise<DiscoveryCandidate[]> {
-  const topicById = mapTopicsById(topics);
-  const pages = await listRecentActiveSourcePagesForDiscovery(getPrismaClient(), {
-    organizationId,
-  }, readPositiveIntegerEnv("WANGCHAO_DISCOVERY_ACTIVE_PAGE_LIMIT", 12));
-  const candidates: DiscoveryCandidate[] = [];
-
-  for (const page of pages) {
-    const topic = topicById.get(page.topicId);
-    if (!topic) {
-      continue;
-    }
-
-    try {
-      const outlinks = await extractExternalLinksFromPage(page.url, {
-        timeoutMs: readPositiveIntegerEnv("WANGCHAO_DISCOVERY_FETCH_TIMEOUT_MS", 5_000),
-      });
-      for (const outlink of outlinks.slice(
-        0,
-        readPositiveIntegerEnv("WANGCHAO_DISCOVERY_OUTLINKS_PER_PAGE", 3),
-      )) {
-        try {
-          const feeds = await discoverFeedCandidatesFromPage(outlink, {
-            maxCandidates: 3,
-            timeoutMs: readPositiveIntegerEnv(
-              "WANGCHAO_DISCOVERY_FETCH_TIMEOUT_MS",
-              5_000,
-            ),
-          });
-          candidates.push(
-            ...feeds.map((feed) =>
-              feedCandidateToDiscoveryCandidate(feed, topic, "outlink-network", {
-                sourceItemUrl: page.url,
-                sourceId: page.sourceId,
-              }),
-            ),
-          );
-        } catch {
-          continue;
-        }
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return candidates;
-}
-
-function feedCandidateToDiscoveryCandidate(
-  feed: FeedCandidate,
-  topic: SourceDiscoveryTopicRecord,
-  channel: DiscoveryChannel,
-  evidence: Record<string, unknown>,
-): DiscoveryCandidate {
-  return {
-    channel,
-    evidence: {
-      ...feed.evidence,
-      ...evidence,
-      pageUrl: feed.pageUrl,
-    },
-    feedUrl: feed.feedUrl,
-    name: feed.name,
-    pageUrl: feed.pageUrl,
-    topic,
-  };
-}
-
-async function getSourceRecommendation(
-  candidate: DiscoveryCandidate,
-  ai: { adapter: SourceRecommendationAdapter; model: string } | null,
-): Promise<{
-  attemptedAi: boolean;
-  usedAi: boolean;
-  value: SourceRecommendation;
-}> {
-  const input = {
-    evidence: candidate.evidence,
-    sourceName: candidate.name,
-    sourceUrl: candidate.feedUrl,
-    topicDescription: candidate.topic.description,
-    topicKeywords: extractTopicKeywords(candidate.topic.profile),
-    topicName: candidate.topic.name,
-  };
-
-  if (!ai) {
-    return {
-      attemptedAi: false,
-      usedAi: false,
-      value: fallbackSourceRecommendation(input),
-    };
-  }
-
-  try {
-    return {
-      attemptedAi: true,
-      usedAi: true,
-      value: await recommendSourceCandidate(input, ai),
-    };
-  } catch {
-    return {
-      attemptedAi: true,
-      usedAi: false,
-      value: fallbackSourceRecommendation(input),
-    };
-  }
-}
-
-async function createSearchProvider(
-  prisma: ReturnType<typeof getPrismaClient>,
-  organizationId: string,
-): Promise<SearchProvider | null> {
-  const creds = await getDecryptedCredentials(prisma, { organizationId });
-  if (creds?.search?.apiKey) {
-    const provider = creds.search.provider ?? "brave";
-    const providerType = provider as SearchProviderType;
-    if (providerType === "searxng") {
-      return createSearchProviderFromSources("searxng", { baseUrl: creds.search.apiKey });
-    }
-    return createSearchProviderFromSources(providerType, { apiKey: creds.search.apiKey });
-  }
-
-  const envProvider = (process.env.WANGCHAO_SEARCH_PROVIDER ?? "brave") as SearchProviderType;
-
-  if (envProvider === "searxng") {
-    const baseUrl = process.env.SEARXNG_BASE_URL;
-    return baseUrl ? createSearchProviderFromSources("searxng", { baseUrl }) : null;
-  }
-
-  const apiKey =
-    envProvider === "tavily" ? process.env.TAVILY_API_KEY :
-    envProvider === "serper" ? process.env.SERPER_API_KEY :
-    process.env.BRAVE_SEARCH_API_KEY;
-
-  if (!apiKey) return null;
-  return createSearchProviderFromSources(envProvider, { apiKey });
-}
-
-async function createSourceRecommendationRuntime(
-  prisma: ReturnType<typeof getPrismaClient>,
-  organizationId: string,
-): Promise<{
-  adapter: SourceRecommendationAdapter;
-  model: string;
-} | null> {
-  // 1. Try DB-stored credential
-  const creds = await getDecryptedCredentials(prisma, { organizationId });
-  if (creds?.ai?.apiKey && creds.ai.baseUrl) {
-    return {
-      adapter: createOpenAiCompatibleAdapter({
-        apiKey: creds.ai.apiKey,
-        baseUrl: creds.ai.baseUrl,
-      }),
-      model: creds.ai.model,
-    };
-  }
-
-  // 2. Fallback to env var
-  const apiKey = process.env.AI_API_KEY;
-  const baseUrl = process.env.AI_BASE_URL;
-  if (!apiKey || !baseUrl) {
-    return null;
-  }
-  return {
-    adapter: createOpenAiCompatibleAdapter({
-      apiKey,
-      baseUrl,
-    }),
-    model: process.env.AI_MODEL_L1 ?? "gpt-4o-mini",
-  };
-}
-
-interface AnalysisRuntimeResult {
-  adapter: EventExtractionAdapter;
-  model: string;
-  source: "official" | "byok" | "official_fallback";
-}
-
-async function createAnalysisRuntimeWithPlan(
-  prisma: ReturnType<typeof getPrismaClient>,
-  organizationId: string,
-): Promise<AnalysisRuntimeResult | null> {
-  const planView = await getSubscriptionPlanView(prisma, { organizationId });
-  const isSelfHosted = planView.isSelfHosted;
-  const plan = resolveEffectivePlan({
-    plan: planView.plan,
-    status: planView.status ?? "ACTIVE",
-    isSelfHosted,
-    currentPeriodEnd: planView.currentPeriodEnd,
-  });
-
-  const todayCalls = await getTodayAiCallCount(prisma, { organizationId });
-  const monthCalls = await getMonthAiCallCount(prisma, { organizationId });
-
-  const quotaCheck = checkAiCallQuota(plan, todayCalls, monthCalls, isSelfHosted);
-  if (!quotaCheck.allowed) {
-    process.stderr.write(
-      `[quota] AI calls blocked for org ${organizationId}: ${quotaCheck.reason}\n`,
-    );
-    return null;
-  }
-
-  const byokCred = await getDecryptedByokCredential(prisma, { organizationId });
-  const hasByok =
-    byokCred !== null && Boolean(byokCred.apiKey) && Boolean(byokCred.baseUrl);
-
-  const byokStrategy = shouldUseByok(plan, monthCalls, isSelfHosted, hasByok);
-
-  if (byokStrategy.useByok && byokCred) {
-    return {
-      adapter: createOpenAiCompatibleAdapter({
-        apiKey: byokCred.apiKey,
-        baseUrl: byokCred.baseUrl,
-      }),
-      model: byokCred.model,
-      source: "byok",
-    };
-  }
-
-  if (!byokStrategy.fallbackToOfficial) {
-    process.stderr.write(
-      `[quota] AI calls blocked for org ${organizationId}: ${byokStrategy.reason}\n`,
-    );
-    return null;
-  }
-
-  const officialRuntime = await createOfficialAiRuntime(prisma, organizationId);
-  if (!officialRuntime) {
-    return null;
-  }
-
-  return {
-    ...officialRuntime,
-    source: "official",
-  };
-}
-
-async function createOfficialAiRuntime(
-  prisma: ReturnType<typeof getPrismaClient>,
-  organizationId: string,
-): Promise<{ adapter: EventExtractionAdapter; model: string } | null> {
-  const creds = await getDecryptedCredentials(prisma, { organizationId });
-  if (creds?.ai?.apiKey && creds.ai.baseUrl) {
-    return {
-      adapter: createOpenAiCompatibleAdapter({
-        apiKey: creds.ai.apiKey,
-        baseUrl: creds.ai.baseUrl,
-      }),
-      model: creds.ai.model,
-    };
-  }
-
-  const apiKey = process.env.AI_API_KEY;
-  const baseUrl = process.env.AI_BASE_URL;
-  if (!apiKey || !baseUrl) {
-    return null;
-  }
-  return {
-    adapter: createOpenAiCompatibleAdapter({
-      apiKey,
-      baseUrl,
-    }),
-    model: process.env.AI_MODEL_L1 ?? "gpt-4o-mini",
-  };
-}
-
-function buildExtractionInput(
-  item: {
-    id: string;
-    title: string;
-    summary?: string | null;
-    url: string;
-    publishedAt?: Date | null;
-    rawContent?: string | null;
-    sourceId?: string | null;
-    sourceName?: string | null;
-    topicDescription?: string | null;
-    topicName: string;
-  },
-  topicProfile: unknown,
-): {
-  item: {
-    id: string;
-    title: string;
-    summary?: string | null;
-    url: string;
-    publishedAt?: string | null;
-    sourceName?: string | null;
-    rawContent?: string | null;
-  };
-  topic: {
-    description?: string | null;
-    entities?: string[];
-    excludeScope?: string[];
-    importanceRules?: string[];
-    includeScope?: string[];
-    keywords: string[];
-    name: string;
-    languagePreferences?: {
-      outputLanguage: string;
-      terminologyRules?: string[];
-    };
-  };} {
-  const context = buildTopicProfileContext(topicProfile, {
-    description: item.topicDescription,
-    name: item.topicName,
-  });
-
-  return {
-    item: {
-      id: item.id,
-      publishedAt: item.publishedAt?.toISOString() ?? null,
-      sourceName: item.sourceName ?? null,
-      summary: item.summary,
-      title: item.title,
-      url: item.url,
-      rawContent: item.rawContent ?? null,
-    },
-    topic: {
-      ...context,
-      languagePreferences: context.languagePreferences,
-    },
-  };
-}
-
-function extractionToAiEventExtraction(
-  extraction: EventExtractionResult,
-): AiEventExtraction {
-  return {
-    category: extraction.category,
-    entities: extraction.entities ?? [],
-    followUpSuggestion: extraction.followUpSuggestion ?? "",
-    importanceExplanation: extraction.importanceExplanation,
-    isRelevant: extraction.isRelevant,
-    matchedKeywords: extraction.matchedKeywords,
-    noiseReason: extraction.noiseReason,
-    relevanceScore: extraction.relevanceScore,
-    summary: extraction.summary,
-    title: extraction.title,
-  };
-}
-
-function dedupeDiscoveryCandidates(
-  candidates: DiscoveryCandidate[],
-): DiscoveryCandidate[] {
-  const seen = new Set<string>();
-  const unique: DiscoveryCandidate[] = [];
-
-  for (const candidate of candidates) {
-    const key = `${candidate.topic.id}:${canonicalFeedKey(candidate.feedUrl)}`;
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    unique.push(candidate);
-  }
-
-  return unique;
-}
-
-function limitCandidatesPerTopic(
-  candidates: DiscoveryCandidate[],
-  limit: number,
-): DiscoveryCandidate[] {
-  const counts = new Map<string, number>();
-  const limited: DiscoveryCandidate[] = [];
-
-  for (const candidate of candidates) {
-    const count = counts.get(candidate.topic.id) ?? 0;
-    if (count >= limit) {
-      continue;
-    }
-    counts.set(candidate.topic.id, count + 1);
-    limited.push(candidate);
-  }
-
-  return limited;
-}
-
-function mapTopicsById(
-  topics: SourceDiscoveryTopicRecord[],
-): Map<string, SourceDiscoveryTopicRecord> {
-  return new Map(topics.map((topic) => [topic.id, topic]));
-}
-
-function canonicalFeedKey(url: string): string {
-  const parsed = new URL(url);
-  parsed.hash = "";
-  parsed.hostname = parsed.hostname.toLowerCase();
-  if (parsed.pathname !== "/") {
-    parsed.pathname = parsed.pathname.replace(/\/+$/, "");
-  }
-  return parsed.toString();
-}
-
-function readPositiveIntegerEnv(key: string, fallback: number): number {
-  const value = Number.parseInt(process.env[key] ?? "", 10);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
-}
-
-function readFloatEnv(key: string, fallback: number): number {
-  const value = Number.parseFloat(process.env[key] ?? "");
-  return Number.isFinite(value) ? value : fallback;
-}
-
-async function checkWorkerDatabase(): Promise<{
-  message?: string;
-  status: "ok" | "down" | "skipped";
-}> {
-  if (!process.env.DATABASE_URL) {
-    return {
-      message: "Database connection is not configured.",
-      status: "skipped",
-    };
-  }
-
-  try {
-    const prisma = getPrismaClient();
-    await prisma.$queryRaw`SELECT 1`;
-    return { status: "ok" };
-  } catch (error) {
-    return {
-      message: error instanceof Error ? error.message : String(error),
-      status: "down",
-    };
-  }
-}
-
-const TELEGRAM_DELIVERY_LOOKBACK_HOURS = 2;
-const TELEGRAM_MAX_MESSAGE_LENGTH = 4000;
-
-export interface TelegramDeliveryResult {
-  delivered: number;
-  failed: number;
-  skipped: number;
 }
 
 async function runTelegramDeliveryCycle(
@@ -2147,6 +535,7 @@ async function runTelegramDeliveryCycle(
   }
 
   for (const briefing of briefings) {
+    if (isCycleShuttingDown() || isCycleTimeExhausted()) break;
     const existing = await findPendingDeliveryForBriefing(
       prisma,
       briefing.briefingId,
@@ -2247,12 +636,6 @@ function extractTelegramErrorCode(error: unknown): string | null {
     return typeof code === "string" ? code : String(code);
   }
   return null;
-}
-
-export interface ReportGenerationInput {
-  reportId: string;
-  organizationId: string;
-  userId: string;
 }
 
 export async function runReportGeneration(
@@ -2374,27 +757,18 @@ export async function runReportGeneration(
   }
 }
 
-export interface ReportGenerationCycleResult {
-  scanned: number;
-  generated: number;
-  failed: number;
-}
-
-/**
- * 扫描所有 PENDING 报告并逐个生成。
- * 作为独立 Railway Cron service 运行，与 Web 进程解耦。
- * 每个报告独立处理，单个失败不影响后续报告。
- */
 export async function runReportGenerationCycle(
   limit = 10,
 ): Promise<ReportGenerationCycleResult> {
   if (!process.env.DATABASE_URL) {
     throw new Error("Database connection is required to generate reports.");
   }
+  resetCycleStartTime();
   const prisma = getPrismaClient();
   const pending = await listPendingReports(prisma, limit);
   const result: ReportGenerationCycleResult = { scanned: pending.length, generated: 0, failed: 0 };
   for (const report of pending) {
+    if (isCycleShuttingDown() || isCycleTimeExhausted()) break;
     try {
       await runReportGeneration({
         reportId: report.id,
@@ -2403,7 +777,6 @@ export async function runReportGenerationCycle(
       });
       result.generated += 1;
     } catch {
-      // runReportGeneration 内部已 failReport + failTaskRun，这里只计数
       result.failed += 1;
     }
   }
@@ -2628,11 +1001,13 @@ async function generateReportWithAi(
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
+  setupSignalHandlers();
+
   const isHealth = process.argv.includes("--health");
   const isSourceDiscovery = process.argv.includes("--source-discovery");
   const isInstantPush = process.argv.includes("--instant-push");
   const isReportGeneration = process.argv.includes("--report-generation");
-  const cycleType: WorkerCycleType = isHealth
+  const cycleType = isHealth
     ? "health"
     : isSourceDiscovery
       ? "source-discovery"
