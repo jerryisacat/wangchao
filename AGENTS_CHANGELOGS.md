@@ -1,6 +1,18 @@
 ## 2026-07-14
 
-## 2026-07-14
+### Batch: Module 2 repositories.ts 拆分与事务治理 (#42, #44, #46, #47, #56)
+
+- Cause: repositories.ts 3397 行超大文件需按领域拆分；多个事务和批量操作存在性能和数据一致性缺陷。
+- Changed:
+  - **#42**: `repositories.ts` 拆分为 8 个领域模块（types/workspace/topic/source/event/export/secondary-sources/util），原文件仅保留 re-export 入口（23 行）
+  - **#44**: `upsertFetchedItems` 顺序循环改为先查询已有 items，再 `createMany` + `updateMany`，整体包裹在 `prisma.$transaction` 中
+  - **#46**: `mergeSemanticEvents` 新增 `expectedOrganizationId` 可选参数做防御性校验；`updateDashboardEventState` 在 select 中加入 `organizationId` 后做一致性校验
+  - **#47**: `recordMarkdownExport` 中 ExportEvent 和 FeedbackEvent 两个 create 收集为操作数组，通过 `prisma.$transaction(operations)` 原子执行
+  - **#56**: 抽取 `resolveSecondarySources` 到独立模块，`listEventsForDailyBriefing` 和 `listTimelineEvents` 共用，移除重复 ~30 行逻辑
+  - **#57**: repositories.fixtures.ts 补充 `verifyReadPreservesSavedState` 中 `organizationId` 字段以匹配 event state select 签名
+- Files: `packages/db/src/repositories.ts`, `packages/db/src/repositories/*.ts`, `packages/db/src/repositories.fixtures.ts`, `docs/L3-modules.md`
+- Verification: `pnpm typecheck` 7/7 通过，`pnpm test` 7/7 通过，`pnpm lint` 7/7 通过
+- Notes / Risk: 所有函数签名保持不变（零变更）；`mergeSemanticEvents` 新增可选参数向后兼容
 
 ### Batch: Module 1 DB/数据模型 Issues 修复 (#38, #41, #50, #51, #53, #54, #55, #59)
 

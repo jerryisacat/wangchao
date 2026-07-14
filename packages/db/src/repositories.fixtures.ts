@@ -219,6 +219,7 @@ async function verifyReadPreservesSavedState(): Promise<void> {
     intelligenceEvent: {
       findFirstOrThrow: async () => ({
         id: "event-1",
+        organizationId: "org-1",
         primaryItemId: "item-1",
         topicId: "topic-1",
         userStates: [{ readAt: null, saved: true }],
