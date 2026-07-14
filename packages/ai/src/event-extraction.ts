@@ -184,7 +184,8 @@ export function parseEventExtractionResponse(
     };
   }
 
-  const relevanceScore = clamp(Number(parsed.relevanceScore), 0, 100);
+  const rawScore = Number(parsed.relevanceScore);
+  const relevanceScore = Number.isFinite(rawScore) ? clamp(rawScore, 0, 100) : 0;
   const matchedKeywords = Array.isArray(parsed.matchedKeywords)
     ? parsed.matchedKeywords.filter((v): v is string => typeof v === "string")
     : [];
@@ -196,12 +197,13 @@ export function parseEventExtractionResponse(
       ? parsed.followUpSuggestion.replace(/\s+/g, " ").trim().slice(0, 200)
       : "";
 
-  const title = sanitizeTextField(parsed.title, fallback?.itemTitle ?? "");
-  const summary = sanitizeTextField(parsed.summary, fallback?.itemSummary ?? "");
-  const category = sanitizeTextField(parsed.category, "general");
+  const title = sanitizeTextField(parsed.title, fallback?.itemTitle ?? "", 200);
+  const summary = sanitizeTextField(parsed.summary, fallback?.itemSummary ?? "", 1000);
+  const category = sanitizeTextField(parsed.category, "general", 50);
   const importanceExplanation = sanitizeTextField(
     parsed.importanceExplanation,
     "",
+    500,
   );
 
   if (!title || !summary) {
@@ -255,11 +257,11 @@ function sanitizeNoiseReason(value: string | undefined): string {
     .slice(0, 200);
 }
 
-function sanitizeTextField(value: unknown, fallback: string): string {
+function sanitizeTextField(value: unknown, fallback: string, maxLength = 500): string {
   if (typeof value !== "string") {
     return fallback;
   }
-  return value.replace(/\s+/g, " ").trim();
+  return value.replace(/\s+/g, " ").trim().slice(0, maxLength);
 }
 
 function clamp(value: number, min: number, max: number): number {

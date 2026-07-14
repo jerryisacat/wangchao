@@ -9,6 +9,7 @@ interface ChatCompletionsPayload {
   messages: AiChatRequest["messages"];
   model: string;
   response_format?: { type: "json_object" };
+  stream?: boolean;
   temperature?: number;
 }
 
@@ -29,6 +30,8 @@ export class OpenAiCompatibleAdapter {
   private readonly maxRetries: number;
   private readonly timeoutMs: number;
   private readonly jsonModeUnsupportedModels = new Set<string>();
+  private readonly jsonModeUnsupportedOrder: string[] = [];
+  private static readonly MAX_UNSUPPORTED_MODELS = 100;
 
   constructor(options: OpenAiCompatibleAdapterOptions) {
     this.apiKey = options.apiKey;
@@ -57,20 +60,22 @@ export class OpenAiCompatibleAdapter {
 
   async chat(request: AiChatRequest): Promise<AiChatResponse> {
     let lastError: unknown;
+    let currentRequest = request;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt += 1) {
       try {
-        return await this.sendChatRequest(request);
+        return await this.sendChatRequest(currentRequest);
       } catch (error) {
         lastError = error;
 
         if (
-          request.jsonMode &&
+          currentRequest.jsonMode &&
           isJsonModeError(error) &&
-          !this.jsonModeUnsupportedModels.has(request.model)
+          !this.jsonModeUnsupportedModels.has(currentRequest.model)
         ) {
-          this.jsonModeUnsupportedModels.add(request.model);
-          return this.sendChatRequest({ ...request, jsonMode: false });
+          this.markJsonModeUnsupported(currentRequest.model);
+          currentRequest = { ...currentRequest, jsonMode: false };
+          continue;
         }
 
         if (attempt === this.maxRetries || !isRetryableError(error)) {
@@ -82,21 +87,82 @@ export class OpenAiCompatibleAdapter {
     throw lastError instanceof Error ? lastError : new Error(String(lastError));
   }
 
+  async *chatStream(request: AiChatRequest): AsyncGenerator<string, void, unknown> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+
+    try {
+      const payload = {
+        ...this.buildPayload(request),
+        stream: true,
+      };
+
+      const response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${this.apiKey}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      if (!response.ok || !response.body) {
+        throw new AiHttpError(response.status, await response.text());
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data: ")) continue;
+          const data = trimmed.slice(6);
+          if (data === "[DONE]") return;
+          try {
+            const chunk = JSON.parse(data);
+            const delta = chunk.choices?.[0]?.delta?.content;
+            if (delta) yield delta;
+          } catch {
+            // skip malformed chunks
+          }
+        }
+      }
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private buildPayload(request: AiChatRequest): ChatCompletionsPayload {
+    const payload: ChatCompletionsPayload = {
+      max_tokens: request.maxTokens,
+      messages: request.messages,
+      model: request.model,
+      temperature: request.temperature,
+    };
+
+    if (request.jsonMode && !this.jsonModeUnsupportedModels.has(request.model)) {
+      payload.response_format = { type: "json_object" };
+    }
+
+    return payload;
+  }
+
   private async sendChatRequest(request: AiChatRequest): Promise<AiChatResponse> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 
     try {
-      const payload: ChatCompletionsPayload = {
-        max_tokens: request.maxTokens,
-        messages: request.messages,
-        model: request.model,
-        temperature: request.temperature,
-      };
-
-      if (request.jsonMode && !this.jsonModeUnsupportedModels.has(request.model)) {
-        payload.response_format = { type: "json_object" };
-      }
+      const payload = this.buildPayload(request);
 
       const response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
         body: JSON.stringify(payload),
@@ -130,6 +196,16 @@ export class OpenAiCompatibleAdapter {
       };
     } finally {
       clearTimeout(timeout);
+    }
+  }
+
+  private markJsonModeUnsupported(model: string): void {
+    if (this.jsonModeUnsupportedModels.has(model)) return;
+    this.jsonModeUnsupportedModels.add(model);
+    this.jsonModeUnsupportedOrder.push(model);
+    while (this.jsonModeUnsupportedOrder.length > OpenAiCompatibleAdapter.MAX_UNSUPPORTED_MODELS) {
+      const oldest = this.jsonModeUnsupportedOrder.shift();
+      if (oldest) this.jsonModeUnsupportedModels.delete(oldest);
     }
   }
 }

@@ -14,23 +14,34 @@ export function sanitizeModelText(text: string): string {
   return text
     .replace(/<think>[\s\S]*?<\/think>/gi, "")
     .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "")
-    .replace(/```(?:json)?/gi, "")
+    .replace(/<analysis>[\s\S]*?<\/analysis>/gi, "")
+    .replace(/<reflection>[\s\S]*?<\/reflection>/gi, "")
+    .replace(/<internal>[\s\S]*?<\/internal>/gi, "")
+    .replace(/<draft>[\s\S]*?<\/draft>/gi, "")
+    .replace(/<processed>[\s\S]*?<\/processed>/gi, "")
+    .replace(/```(?:json)?\s*/gi, "")
     .replace(/```/g, "")
-    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/[\u0000-\u001f]/g, " ")
     .replace(/[\u200b-\u200f\ufeff]/g, "")
     .trim();
 }
 
 export function extractJsonCandidate(text: string): string {
   const sanitized = sanitizeModelText(text);
+
   const start = sanitized.indexOf("{");
   const end = sanitized.lastIndexOf("}");
-
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error("No JSON object found in model response.");
+  if (start !== -1 && end !== -1 && end > start) {
+    return sanitized.slice(start, end + 1);
   }
 
-  return sanitized.slice(start, end + 1);
+  const arrStart = sanitized.indexOf("[");
+  const arrEnd = sanitized.lastIndexOf("]");
+  if (arrStart !== -1 && arrEnd !== -1 && arrEnd > arrStart) {
+    return sanitized.slice(arrStart, arrEnd + 1);
+  }
+
+  throw new Error("No JSON object or array found in model response.");
 }
 
 export function parseJsonObject(text: string): Record<string, unknown> {
@@ -47,6 +58,7 @@ export function parseJsonObject(text: string): Record<string, unknown> {
 export function validateJsonObject(
   value: Record<string, unknown>,
   schema: JsonSchema,
+  strict = true,
 ): JsonValidationResult {
   const issues: JsonValidationIssue[] = [];
 
@@ -70,6 +82,17 @@ export function validateJsonObject(
         path: field,
         message: `Expected ${fieldSchema.type}, received ${actualType}.`,
       });
+    }
+  }
+
+  if (strict && schema.properties) {
+    for (const field of Object.keys(value)) {
+      if (!(field in schema.properties)) {
+        issues.push({
+          path: field,
+          message: "Unexpected field not in schema.",
+        });
+      }
     }
   }
 

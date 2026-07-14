@@ -1,5 +1,19 @@
 ## 2026-07-14
 
+### Batch: Module 4 AI Adapter/Parser 修复 (#63, #70, #72, #74, #75, #76, #77)
+
+- Cause: AI adapter 和 parser 在健壮性、安全边界和行为一致性上存在 7 个中等问题。
+- Changed:
+  - **#63**: jsonMode fallback 从直接 return 改为 `continue` 循环，重发受 maxRetries 保护
+  - **#70**: `jsonModeUnsupportedModels` 从无限 Set 改为 bounded LRU (capacity=100)
+  - **#72**: 新增 `chatStream()` AsyncGenerator 方法支持 SSE 流式响应；提取 buildPayload 复用
+  - **#74**: sanitizeModelText 覆盖 <analysis>/<reflection>/<internal>/<draft>/<processed>；extractJsonCandidate 支持数组回退
+  - **#75**: validateJsonObject 新增 strict=true 参数，拒绝 schema 外额外字段（prompt injection 防御）
+  - **#76**: sanitizeTextField 增加 maxLength 参数；title→200, summary→1000, category→50, importanceExplanation→500
+  - **#77**: relevanceScore 用 `Number.isFinite` + clamp，NaN fallback 为 0
+- Files: `packages/ai/src/openai-compatible.ts`, `packages/ai/src/parser.ts`, `packages/ai/src/event-extraction.ts`
+- Verification: `pnpm typecheck` 7/7 通过，`pnpm test` 7/7 通过，`pnpm lint` 7/7 通过
+
 ### Batch: Module 3 安全/租户隔离/凭证修复 (#40, #45, #48, #62, #68)
 
 - Cause: 5 个安全相关 Issue 需修复，涉及租户隔离、加密强化、webhook 校验、SSRF 防护、反馈权重上限。
