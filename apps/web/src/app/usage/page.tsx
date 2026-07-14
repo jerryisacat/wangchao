@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/common/page-header";
+import { PLAN_REGISTRY, type Plan as CorePlan } from "@wangchao/core";
 
 export const dynamic = "force-dynamic";
 
@@ -19,33 +20,35 @@ interface PlanLimits {
 
 const PLAN_LIMITS: Record<"FREE" | "PLUS" | "PRO", PlanLimits> = {
   FREE: {
-    aiCallsDaily: 100,
-    aiCallsMonthly: null,
-    exportsMonthly: 10,
-    topics: 1,
-    sources: 3,
-    label: "Free",
+    aiCallsDaily: PLAN_REGISTRY.FREE.limits.maxAiCallsPerDay,
+    aiCallsMonthly: PLAN_REGISTRY.FREE.limits.maxAiCallsPerMonth,
+    exportsMonthly: PLAN_REGISTRY.FREE.limits.maxExportsPerMonth,
+    topics: PLAN_REGISTRY.FREE.limits.maxTopics,
+    sources: PLAN_REGISTRY.FREE.limits.maxSources,
+    label: PLAN_REGISTRY.FREE.displayName,
     badge: "muted",
   },
   PLUS: {
-    aiCallsDaily: null,
-    aiCallsMonthly: null,
-    exportsMonthly: 50,
-    topics: 5,
-    sources: 25,
-    label: "Plus",
+    aiCallsDaily: PLAN_REGISTRY.PLUS.limits.maxAiCallsPerDay,
+    aiCallsMonthly: PLAN_REGISTRY.PLUS.limits.maxAiCallsPerMonth,
+    exportsMonthly: PLAN_REGISTRY.PLUS.limits.maxExportsPerMonth,
+    topics: PLAN_REGISTRY.PLUS.limits.maxTopics,
+    sources: PLAN_REGISTRY.PLUS.limits.maxSources,
+    label: PLAN_REGISTRY.PLUS.displayName,
     badge: "default",
   },
   PRO: {
-    aiCallsDaily: null,
-    aiCallsMonthly: 20_000,
-    exportsMonthly: null,
-    topics: null,
-    sources: null,
-    label: "Pro",
+    aiCallsDaily: PLAN_REGISTRY.PRO.limits.maxAiCallsPerDay,
+    aiCallsMonthly: PLAN_REGISTRY.PRO.limits.maxAiCallsPerMonth,
+    exportsMonthly: PLAN_REGISTRY.PRO.limits.maxExportsPerMonth,
+    topics: PLAN_REGISTRY.PRO.limits.maxTopics,
+    sources: PLAN_REGISTRY.PRO.limits.maxSources,
+    label: PLAN_REGISTRY.PRO.displayName,
     badge: "accent",
   },
 };
+
+type Plan = CorePlan;
 
 export default async function UsagePage() {
   const { getSessionWorkspace } = await import("@/lib/session");

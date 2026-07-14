@@ -43,10 +43,12 @@ async function createTopicWithCandidateDiscovery(formData: FormData) {
     createCandidateRssSource,
     createTopic,
     getPrismaClient,
+    getSubscriptionPlanView,
+    getTopicCount,
     recordUsageEvent,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
-  const { buildTopicProfile } = await import("@wangchao/core");
+  const { buildTopicProfile, checkTopicQuota } = await import("@wangchao/core");
   const { validateRssFeedUrl } = await import("@wangchao/sources");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
@@ -59,6 +61,11 @@ async function createTopicWithCandidateDiscovery(formData: FormData) {
     },
     ["OWNER", "ADMIN"],
   );
+
+  const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
+  const topicCount = await getTopicCount(prisma, { organizationId: workspace.organizationId });
+  const quota = checkTopicQuota(subscription.plan, topicCount, subscription.isSelfHosted);
+  if (!quota.allowed) throw new Error(quota.reason ?? "Topic limit reached.");
 
   const profile = buildTopicProfile({ description, name });
   const topic = await createTopic(
@@ -191,10 +198,14 @@ async function createTopicWithSource(formData: FormData) {
   const {
     assertMembershipRole,
     createTopicWithActiveRssSource,
+    getActiveSourceCount,
     getPrismaClient,
+    getSubscriptionPlanView,
+    getTopicCount,
     recordUsageEvent,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
+  const { checkSourceQuota, checkTopicQuota } = await import("@wangchao/core");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -206,6 +217,16 @@ async function createTopicWithSource(formData: FormData) {
     },
     ["OWNER", "ADMIN"],
   );
+
+  const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
+  const topicCount = await getTopicCount(prisma, { organizationId: workspace.organizationId });
+  const topicQuota = checkTopicQuota(subscription.plan, topicCount, subscription.isSelfHosted);
+  if (!topicQuota.allowed) throw new Error(topicQuota.reason ?? "Topic limit reached.");
+
+  const sourceCount = await getActiveSourceCount(prisma, { organizationId: workspace.organizationId });
+  const sourceQuota = checkSourceQuota(subscription.plan, sourceCount, subscription.isSelfHosted);
+  if (!sourceQuota.allowed) throw new Error(sourceQuota.reason ?? "Source limit reached.");
+
   const { source, topic } = await createTopicWithActiveRssSource(prisma, {
     organizationId: workspace.organizationId,
     ownerUserId: workspace.userId,
@@ -455,10 +476,13 @@ async function createCandidateSource(formData: FormData) {
   const {
     assertMembershipRole,
     createCandidateRssSource,
+    getActiveSourceCount,
     getPrismaClient,
+    getSubscriptionPlanView,
     recordUsageEvent,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
+  const { checkSourceQuota } = await import("@wangchao/core");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -470,6 +494,12 @@ async function createCandidateSource(formData: FormData) {
     },
     ["OWNER", "ADMIN"],
   );
+
+  const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
+  const sourceCount = await getActiveSourceCount(prisma, { organizationId: workspace.organizationId });
+  const sourceQuota = checkSourceQuota(subscription.plan, sourceCount, subscription.isSelfHosted);
+  if (!sourceQuota.allowed) throw new Error(sourceQuota.reason ?? "Source limit reached.");
+
   const source = await createCandidateRssSource(prisma, {
     description,
     evidence: {
@@ -700,6 +730,10 @@ async function batchUpdateSourceGovernance(formData: FormData) {
 
   if (sourceIds.length === 0) {
     throw new Error("未选择信源。");
+  }
+
+  if (sourceIds.length > 50) {
+    throw new Error("单次最多操作 50 个信源。");
   }
 
   if (!process.env.DATABASE_URL) {
@@ -940,8 +974,8 @@ function toUserActionError(error: unknown): string {
   if (error instanceof Error && error.message === "INSTANT_PUSH_PLAN_BLOCKED") {
     return "即时推送仅对 Plus、Pro 或自用模式开放。";
   }
-  if (error instanceof Error && error.message === "INSTANT_PUSH_TELEGRAM_MISSING") {
-    return "请先配置 Telegram Bot Token 与 Chat ID。";
+  if (error instanceof Error && error.message.startsWith("INSTANT_PUSH_TELEGRAM_MISSING")) {
+    return "请先前往「管理 → Telegram」配置机器人凭据后再开启即时推送。";
   }
 
   if (error instanceof Error && error.message === "BYOK_API_KEY_MISSING") {
@@ -1427,10 +1461,14 @@ export async function regenerateEventSummaryAction(
     const {
       assertMembershipRole,
       getDecryptedCredentials,
+      getMonthAiCallCount,
       getPrismaClient,
+      getSubscriptionPlanView,
+      getTodayAiCallCount,
       recordUsageEvent,
     } = await import("@wangchao/db");
     const { getSessionWorkspace } = await import("@/lib/session");
+    const { checkAiCallQuota } = await import("@wangchao/core");
     const prisma = getPrismaClient();
     const workspace = await getSessionWorkspace();
 
@@ -1439,6 +1477,12 @@ export async function regenerateEventSummaryAction(
       { organizationId: workspace.organizationId, userId: workspace.userId },
       ["OWNER", "ADMIN", "MEMBER"],
     );
+
+    const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
+    const todayAiCalls = await getTodayAiCallCount(prisma, { organizationId: workspace.organizationId });
+    const monthAiCalls = await getMonthAiCallCount(prisma, { organizationId: workspace.organizationId });
+    const aiQuota = checkAiCallQuota(subscription.plan, todayAiCalls, monthAiCalls, subscription.isSelfHosted);
+    if (!aiQuota.allowed) throw new Error(aiQuota.reason ?? "AI call limit reached.");
 
     const event = await prisma.intelligenceEvent.findUnique({
       where: { id: eventId, organizationId: workspace.organizationId },
@@ -2259,10 +2303,14 @@ export async function createReportAction(formData: FormData): Promise<void> {
     const {
       assertMembershipRole,
       createReport,
+      getMonthAiCallCount,
       getPrismaClient,
+      getSubscriptionPlanView,
+      getTodayAiCallCount,
       recordUsageEvent,
     } = await import("@wangchao/db");
     const { getSessionWorkspace } = await import("@/lib/session");
+    const { checkAiCallQuota } = await import("@wangchao/core");
     const prisma = getPrismaClient();
     const workspace = await getSessionWorkspace();
 
@@ -2274,6 +2322,12 @@ export async function createReportAction(formData: FormData): Promise<void> {
       },
       ["OWNER", "ADMIN", "MEMBER"],
     );
+
+    const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
+    const todayAiCalls = await getTodayAiCallCount(prisma, { organizationId: workspace.organizationId });
+    const monthAiCalls = await getMonthAiCallCount(prisma, { organizationId: workspace.organizationId });
+    const aiQuota = checkAiCallQuota(subscription.plan, todayAiCalls, monthAiCalls, subscription.isSelfHosted);
+    if (!aiQuota.allowed) throw new Error(aiQuota.reason ?? "AI call limit reached.");
 
     const report = await createReport(
       prisma,
@@ -2365,6 +2419,10 @@ export async function updatePreferenceWeightAction(
 
     if (!Number.isFinite(weight)) {
       throw new Error("Invalid weight value.");
+    }
+
+    if (weight < -4 || weight > 4) {
+      throw new Error("Weight must be between -4 and 4.");
     }
 
     const {
@@ -2732,7 +2790,7 @@ export async function setInstantPushEnabledAction(formData: FormData): Promise<v
     const settings = await getInstantPushSettings(prisma, { organizationId: workspace.organizationId });
     const effectivePlan = resolveEffectivePlan(settings);
     if (enabled && !checkInstantPushQuota(effectivePlan, settings.isSelfHosted).allowed) throw new Error("INSTANT_PUSH_PLAN_BLOCKED");
-    if (enabled && !settings.hasTelegramCredential) throw new Error("INSTANT_PUSH_TELEGRAM_MISSING");
+    if (enabled && !settings.hasTelegramCredential) throw new Error("INSTANT_PUSH_TELEGRAM_MISSING: 请先前往「管理 → Telegram」配置机器人凭据后再开启即时推送。");
     await setInstantPushEnabled(prisma, { organizationId: workspace.organizationId }, enabled);
     await recordUsageEvent(prisma, {
       organizationId: workspace.organizationId,

@@ -1,5 +1,20 @@
 ## 2026-07-15
 
+### Batch: Module B 商业化+配额 (#33, #117-119, #125-126, #131, #134)
+
+- Cause: PLAN_LIMITS 四处独立定义、所有 web actions 绕过 quota、CCPayment webhook 全表扫、Stripe stub 状态码错误、Subscription 缺 billingInterval
+- Changed:
+  - **#126**: 新建 `packages/core/src/pricing.ts`（PLAN_REGISTRY 合并 quota+pricing+features+displayName），components/quota.ts 从 pricing 导入
+  - **#117/#125**: `packages/core/src/quota-guard.ts` 新增 QuotaExceededError + withQuotaGuard；actions.ts 中 createTopic/topicWithSource/candidateSource/regenerateEventSummary/createReport 均加 quota 检查；3 个 export route 加 export quota 检查
+  - **#129**: create-invoice/route.ts 中 `Math.random()` → `crypto.randomBytes(8).toString("hex")`
+  - **#119**: stripe/checkout/route.ts 不可用时返回 503 而非 200
+  - **#131/#137**: schema 新增 WebhookEvent 模型（@@unique([provider, recordId])）+ repositories/webhook-event.ts；webhook 改用 `claimWebhookEvent` 原子操作；加进程内 LRU 凭据缓存 TTL 60s
+  - **#118**: updatePreferenceWeight 加 weight 上下界 [-4,4]；batchUpdateSourceGovernance 加 sourceIds 上限 50
+  - **#133**: instant push Telegram 缺失错误改为引导提示
+  - **#134**: Subscription schema 加 billingInterval 枚举字段（MONTHLY/YEARLY）
+- Files: `packages/core/src/pricing.ts`, `packages/core/src/quota-guard.ts`, `packages/core/src/quota.ts`, `packages/core/src/index.ts`, `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/0014_billing_webhookevent/migration.sql`, `packages/db/src/repositories/webhook-event.ts`, `packages/db/src/index.ts`, `apps/web/src/app/actions.ts`, `apps/web/src/app/usage/page.tsx`, `apps/web/src/app/pricing/page.tsx`, `apps/web/src/app/api/billing/ccpayment/create-invoice/route.ts`, `apps/web/src/app/api/billing/ccpayment/webhook/route.ts`, `apps/web/src/app/api/billing/stripe/checkout/route.ts`, `apps/web/src/app/exports/*/route.ts`
+- Verification: typecheck ✅ (7/7), lint ✅ (7/7), test ✅ (7/7)
+
 ### Batch: Module 8 文档/产品决策 + 收尾 (#58, #79, #80, #85, #99)
 
 - Cause: 文档与 schema 不一致、fallbackSourceRecommendation 不确定区间、quota 引擎缺陷、开放问题决策。

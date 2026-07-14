@@ -1,47 +1,19 @@
-export type Plan = "FREE" | "PLUS" | "PRO";
+import { PLAN_REGISTRY } from "./pricing.js";
+import type { Plan, PlanLimits } from "./pricing.js";
 
-export interface PlanLimits {
-  maxTopics: number | null;
-  maxSources: number | null;
-  maxAiCallsPerDay: number | null;
-  maxAiCallsPerMonth: number | null;
-  maxExportsPerMonth: number | null;
-  requiresByok: boolean;
-  allowsOfficialAi: boolean;
-  allowsInstantPush: boolean;
-}
+export type { Plan } from "./pricing.js";
+export type { PlanLimits } from "./pricing.js";
+
+const limitsFor = (plan: Plan): PlanLimits => {
+  const limits = PLAN_LIMITS[plan];
+  if (!limits) throw new Error(`Unknown plan: ${String(plan)}`);
+  return limits;
+};
 
 export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
-  FREE: {
-    maxTopics: 1,
-    maxSources: 3,
-    maxAiCallsPerDay: 100,
-    maxAiCallsPerMonth: null,
-    maxExportsPerMonth: 10,
-    requiresByok: false,
-    allowsOfficialAi: true,
-    allowsInstantPush: false,
-  },
-  PLUS: {
-    maxTopics: 5,
-    maxSources: 25,
-    maxAiCallsPerDay: null,
-    maxAiCallsPerMonth: null,
-    maxExportsPerMonth: 50,
-    requiresByok: true,
-    allowsOfficialAi: false,
-    allowsInstantPush: true,
-  },
-  PRO: {
-    maxTopics: null,
-    maxSources: null,
-    maxAiCallsPerDay: null,
-    maxAiCallsPerMonth: 20000,
-    maxExportsPerMonth: null,
-    requiresByok: false,
-    allowsOfficialAi: true,
-    allowsInstantPush: true,
-  },
+  FREE: PLAN_REGISTRY.FREE.limits,
+  PLUS: PLAN_REGISTRY.PLUS.limits,
+  PRO: PLAN_REGISTRY.PRO.limits,
 };
 
 export interface QuotaCheckResult {
@@ -76,7 +48,7 @@ export function checkInstantPushQuota(
   plan: Plan,
   isSelfHosted: boolean,
 ): QuotaCheckResult {
-  if (isSelfHosted || PLAN_LIMITS[plan].allowsInstantPush) {
+  if (isSelfHosted || limitsFor(plan).allowsInstantPush) {
     return { allowed: true };
   }
   return {
@@ -97,7 +69,7 @@ export function checkTopicQuota(
     return { allowed: true };
   }
 
-  const limits = PLAN_LIMITS[plan];
+  const limits = limitsFor(plan);
   if (limits.maxTopics === null) {
     return { allowed: true, limit: null, currentUsage: currentTopicCount };
   }
@@ -128,7 +100,7 @@ export function checkSourceQuota(
     return { allowed: true };
   }
 
-  const limits = PLAN_LIMITS[plan];
+  const limits = limitsFor(plan);
   if (limits.maxSources === null) {
     return { allowed: true, limit: null, currentUsage: currentSourceCount };
   }
@@ -160,7 +132,7 @@ export function checkAiCallQuota(
     return { allowed: true };
   }
 
-  const limits = PLAN_LIMITS[plan];
+  const limits = limitsFor(plan);
 
   if (limits.maxAiCallsPerDay !== null && todayAiCalls >= limits.maxAiCallsPerDay) {
     return {
@@ -201,7 +173,7 @@ export function checkExportQuota(
     return { allowed: true };
   }
 
-  const limits = PLAN_LIMITS[plan];
+  const limits = limitsFor(plan);
   if (limits.maxExportsPerMonth === null) {
     return { allowed: true, limit: null, currentUsage: monthExportCount };
   }
@@ -244,7 +216,7 @@ export function shouldUseByok(
     };
   }
 
-  const limits = PLAN_LIMITS[plan];
+  const limits = limitsFor(plan);
 
   if (plan === "PLUS") {
     if (!hasByok) {

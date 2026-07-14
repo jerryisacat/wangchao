@@ -8,7 +8,8 @@ export const databaseRuntimeBoundary: DatabaseRuntimeBoundary = {
   target: "postgres-prisma",
 };
 
-export { disconnectPrismaClient, getPrismaClient } from "./client.js";
+export {
+  disconnectPrismaClient, getPrismaClient } from "./client.js";
 export { decryptCredential, encryptCredential, maskKeyHint, validateApiKeyFormat, fingerprintKey } from "./crypto.js";
 export {
   createCcpaymentInvoice,
@@ -89,6 +90,7 @@ export {
   autoMuteFailingSources,
   batchUpdateSourceGovernanceStatus,
   canonicalizeUrl,
+  claimWebhookEvent,
   completeTaskRun,
   createCandidateRssSource,
   createDailyBriefing,

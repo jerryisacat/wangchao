@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/common/page-header";
+import { PLAN_REGISTRY, PLAN_ORDER, type Plan } from "@wangchao/core";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,36 @@ interface PlanTier {
   price: string;
   period: string;
   features: string[];
-  plan: "FREE" | "PLUS" | "PRO";
+  plan: Plan;
+}
+
+function buildPlanTiers(): PlanTier[] {
+  return PLAN_ORDER.filter((plan) => plan !== "FREE").map((plan) => {
+    const entry = PLAN_REGISTRY[plan];
+    const isYearly = entry.pricing.yearlyPriceUsd !== null;
+    const price = isYearly
+      ? `$${entry.pricing.yearlyPriceUsd}`
+      : `$${entry.pricing.monthlyPriceUsd}`;
+    const period = isYearly ? "/年" : "/月";
+    const f = entry.features;
+    const features: string[] = [];
+    if (f.topics !== null) features.push(`${f.topics} 个主题`);
+    else features.push("主题不限");
+    if (f.sources !== null) features.push(`${f.sources} 个信源`);
+    else features.push("信源不限");
+    features.push(f.aiCalls);
+    if (f.exports !== null) features.push(`每月 ${f.exports} 次导出`);
+    else features.push("导出不限");
+    features.push(f.aiSource);
+    return {
+      name: entry.displayName,
+      label: entry.displayName,
+      price,
+      period,
+      features,
+      plan,
+    };
+  });
 }
 
 const PLAN_TIERS: PlanTier[] = [
@@ -31,34 +61,7 @@ const PLAN_TIERS: PlanTier[] = [
       "官方 AI 来源",
     ],
   },
-  {
-    name: "Plus",
-    label: "Plus",
-    period: "/年",
-    price: "$9.99",
-    plan: "PLUS",
-    features: [
-      "5 个主题",
-      "25 个信源",
-      "AI 调用不限（自费 BYOK）",
-      "每月 50 次导出",
-      "BYOK 必填",
-    ],
-  },
-  {
-    name: "Pro",
-    label: "Pro",
-    period: "/月",
-    price: "$19.99",
-    plan: "PRO",
-    features: [
-      "主题不限",
-      "信源不限",
-      "每月 20,000 次官方 AI 调用",
-      "导出不限",
-      "官方 AI + BYOK 备援",
-    ],
-  },
+  ...buildPlanTiers(),
 ];
 
 export default async function PricingPage() {

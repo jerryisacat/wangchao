@@ -17,10 +17,13 @@ export async function GET(_request: Request, context: BriefingRouteContext) {
     createTaskRun,
     failTaskRun,
     getBriefingMarkdownForDownload,
+    getMonthExportCount,
     getPrismaClient,
+    getSubscriptionPlanView,
     recordMarkdownExport,
     recordUsageEvent,
   } = await import("@wangchao/db");
+  const { checkExportQuota } = await import("@wangchao/core");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -32,6 +35,11 @@ export async function GET(_request: Request, context: BriefingRouteContext) {
     },
     ["OWNER", "ADMIN", "MEMBER"],
   );
+
+  const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
+  const monthExports = await getMonthExportCount(prisma, { organizationId: workspace.organizationId });
+  const exportQuota = checkExportQuota(subscription.plan, monthExports, subscription.isSelfHosted);
+  if (!exportQuota.allowed) return new Response(exportQuota.reason ?? "Export limit reached.", { status: 429 });
   const briefing = await getBriefingMarkdownForDownload(prisma, {
     briefingId,
     organizationId: workspace.organizationId,

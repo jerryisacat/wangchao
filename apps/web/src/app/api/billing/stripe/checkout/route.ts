@@ -33,16 +33,16 @@ export async function POST(request: Request) {
     }
 
     if (!process.env.STRIPE_SECRET_KEY) {
-      return Response.json({
-        ok: false,
-        message: "Stripe 支付暂未启用。请使用加密货币支付或联系管理员。",
-      });
+      return Response.json(
+        { ok: false, message: "Stripe 支付暂未启用。请使用加密货币支付或联系管理员。" },
+        { status: 503 },
+      );
     }
 
     return Response.json({
       ok: false,
       message: "Stripe 集成正在开发中，暂不可用。请使用加密货币支付。",
-    });
+    }, { status: 503 });
   } catch (error) {
     process.stderr.write(
       `[stripe/checkout] ${error instanceof Error ? error.message : String(error)}\n`,

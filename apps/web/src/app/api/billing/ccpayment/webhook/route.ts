@@ -1,10 +1,14 @@
 import {
+  claimWebhookEvent,
   getCcpaymentOrderInfo,
   getPrismaClient,
   updatePaymentInvoiceStatus,
   verifyCcpaymentWebhookSignature,
   findPaymentInvoiceByOrderId,
 } from "@wangchao/db";
+
+const credentialCache = new Map<string, { secret: string; organizationId: string; expiresAt: number }>();
+const CREDENTIAL_CACHE_TTL_MS = 60_000;
 
 interface WebhookPayload {
   recordId?: string;
@@ -57,8 +61,12 @@ export async function POST(request: Request) {
     return webhookSuccess();
   }
 
-  const alreadyProcessed = await isRecordIdProcessed(prisma, recordId);
-  if (alreadyProcessed) {
+  const claimed = await claimWebhookEvent(prisma, {
+    provider: "ccpayment",
+    recordId,
+    organizationId: credential.organizationId,
+  });
+  if (!claimed) {
     return webhookSuccess();
   }
 
@@ -76,16 +84,11 @@ export async function POST(request: Request) {
     if (confirmed && invoice.status !== "PAID") {
       await markInvoicePaidAndActivateSubscription(prisma, invoice, orderInfo);
     } else if (orderInfo.status === "Failed") {
-      await updatePaymentInvoiceStatus(
-        prisma,
-        invoice.id,
-        "FAILED",
-        {
-          webhookRecordId: recordId,
-          orderStatus: orderInfo.status,
-          isFlaggedAsRisky: orderInfo.isFlaggedAsRisky,
-        },
-      );
+      await updatePaymentInvoiceStatus(prisma, invoice.id, "FAILED", {
+        webhookRecordId: recordId,
+        orderStatus: orderInfo.status,
+        isFlaggedAsRisky: orderInfo.isFlaggedAsRisky,
+      });
     } else {
       await updatePaymentInvoiceStatus(
         prisma,
@@ -98,8 +101,6 @@ export async function POST(request: Request) {
         },
       );
     }
-
-    await markRecordIdProcessed(prisma, recordId, invoice.id);
   } catch (error) {
     process.stderr.write(
       `[ccpayment-webhook] ${error instanceof Error ? error.message : String(error)}\n`,
@@ -113,6 +114,11 @@ async function resolveCredential(
   prisma: ReturnType<typeof getPrismaClient>,
   appId: string,
 ): Promise<{ appId: string; appSecret: string; organizationId: string } | null> {
+  const cached = credentialCache.get(appId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { appId, appSecret: cached.secret, organizationId: cached.organizationId };
+  }
+
   const cred = await prisma.organizationCredential.findFirst({
     where: {
       appId,
@@ -131,6 +137,11 @@ async function resolveCredential(
     try {
       const { decryptCredential } = await import("@wangchao/db");
       const appSecret = decryptCredential(cred.encryptedSecret, encryptionKey);
+      credentialCache.set(appId, {
+        secret: appSecret,
+        organizationId: cred.organizationId,
+        expiresAt: Date.now() + CREDENTIAL_CACHE_TTL_MS,
+      });
       return { appId: cred.appId, appSecret, organizationId: cred.organizationId };
     } catch {
       return null;
@@ -138,55 +149,6 @@ async function resolveCredential(
   }
 
   return null;
-}
-
-async function isRecordIdProcessed(
-  prisma: ReturnType<typeof getPrismaClient>,
-  recordId: string,
-): Promise<boolean> {
-  const existing = await prisma.paymentInvoice.findFirst({
-    where: {
-      metadata: { path: ["ccpaymentWebhookRecordIds"], array_contains: recordId },
-    },
-    select: { id: true },
-  });
-  return Boolean(existing);
-}
-
-async function markRecordIdProcessed(
-  prisma: ReturnType<typeof getPrismaClient>,
-  recordId: string,
-  invoiceId: string | null,
-): Promise<void> {
-  if (!invoiceId) return;
-  const invoice = await prisma.paymentInvoice.findUnique({
-    where: { id: invoiceId },
-    select: { metadata: true },
-  });
-
-  const currentMeta =
-    invoice?.metadata !== null &&
-    typeof invoice?.metadata === "object" &&
-    !Array.isArray(invoice?.metadata)
-      ? { ...(invoice!.metadata as Record<string, unknown>) }
-      : {};
-
-  const existingIds = Array.isArray(currentMeta.ccpaymentWebhookRecordIds)
-    ? (currentMeta.ccpaymentWebhookRecordIds as unknown[])
-    : [];
-
-  if (!existingIds.includes(recordId)) {
-    existingIds.push(recordId);
-  }
-
-  currentMeta.ccpaymentWebhookRecordIds = existingIds;
-  currentMeta.lastWebhookRecordId = recordId;
-  currentMeta.lastWebhookAt = new Date().toISOString();
-
-  await prisma.paymentInvoice.update({
-    where: { id: invoiceId },
-    data: { metadata: currentMeta as never },
-  });
 }
 
 async function markInvoicePaidAndActivateSubscription(

@@ -1,4 +1,6 @@
 export * from "./quota.js";
+export * from "./quota-guard.js";
+export * from "./pricing.js";
 
 const RELEVANCE_MAX_SCORE = 98;
 const RELEVANCE_BASE_POSITIVE = 72;

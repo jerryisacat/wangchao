@@ -5,4 +5,5 @@ export * from "./repositories/source.js";
 export * from "./repositories/event.js";
 export * from "./repositories/export.js";
 export * from "./repositories/secondary-sources.js";
+export * from "./repositories/webhook-event.js";
 export * from "./repositories/util.js";

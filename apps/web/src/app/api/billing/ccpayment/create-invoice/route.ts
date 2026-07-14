@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "node:crypto";
 
 import { getSessionWorkspace } from "@/lib/session";
 import {
@@ -10,10 +11,19 @@ import {
   recordUsageEvent,
   type CcpaymentConfig,
 } from "@wangchao/db";
+import { PLAN_REGISTRY } from "@wangchao/core";
 
 const PLAN_PRICING = {
-  PLUS: { amount: 9.99, label: "$9.99/year", months: 12 },
-  PRO: { amount: 19.99, label: "$19.99/month", months: 1 },
+  PLUS: {
+    amount: PLAN_REGISTRY.PLUS.pricing.yearlyPriceUsd ?? 9.99,
+    label: "$9.99/year",
+    months: 12,
+  },
+  PRO: {
+    amount: PLAN_REGISTRY.PRO.pricing.monthlyPriceUsd ?? 19.99,
+    label: "$19.99/month",
+    months: 1,
+  },
 } as const;
 
 export async function POST(request: Request) {
@@ -134,7 +144,7 @@ export async function POST(request: Request) {
 
 function generateOrderId(): string {
   const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).slice(2, 10);
+  const random = crypto.randomBytes(8).toString("hex");
   return `wc_${timestamp}_${random}`;
 }
 

@@ -142,6 +142,7 @@ model Organization {
   deliveryLogs       DeliveryLog[]
   reports            Report[]
   paymentInvoices    PaymentInvoice[]
+  webhookEvents       WebhookEvent[]
   subscription       Subscription[]
   credentials        OrganizationCredential[]
   createdAt          DateTime            @default(now())
@@ -168,6 +169,11 @@ enum CredentialType {
   BYOK
   TELEGRAM
   CCPAYMENT
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
 }
 
 enum DeliveryChannel {
@@ -203,6 +209,7 @@ model Subscription {
 
   plan             Plan               @default(FREE)
   status           SubscriptionStatus @default(ACTIVE)
+  billingInterval   BillingInterval    @default(MONTHLY)
   isSelfHosted     Boolean            @default(false)
   instantPushEnabled  Boolean   @default(false)
   instantPushEnabledAt DateTime?
@@ -714,4 +721,17 @@ model PaymentInvoice {
 
   @@unique([provider, providerOrderId])
   @@index([organizationId, status])
+}
+
+model WebhookEvent {
+  id              String   @id @default(cuid())
+  provider        String
+  recordId        String
+  organizationId  String
+  processedAt     DateTime @default(now())
+
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, recordId])
+  @@index([organizationId])
 }
