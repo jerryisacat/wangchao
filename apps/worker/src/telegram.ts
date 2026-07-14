@@ -38,7 +38,7 @@ export function formatEventForInstantPush(event: {
     `⭐ 相关性：${Math.round(event.score)}/100`,
   ];
   if (sourceUrl) lines.push("", `<a href="${escapeTelegramHtml(sourceUrl)}">📖 阅读原文</a>`);
-  return lines.join("\n");
+  return truncateTelegramMessage(lines.join("\n"));
 }
 
 export function escapeTelegramHtml(value: string): string {

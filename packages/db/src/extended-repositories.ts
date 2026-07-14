@@ -4,6 +4,10 @@ import {
   encryptCredential,
   maskKeyHint,
 } from "./crypto.js";
+import {
+  readRequiredRuntimeEnv,
+  readRuntimeEnv,
+} from "./repositories/util.js";
 import type { TenantScope } from "./repositories.js";
 
 const FALLBACK_TELEGRAM_API_BASE = "https://api.telegram.org";
@@ -953,16 +957,6 @@ export async function recordEnhancedFeedback(
   });
 }
 
-function extractPreferenceWeightValue(value: unknown): number {
-  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-    const record = value as Record<string, unknown>;
-    if (typeof record.weight === "number") {
-      return record.weight;
-    }
-  }
-  return 0;
-}
-
 function buildPreferenceUpdateExplanation(
   key: string,
   weight: number,
@@ -971,18 +965,6 @@ function buildPreferenceUpdateExplanation(
   const direction = weight >= 0 ? "increased" : "decreased";
   const target = key.startsWith("source") ? "source" : "category";
   return `${signalCount} feedback signals ${direction} the ${target} preference for ${key}.`;
-}
-
-function readRequiredRuntimeEnv(key: string): string {
-  const value = process.env[key];
-  if (!value) {
-    throw new Error(`${key} is required for credential encryption.`);
-  }
-  return value;
-}
-
-function readRuntimeEnv(key: string): string | undefined {
-  return process.env[key];
 }
 
 export interface ByokCredentialView {

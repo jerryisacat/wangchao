@@ -208,6 +208,8 @@ export function buildTopicProfile(input: TopicProfileInput): TopicProfileDraft {
     .filter((keyword) => /[A-Z][A-Za-z0-9-]*/.test(keyword) || keyword.length >= 3)
     .slice(0, 8);
 
+  const descriptionSummary = (input.description ?? "").trim().slice(0, 500);
+
   return {
     entities,
     excludeScope: ["广告软文", "无来源转载", "与主题无关的泛新闻"],
@@ -217,7 +219,7 @@ export function buildTopicProfile(input: TopicProfileInput): TopicProfileDraft {
       "降低纯观点、重复转载和缺少来源的信息权重。",
     ],
     includeScope: [
-      input.description?.trim() || input.name.trim(),
+      descriptionSummary || input.name.trim(),
       "公开 RSS/Atom、官方博客、研究团队和工程团队更新。",
     ],
     keywords,
@@ -234,15 +236,15 @@ export function buildTopicProfileContext(
   const record = readProfileRecord(profile);
 
   return {
-    description: topic.description?.trim() || null,
+    description: topic.description?.trim().slice(0, 500) || null,
     digestStyle: readDigestStyle(record.digestStyle),
-    entities: readProfileStringList(record.entities),
-    excludeScope: readProfileStringList(record.excludeScope),
-    importanceRules: readProfileStringList(record.importanceRules),
-    includeScope: readProfileStringList(record.includeScope),
-    keywords: readProfileStringList(record.keywords),
+    entities: readProfileStringList(record.entities).slice(0, 12),
+    excludeScope: readProfileStringList(record.excludeScope).slice(0, 8),
+    importanceRules: readProfileStringList(record.importanceRules).slice(0, 6),
+    includeScope: readProfileStringList(record.includeScope).slice(0, 8),
+    keywords: readProfileStringList(record.keywords).slice(0, 20),
     languagePreferences: readLanguagePreferences(record.languagePreferences),
-    name: topic.name.trim(),
+    name: topic.name.trim().slice(0, 200),
   };
 }
 

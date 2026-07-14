@@ -1,5 +1,16 @@
 ## 2026-07-15
 
+### Batch: Module 7 重构/清理/辅助 (#43, #49, #71, #81, #95)
+
+- Cause: 代码重复、死代码、边界校验缺失等清理类问题。
+- Changed:
+  - **#43**: 移除 export.ts 和 extended-repositories.ts 中重复的 readRuntimeEnv/readRequiredRuntimeEnv，统一使用 repositories/util.js
+  - **#49**: 删除死代码 extractPreferenceWeightValue（extended-repositories.ts）
+  - **#71 + #81**: buildTopicProfile 限制 description ≤500字符；buildTopicProfileContext 增加字段数量上限（keywords≤20, entities≤12, scopes≤8, rules≤6）
+  - **#95**: formatEventForInstantPush 输出经 truncateTelegramMessage 截断，确保不超 Telegram 4000 字符限制
+- Files: `packages/db/src/repositories/export.ts`, `packages/db/src/extended-repositories.ts`, `packages/core/src/index.ts`, `apps/worker/src/telegram.ts`
+- Verification: typecheck/test/lint 待执行
+
 ### Batch: Module 6 Worker 运维与可靠性修复 (#86, #87, #88, #89, #90, #91, #93, #94, #96, #97, #98)
 
 - Cause: Worker 单文件 2676 行过于庞大、缺少优雅关闭机制、时间预算、子周期错误隔离、并发控制和 observability。
