@@ -510,6 +510,7 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     await recordUsageEvent(prisma, {
       metadata: {
         merged: semanticDedupResult.merged,
+        skipped: semanticDedupResult.skipped,
         source: "worker-semantic-dedup-cycle",
       },
       organizationId: workspace.organizationId,
@@ -1004,12 +1005,16 @@ async function runAnalysisCycle(
 async function runSemanticDedupCycle(
   prisma: ReturnType<typeof getPrismaClient>,
   organizationId: string,
-): Promise<{ merged: number; llmCalls: number }> {
-  const result = { merged: 0, llmCalls: 0 };
+): Promise<{ merged: number; llmCalls: number; skipped: number }> {
+  const result = { merged: 0, llmCalls: 0, skipped: 0 };
 
   const aiRuntime = await createAnalysisRuntimeWithPlan(prisma, organizationId);
   if (!aiRuntime) return result;
   const ai = { adapter: aiRuntime.adapter, model: aiRuntime.model };
+
+  const DEDUP_THRESHOLD = readFloatEnv("WANGCHAO_SEMANTIC_DEDUP_THRESHOLD", 0.7);
+  const MAX_DEDUP_COMPARISONS = readPositiveIntegerEnv("WANGCHAO_DEDUP_MAX_COMPARISONS", 20);
+  const MAX_CANDIDATES_PER_EVENT = readPositiveIntegerEnv("WANGCHAO_DEDUP_MAX_CANDIDATES", 10);
 
   const since = new Date();
   since.setHours(since.getHours() - 48);
@@ -1056,8 +1061,12 @@ async function runSemanticDedupCycle(
   for (const [, topicEvents] of eventsByTopic) {
     if (topicEvents.length < 2) continue;
 
+    let comparisons = 0;
     for (let i = 1; i < topicEvents.length; i += 1) {
-      const newEvent = topicEvents[i];
+      if (comparisons >= MAX_DEDUP_COMPARISONS) {
+        console.warn(`[dedup] Topic reached max comparisons (${MAX_DEDUP_COMPARISONS}), stopping.`);
+        break;
+      }
 
       const currentEvent = topicEvents[i]!;
       const candidates = topicEvents.slice(0, i).filter((candidate) => {
@@ -1070,11 +1079,12 @@ async function runSemanticDedupCycle(
           candidate.entities.includes(e),
         );
         return shareEntity || candidate.entities.length === 0;
-      });
+      }).slice(0, MAX_CANDIDATES_PER_EVENT);
 
       if (candidates.length === 0) continue;
 
       try {
+        comparisons += 1;
         result.llmCalls += 1;
         const dedupResult = await dedupEvent(
           {
@@ -1099,7 +1109,7 @@ async function runSemanticDedupCycle(
             model: ai.model,
           },
         );
-        if (dedupResult.duplicateEventId && dedupResult.confidence >= 0.7) {
+        if (dedupResult.duplicateEventId && dedupResult.confidence >= DEDUP_THRESHOLD) {
           await mergeSemanticEvents(prisma, {
             keepEventId: dedupResult.duplicateEventId,
             mergeEventIds: [currentEvent.id],
@@ -1107,8 +1117,9 @@ async function runSemanticDedupCycle(
           });
           result.merged += 1;
         }
-      } catch {
-        // LLM call failed, skip this pair
+      } catch (error) {
+        console.warn(`[dedup] LLM dedup failed for event ${currentEvent.id}: ${error instanceof Error ? error.message : String(error)}`);
+        result.skipped += 1;
       }
     }
   }

@@ -1,5 +1,13 @@
 export * from "./quota.js";
 
+const RELEVANCE_MAX_SCORE = 98;
+const RELEVANCE_BASE_POSITIVE = 72;
+const RELEVANCE_BASE_WEAK = 42;
+const RELEVANCE_KEYWORD_BONUS = 8;
+const RELEVANCE_ENTITY_BONUS = 6;
+const RELEVANCE_INCLUDE_SCOPE_BONUS = 6;
+const RELEVANCE_THRESHOLD = 70;
+
 export interface IntelligenceInputItem {
   id: string;
   title: string;
@@ -37,6 +45,7 @@ export interface RelevanceDecision {
 
 export interface FeedbackSignal {
   category?: string | null;
+  eventId?: string | null;
   kind:
     | "READ"
     | "SAVE"
@@ -268,20 +277,20 @@ export function evaluateRelevance(item: IntelligenceInputItem): RelevanceDecisio
     matchedEntities.length > 0 ||
     matchedIncludeScopes.length > 0;
   const score = Math.min(
-    98,
-    (hasPositiveSignal ? 72 : 42) +
-      matchedKeywords.length * 8 +
-      matchedEntities.length * 6 +
-      matchedIncludeScopes.length * 6,
+    RELEVANCE_MAX_SCORE,
+    (hasPositiveSignal ? RELEVANCE_BASE_POSITIVE : RELEVANCE_BASE_WEAK) +
+      matchedKeywords.length * RELEVANCE_KEYWORD_BONUS +
+      matchedEntities.length * RELEVANCE_ENTITY_BONUS +
+      matchedIncludeScopes.length * RELEVANCE_INCLUDE_SCOPE_BONUS,
   );
 
   return {
-    isRelevant: score >= 70,
+    isRelevant: score >= RELEVANCE_THRESHOLD,
     matchedEntities,
     matchedExcludeScopes,
     matchedIncludeScopes,
     matchedKeywords,
-    noiseReason: score >= 70 ? undefined : "No positive topic profile signals matched.",
+    noiseReason: score >= RELEVANCE_THRESHOLD ? undefined : "No positive topic profile signals matched.",
     score,
   };
 }
@@ -433,6 +442,7 @@ export function generatePreferenceDeltas(
   signals: FeedbackSignal[],
   now: Date = new Date(),
 ): PreferenceDelta[] {
+  const processedKeys = new Set<string>();
   const grouped = new Map<
     string,
     {
@@ -445,6 +455,9 @@ export function generatePreferenceDeltas(
   >();
 
   for (const signal of signals) {
+    const dedupKey = `${signal.eventId ?? ""}::${signal.kind}`;
+    if (processedKeys.has(dedupKey)) continue;
+    processedKeys.add(dedupKey);
     const weight = feedbackSignalWeight(signal);
     const keys = preferenceKeysForSignal(signal);
 
@@ -871,16 +884,18 @@ function feedbackSignalWeight(signal: FeedbackSignal): number {
 }
 
 const PREFERENCE_DECAY_HALF_LIFE_DAYS = 30;
+const CLOCK_DRIFT_TOLERANCE_MS = 60 * 1000;
 
 function applyTimeDecay(
   weight: number,
   signalTime: Date,
   now: Date,
 ): number {
-  const ageDays = Math.max(
-    0,
-    (now.getTime() - signalTime.getTime()) / (1000 * 60 * 60 * 24),
-  );
+  const ageMs = now.getTime() - signalTime.getTime();
+  if (ageMs < -CLOCK_DRIFT_TOLERANCE_MS) {
+    return 0;
+  }
+  const ageDays = Math.max(0, ageMs / (1000 * 60 * 60 * 24));
   const decayFactor = Math.pow(0.5, ageDays / PREFERENCE_DECAY_HALF_LIFE_DAYS);
   return Number((weight * decayFactor).toFixed(4));
 }
@@ -902,7 +917,11 @@ function escapeYaml(value: string): string {
 }
 
 function normalizeTitle(title: string): string {
-  return title.toLowerCase().replace(/\s+/g, " ").trim();
+  return title
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function readProfileRecord(value: unknown): Record<string, unknown> {
@@ -970,8 +989,9 @@ function readDigestStyle(value: unknown): DigestStyle {
 
 function normalizeTitleForFuzzyMatch(title: string): string {
   return title
+    .normalize("NFC")
     .toLowerCase()
-    .replace(/[「」【】｜\|\-:：].*$/, "")
+    .replace(/\s*[｜|—–-]\s*[^｜|—–-]*$/, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -982,11 +1002,11 @@ function createTitleHash(title: string): string {
 
 function createEventHash(value: string): string {
   let hash = 0x811c9dc5;
-
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
+  const chars = Array.from(value);
+  for (let index = 0; index < chars.length; index += 1) {
+    const code = chars[index]!.codePointAt(0) ?? 0;
+    hash ^= code & 0xffff;
     hash = Math.imul(hash, 0x01000193);
   }
-
   return `event:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }

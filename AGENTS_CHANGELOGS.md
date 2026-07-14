@@ -1,3 +1,20 @@
+## 2026-07-15
+
+### Batch: Module 5 核心算法/Relevance/去重修复 (#64, #65, #66, #67, #69, #92)
+
+- Cause: 核心算法模块存在 Unicode 处理不一致、魔法数、模糊匹配过宽、幂等缺失和未来时间戳漏洞。
+- Changed:
+  - **#64**: `normalizeTitle` 和 `normalizeTitleForFuzzyMatch` 增加 NFC 归一化；`createEventHash` 改用 `Array.from` + `codePointAt(0)` 正确处理 surrogate pair
+  - **#65**: relevance 评分魔法数抽出为 7 个命名常量（RELEVANCE_MAX_SCORE, RELEVANCE_BASE_POSITIVE, RELEVANCE_BASE_WEAK, RELEVANCE_KEYWORD_BONUS, RELEVANCE_ENTITY_BONUS, RELEVANCE_INCLUDE_SCOPE_BONUS, RELEVANCE_THRESHOLD）
+  - **#66**: `normalizeTitleForFuzzyMatch` 字符集从 `[「」【】｜\|\-:：]` 收窄为 `\s*[｜|—–-]\s*[^｜|—–-]*$`，仅截断来源后缀
+  - **#67**: `generatePreferenceDeltas` 增加 `eventId` 字段到 `FeedbackSignal` 接口，添加 `processedKeys` Set 对 `(eventId, kind)` 去重
+  - **#69**: `applyTimeDecay` 添加 `CLOCK_DRIFT_TOLERANCE_MS` 常量，拒绝超过 ±1 分钟容差的未来时间戳（返回 0）
+  - **#92**: `runSemanticDedupCycle` 添加 LLM 调用上限（MAX_DEDUP_COMPARISONS=20）、参数化阈值（WANGCHAO_SEMANTIC_DEDUP_THRESHOLD）、MAX_CANDIDATES_PER_EVENT 上限；catch 块改为 `console.warn` 记录失败；添加 `skipped` 字段到结果
+  - 新增环境变量: WANGCHAO_SEMANTIC_DEDUP_THRESHOLD, WANGCHAO_DEDUP_MAX_COMPARISONS, WANGCHAO_DEDUP_MAX_CANDIDATES
+- Files: `packages/core/src/index.ts`, `apps/worker/src/index.ts`, `.env_example`
+- Verification: `pnpm typecheck` 7/7 通过，`pnpm test` 7/7 通过，`pnpm lint` 7/7 通过
+- Notes / Risk: `FeedbackSignal.eventId` 为可选字段，依赖调用方在创建 feedback 时传入以启用去重；`createEventHash` 改用码点迭代后哈希值会变化，但不影响去重一致性（同一函数内仍保持 deterministic）
+
 ## 2026-07-14
 
 ### Batch: Module 4 AI Adapter/Parser 修复 (#63, #70, #72, #74, #75, #76, #77)
