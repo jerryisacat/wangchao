@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import seedSourcePack from "../../../../packages/db/seed-sources.json";
 import { defaultAiBaseUrl } from "./admin/settings/providers";
+import { isHttpUrl, readPositiveIntegerEnv } from "@wangchao/core";
 
 type DatabaseClient = ReturnType<
   (typeof import("@wangchao/db"))["getPrismaClient"]
@@ -879,19 +880,7 @@ function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values));
 }
 
-function readPositiveIntegerEnv(key: string, fallback: number): number {
-  const value = Number.parseInt(process.env[key] ?? "", 10);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
-}
 
-function isHttpUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return ["http:", "https:"].includes(parsed.protocol);
-  } catch {
-    return false;
-  }
-}
 
 async function withTimeout<T>(
   promise: Promise<T>,

@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getDashboardEventDetail } from "@/lib/topic-source-data";
+import { isHttpUrl } from "@wangchao/core";
 
 export const dynamic = "force-dynamic";
 
@@ -292,11 +293,4 @@ function formatDateTime(value: string): string {
   }).format(new Date(value));
 }
 
-function isHttpUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
+

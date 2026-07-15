@@ -1,3 +1,4 @@
+import { isHttpUrl } from "@wangchao/core";
 import { assertSafeUrl } from "./ssrf.js";
 
 export interface SearchResult {
@@ -577,14 +578,7 @@ function toHttpUrl(value: string | undefined, baseUrl: string): string | null {
   }
 }
 
-function isHttpUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return ["http:", "https:"].includes(parsed.protocol);
-  } catch {
-    return false;
-  }
-}
+
 
 function dedupeFeedCandidates(candidates: FeedCandidate[]): FeedCandidate[] {
   const seen = new Set<string>();

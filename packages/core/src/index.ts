@@ -2,6 +2,57 @@ export * from "./quota.js";
 export * from "./quota-guard.js";
 export * from "./pricing.js";
 
+export function readPositiveIntegerEnv(key: string, fallback: number): number {
+  const value = Number.parseInt(readRawEnv(key) ?? "", 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+export function readFloatEnv(key: string, fallback: number): number {
+  const value = Number.parseFloat(readRawEnv(key) ?? "");
+  return Number.isFinite(value) ? value : fallback;
+}
+
+export function readBoundedNumberEnv(name: string, fallback: number, min: number, max: number): number {
+  const value = Number(readRawEnv(name));
+  return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
+}
+
+function readRawEnv(key: string): string | undefined {
+  const runtime = globalThis as unknown as {
+    process?: { env?: Record<string, string | undefined> };
+  };
+  return runtime.process?.env?.[key];
+}
+
+export function isHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function stripHtml(value: string): string {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ")
+    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/p>/gi, " ")
+    .replace(/<\/div>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 const RELEVANCE_MAX_SCORE = 98;
 const RELEVANCE_BASE_POSITIVE = 72;
 const RELEVANCE_BASE_WEAK = 42;
@@ -572,15 +623,6 @@ export function renderEventMarkdown(
   ].filter((line): line is string => line !== undefined);
 
   return `${lines.join("\n")}\n`;
-}
-
-function isHttpUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 export function renderDailyBriefingMarkdown(input: DailyBriefingInput): string {

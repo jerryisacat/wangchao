@@ -10,6 +10,7 @@ import {
 import Link from "next/link";
 import type { DashboardEventSummary } from "@/lib/topic-source-data";
 import { Badge } from "@/components/ui/badge";
+import { isHttpUrl } from "@wangchao/core";
 
 function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -18,15 +19,6 @@ function formatDateTime(value: string): string {
     minute: "2-digit",
     month: "2-digit",
   }).format(new Date(value));
-}
-
-function isHttpUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 interface IntelligenceCardProps {

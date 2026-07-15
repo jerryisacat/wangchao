@@ -1,6 +1,8 @@
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import { XMLParser } from "fast-xml-parser";
+import { canonicalizeUrl } from "@wangchao/db";
+import { createContentHash, isHttpUrl, stripHtml } from "@wangchao/core";
 import { assertSafeUrl } from "./ssrf.js";
 
 export type SourceKind = "rss" | "web";
@@ -311,7 +313,7 @@ function parseRssItem(item: Record<string, unknown>): NormalizedSourceItem | nul
     textOf(item.pubDate) ??
     textOf(item.published) ??
     textOf(item.updated);
-  const canonicalUrl = canonicalizeItemUrl(link);
+  const canonicalUrl = canonicalizeUrl(link);
 
   return {
     title,
@@ -340,7 +342,7 @@ function parseAtomEntry(entry: Record<string, unknown>): NormalizedSourceItem | 
   const published =
     textOf(entry.published) ??
     textOf(entry.updated);
-  const canonicalUrl = canonicalizeItemUrl(link);
+  const canonicalUrl = canonicalizeUrl(link);
 
   return {
     title,
@@ -429,30 +431,4 @@ function parseDate(value: string | undefined): Date | undefined {
   return Number.isNaN(timestamp) ? undefined : new Date(timestamp);
 }
 
-function canonicalizeItemUrl(url: string): string {
-  const parsed = new URL(url);
-  parsed.hash = "";
-  parsed.hostname = parsed.hostname.toLowerCase();
-  if (parsed.pathname !== "/") {
-    parsed.pathname = parsed.pathname.replace(/\/+$/, "");
-  }
-  return parsed.toString();
-}
 
-function stripHtml(value: string): string {
-  return value
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&[a-z]+;/gi, " ")
-    .replace(/&#x?[0-9a-f]+;/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function createContentHash(value: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return `fnv1a:${(hash >>> 0).toString(16).padStart(8, "0")}`;
-}

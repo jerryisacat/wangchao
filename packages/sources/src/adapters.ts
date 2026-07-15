@@ -3,6 +3,7 @@ import {
   stripBom,
   type NormalizedSourceItem,
 } from "./index.js";
+import { createContentHash, stripHtml } from "@wangchao/core";
 
 export class AdapterError extends Error {
   constructor(
@@ -131,7 +132,7 @@ export async function fetchGitHubReleases(
         const parsed = new URL(itemUrl);
         parsed.hash = "";
         const canonicalUrl = parsed.toString();
-        const summary = release.body?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+        const summary = release.body ? stripHtml(release.body) : undefined;
         const timestamp = Date.parse(release.published_at ?? "");
         const publishedAt = Number.isNaN(timestamp) ? undefined : new Date(timestamp);
 
@@ -155,15 +156,6 @@ export async function fetchGitHubReleases(
   } finally {
     clearTimeout(timeout);
   }
-}
-
-function createContentHash(value: string): string {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return `fnv1a:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
 export {};

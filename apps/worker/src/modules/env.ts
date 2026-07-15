@@ -1,3 +1,7 @@
+import { readBoundedNumberEnv, readFloatEnv, readPositiveIntegerEnv } from "@wangchao/core";
+
+export { readBoundedNumberEnv, readFloatEnv, readPositiveIntegerEnv };
+
 const MAX_FETCH_ATTEMPTS = 3;
 
 let _fetchConcurrency: number | null = null;
@@ -65,12 +69,20 @@ export function sleep(ms: number): Promise<void> {
 
 export function pLimit(concurrency: number): <T>(fn: () => Promise<T>) => Promise<T> {
   const queue: Array<() => void> = [];
+  let head = 0;
   let activeCount = 0;
 
   const next = () => {
     activeCount--;
-    if (queue.length > 0) {
-      queue.shift()!();
+    if (head < queue.length) {
+      const run = queue[head]!;
+      head++;
+      if (head > 0x4000) {
+        queue.splice(0, head);
+        head = 0;
+      }
+      activeCount++;
+      run();
     }
   };
 
@@ -98,17 +110,4 @@ export function pLimit(concurrency: number): <T>(fn: () => Promise<T>) => Promis
     });
 }
 
-export function readPositiveIntegerEnv(key: string, fallback: number): number {
-  const value = Number.parseInt(process.env[key] ?? "", 10);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
-}
 
-export function readFloatEnv(key: string, fallback: number): number {
-  const value = Number.parseFloat(process.env[key] ?? "");
-  return Number.isFinite(value) ? value : fallback;
-}
-
-export function readBoundedNumberEnv(name: string, fallback: number, min: number, max: number): number {
-  const value = Number(process.env[name]);
-  return Number.isFinite(value) && value >= min && value <= max ? value : fallback;
-}

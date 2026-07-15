@@ -1,6 +1,32 @@
 ## 2026-07-15
 
-### Fix: Replace `as never` type assertions + BYOK prerequisite for Plus upgrade (#141, #133)
+### Fix: Webhook credential cache security + env helper dedup (#120, #145)
+
+- Cause: CCPayment webhook credential cache had 60s TTL (too short), unbounded size (DoS risk), no invalidation path; db/client.ts duplicated readRequiredRuntimeEnv; worker/web duplicated env helpers
+- Changed:
+  - **#120**: `webhook/route.ts` — TTL 60s→300s, added `MAX_CREDENTIAL_CACHE_SIZE=128` with LRU eviction, exported `invalidateCcpaymentCredential(appId)` for admin credential rotation
+  - **#145 env**: Removed duplicate `readRequiredRuntimeEnv` from `packages/db/src/client.ts` (now imports from `repositories/util.js`); moved `readPositiveIntegerEnv`/`readFloatEnv`/`readBoundedNumberEnv` from worker/web into `packages/core`; worker re-exports from core
+- Files: `apps/web/src/app/api/billing/ccpayment/webhook/route.ts`, `packages/db/src/client.ts`, `packages/core/src/index.ts`, `apps/web/src/app/actions.ts`, `apps/worker/src/modules/env.ts`
+- Verification: typecheck ✅ (web, core, db, worker all pass)
+- Notes / Risk: `resolveCredential` retained `findFirst` — schema has `@@unique([organizationId, credentialType])` but not on `(appId, credentialType)`
+
+### Refactor: Consolidate duplicated utility functions (createContentHash, stripHtml, isHttpUrl, canonicalizeUrl, pLimit)
+
+- Cause: Multiple divergent implementations of the same utility across packages — `createContentHash` produced different hashes (FNV-1a vs event-hash prefix), `stripHtml` replaced entities with spaces instead of decoding, `isHttpUrl` had 7 copies, `canonicalizeUrl` had 3, and `pLimit` used O(n) `queue.shift()`
+- Changed:
+  - `packages/core/src/index.ts`: Exported `isHttpUrl`, added exported `stripHtml` (decodes entities, removes script/style, normalizes tags, collapses whitespace)
+  - `packages/sources/src/index.ts`: Removed local `createContentHash`, `stripHtml`, `canonicalizeItemUrl`; now imports `createContentHash`, `stripHtml`, `isHttpUrl` from `@wangchao/core` and `canonicalizeUrl` from `@wangchao/db`
+  - `packages/sources/src/adapters.ts`: Removed local `createContentHash`; imports `createContentHash`, `stripHtml` from `@wangchao/core`; fixed broken inline HTML stripping
+  - `packages/sources/src/discovery.ts`: Removed local `isHttpUrl`; imports from `@wangchao/core`
+  - `packages/sources/package.json`: Added `@wangchao/core` and `@wangchao/db` dependencies
+  - `apps/web/src/lib/event-display.ts`: Removed local `stripHtml` and `isHttpUrl`; imports from `@wangchao/core`; kept local `decodeHtmlEntities` (still used for URL decoding)
+  - `apps/web/src/components/intelligence/intelligence-card.tsx`: Removed local `isHttpUrl`; imports from `@wangchao/core`
+  - `apps/web/src/app/events/[eventId]/page.tsx`: Removed local `isHttpUrl`; imports from `@wangchao/core`
+  - `apps/web/src/app/actions.ts`: Already imported `isHttpUrl` from `@wangchao/core` (no local duplicate)
+  - `apps/worker/src/modules/env.ts`: Replaced `queue.shift()` with index-based dequeue + periodic splice to eliminate O(n²) behavior
+- Files: `packages/core/src/index.ts`, `packages/sources/package.json`, `packages/sources/src/index.ts`, `packages/sources/src/adapters.ts`, `packages/sources/src/discovery.ts`, `apps/web/src/lib/event-display.ts`, `apps/web/src/components/intelligence/intelligence-card.tsx`, `apps/web/src/app/events/[eventId]/page.tsx`, `apps/worker/src/modules/env.ts`
+- Verification: `pnpm typecheck` on core, db, sources, ai, web — all pass; worker has pre-existing unrelated `EventExtractionAdapter` error on line 969
+- Notes / Risk: `createContentHash` now uses the correct `content:` prefix (derived from `createEventHash`) across all call sites — previously sources used `fnv1a:` prefix with broken `charCodeAt` (mismatched hashes meant dedup could miss duplicates or create false positives)
 
 - Cause: Six `as never` casts in extended-repositories.ts bypass type safety; pricing page allowed Plus upgrade without BYOK prerequisite
 - Changed:

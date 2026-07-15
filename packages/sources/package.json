@@ -20,6 +20,8 @@
   },
   "dependencies": {
     "@mozilla/readability": "^0.6.0",
+    "@wangchao/core": "workspace:*",
+    "@wangchao/db": "workspace:*",
     "fast-xml-parser": "^5.10.0",
     "linkedom": "^0.18.13"
   }

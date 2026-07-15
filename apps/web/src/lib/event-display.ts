@@ -1,4 +1,5 @@
 export { sanitizeForDisplay, sanitizeMarkdownSource } from "./sanitize";
+import { isHttpUrl, stripHtml } from "@wangchao/core";
 
 export interface EventDisplayFields {
   explanation: string;
@@ -119,17 +120,6 @@ function extractLabeledUrl(rawSummary: string, label: string): string {
   return "";
 }
 
-function stripHtml(value: string): string {
-  return decodeHtmlEntities(value)
-    .replace(/<script\b[\s\S]*?<\/script>/gi, " ")
-    .replace(/<style\b[\s\S]*?<\/style>/gi, " ")
-    .replace(/<br\s*\/?>/gi, " ")
-    .replace(/<\/p>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function decodeHtmlEntities(value: string): string {
   return value
     .replaceAll("&amp;", "&")
@@ -146,13 +136,4 @@ function truncateText(value: string, maxLength: number): string {
   }
 
   return `${value.slice(0, maxLength - 1).trimEnd()}…`;
-}
-
-function isHttpUrl(value: string): boolean {
-  try {
-    const parsed = new URL(value);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
 }

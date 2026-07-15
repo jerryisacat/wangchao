@@ -9,7 +9,20 @@ import {
 } from "@wangchao/db";
 
 const credentialCache = new Map<string, { secret: string; organizationId: string; expiresAt: number }>();
-const CREDENTIAL_CACHE_TTL_MS = 60_000;
+const CREDENTIAL_CACHE_TTL_MS = 300_000;
+const MAX_CREDENTIAL_CACHE_SIZE = 128;
+
+function evictOldestEntries(): void {
+  while (credentialCache.size > MAX_CREDENTIAL_CACHE_SIZE) {
+    const oldestKey = credentialCache.keys().next().value;
+    if (oldestKey === undefined) break;
+    credentialCache.delete(oldestKey);
+  }
+}
+
+export function invalidateCcpaymentCredential(appId: string): void {
+  credentialCache.delete(appId);
+}
 
 interface WebhookPayload {
   recordId?: string;
@@ -155,6 +168,7 @@ async function resolveCredential(
         organizationId: cred.organizationId,
         expiresAt: Date.now() + CREDENTIAL_CACHE_TTL_MS,
       });
+      evictOldestEntries();
       return { appId: cred.appId, appSecret, organizationId: cred.organizationId };
     } catch {
       return null;

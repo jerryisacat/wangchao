@@ -1,5 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
+import { readRequiredRuntimeEnv } from "./repositories/util.js";
 
 let prisma: PrismaClient | undefined;
 
@@ -19,17 +20,4 @@ export async function disconnectPrismaClient(): Promise<void> {
 
   await prisma.$disconnect();
   prisma = undefined;
-}
-
-function readRequiredRuntimeEnv(key: string): string {
-  const runtime = globalThis as unknown as {
-    process?: { env?: Record<string, string | undefined> };
-  };
-  const value = runtime.process?.env?.[key];
-
-  if (!value) {
-    throw new Error(`${key} is required to initialize Prisma Client.`);
-  }
-
-  return value;
 }
