@@ -1,5 +1,25 @@
 ## 2026-07-15
 
+### Fix: Replace `as never` type assertions + BYOK prerequisite for Plus upgrade (#141, #133)
+
+- Cause: Six `as never` casts in extended-repositories.ts bypass type safety; pricing page allowed Plus upgrade without BYOK prerequisite
+- Changed:
+  - **#141**: Replaced all 6 `as never` with proper Prisma types — `Prisma.InputJsonValue` for `metadata`/`value` JSON fields, `new Prisma.Decimal()` for PaymentInvoice.amount
+  - **#133**: Pricing page now queries `getByokCredentialView` server-side; Plus plan with no BYOK shows "配置 BYOK 后升级" link instead of payment form; admin/settings page shows BYOK-required notice on `?byok_required=true`; API route returns 409 if Plus upgrade attempted without BYOK
+- Files: `packages/db/src/extended-repositories.ts`, `apps/web/src/app/pricing/page.tsx`, `apps/web/src/app/admin/settings/page.tsx`, `apps/web/src/app/api/billing/ccpayment/create-invoice/route.ts`
+- Verification: `pnpm --filter @wangchao/db typecheck` ✅, `pnpm --filter @wangchao/web typecheck` ✅ (pre-existing missing deps unrelated)
+- Notes / Risk: None
+
+### Fix: 删除死代码 proxy.ts + 补充 self-hosted 审计日志 (#114, #128)
+
+- Cause: proxy.ts 是死代码（无 import，非 middleware.ts），仅检查 cookie 存在性而非有效 session；toggleSelfHostedModeAction 缺少操作前后值审计
+- Changed:
+  - **#114**: 删除 `apps/web/src/proxy.ts`，auth 已由 BetterAuth `getSessionWorkspace()` 处理，安全响应头已在新 `middleware.ts` 中
+  - **#128**: `setSelfHostedMode` 改为先 `findUnique` 读取当前 `isSelfHosted`，upsert 后返回 `{ previousValue, newValue }`；`toggleSelfHostedModeAction` 将 previousValue/newValue 写入 WEB_ACTION 审计日志 metadata
+- Files: `apps/web/src/proxy.ts` (deleted), `apps/web/src/app/actions.ts`, `packages/db/src/extended-repositories.ts`
+- Verification: typecheck ✅ (@wangchao/db + @wangchao/web 通过)
+- Notes / Risk: 无
+
 ### Security: P0 安全漏洞批量修复 (#140, #139, #138, #137, #127, #102, #101, #132)
 
 - Cause: 开源仓库安全审计发现 8 项 P0 安全问题：缺安全响应头、AI 内容 XSS 风险、敏感信息泄露日志、SSRF 无防护、加密模块弱 KDF、webhook 去重无约束
@@ -13,6 +33,21 @@
 - Files: `apps/web/src/middleware.ts` (new), `apps/web/src/lib/sanitize.ts` (new), `apps/web/src/app/reports/[reportId]/page.tsx`, `apps/web/src/lib/event-display.ts`, `apps/worker/src/lib/safe-log.ts` (new), `apps/worker/src/index.ts`, `packages/sources/src/ssrf.ts` (new), `packages/sources/src/index.ts`, `packages/sources/src/discovery.ts`, `packages/db/src/crypto.ts`, `packages/db/src/index.ts`, `packages/db/src/ccpayment.ts`, `packages/db/src/repositories/webhook-event.ts`, `apps/web/src/app/api/billing/ccpayment/webhook/route.ts`, `apps/web/next.config.ts`, `CODEGUIDE.md`, `docs/L3-modules.md`
 - Verification: typecheck ✅ (除 @wangchao/sources 预存依赖缺失外全部通过), lint ✅ (同上)
 - Notes / Risk: `@wangchao/sources` typecheck 失败为预存问题（@mozilla/readability / linkedom 未安装），与本轮无关；SSRF 防护使用 DNS 解析，存在 TOCTOU 窗口但已在最接近 fetch 的位置校验
+
+### Fix: Worker 容错 + 反馈双倍 + N+1 查询 + 实体解码 (#124, #73, #61, #52, #39, #108, #133)
+
+- Cause: fetch cycle 子阶段无 error boundary 导致全链终止；fallback extraction 总是 isRelevant=true；反馈偏好双倍计入；mergeSemanticEvents N+1；实体双重解码
+- Changed:
+  - **#124**: `runFetchCycle` 9 个子阶段（analysis/dedup/preference/briefing/weekly/monthly/governance/candidate/telegram）各自包裹 try-catch，失败推入 `result.failedSubCycles` 后继续
+  - **#73**: `fallbackEventExtraction` 改为 `isRelevant: false`、`relevanceScore: 0`、`category: "noise"`，AI 故障时不污染 dashboard
+  - **#61**: 修复 `MORE_LIKE_THIS`/`LESS_LIKE_THIS` 双倍计入问题 — 仅对 `SCORE_UP`/`SCORE_DOWN` 触发 category preference 路径，`MORE_LIKE_THIS`/`LESS_LIKE_THIS` 只走 enhanced feedback
+  - **#52**: `isUniqueConstraintError` 改用 `error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"` 类型安全判断
+  - **#39**: `mergeSemanticEvents` 事务内 N+1 改为批量：`findMany({ where: { id: { in: [...] } } })` + `createMany({ skipDuplicates: true })` + `updateMany`，复杂度从 O(N×M) 降为 O(1)
+  - **#108**: 移除 XMLParser 中冗余的 `tagValueProcessor: decodeNumericEntities`（`processEntities: true` 已处理实体解码），消除双重 decode
+  - **#133**: SearXNG 改用 `creds.search.baseUrl`（原错误使用 apiKey 字段），无 baseUrl 时返回 null
+- Files: `apps/worker/src/index.ts`, `apps/worker/src/modules/types.ts`, `apps/worker/src/modules/fetch.ts`, `packages/ai/src/event-extraction.ts`, `apps/web/src/app/actions.ts`, `packages/db/src/extended-repositories.ts`, `packages/db/src/repositories/event.ts`, `packages/sources/src/index.ts`, `apps/worker/src/modules/runtime.ts`, `packages/db/src/repositories/types.ts`, `packages/db/src/repositories/export.ts`
+- Verification: typecheck ✅ (除 @wangchao/sources 预存依赖缺失外全部通过)
+- Notes / Risk: 无
 
 ### Batch: Module D 数据层+架构 (#113, #115-116, #144)
 

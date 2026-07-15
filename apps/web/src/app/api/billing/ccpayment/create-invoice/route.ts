@@ -7,6 +7,7 @@ import {
   createCcpaymentInvoice,
   createPaymentInvoice,
   getDecryptedCcpaymentCredential,
+  getByokCredentialView,
   getPrismaClient,
   recordUsageEvent,
   type CcpaymentConfig,
@@ -53,6 +54,18 @@ export async function POST(request: Request) {
 
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
+
+  if (plan === "PLUS") {
+    const byokCredential = await getByokCredentialView(prisma, {
+      organizationId: workspace.organizationId,
+    });
+    if (!byokCredential.hasKey) {
+      return NextResponse.json(
+        { error: "PLUS plan requires BYOK to be configured." },
+        { status: 409 },
+      );
+    }
+  }
 
   await assertMembershipRole(
     prisma,

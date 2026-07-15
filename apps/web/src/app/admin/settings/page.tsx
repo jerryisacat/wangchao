@@ -108,7 +108,12 @@ export default async function AdminSettingsPage({
 
   const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
   const notice = readParam(resolvedSearchParams.notice);
+  const byokRequired = readParam(resolvedSearchParams.byok_required);
   const actionError = readParam(resolvedSearchParams.error);
+
+  const byokNotice = byokRequired
+    ? "请先配置 BYOK 后再升级到 Plus 计划。"
+    : notice;
 
   return (
     <>
@@ -124,10 +129,10 @@ export default async function AdminSettingsPage({
         </Button>
       </PageHeader>
 
-      {notice ? (
+      {byokNotice ? (
         <StatusBanner
           icon={<Check aria-hidden="true" size={16} />}
-          message={notice}
+          message={byokNotice}
           tone="notice"
         />
       ) : null}

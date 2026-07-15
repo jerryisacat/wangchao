@@ -965,10 +965,16 @@ export async function mergeSemanticEvents(
   },
 ) {
   return prisma.$transaction(async (tx) => {
-    const keepEvent = await tx.intelligenceEvent.findUnique({
-      where: { id: input.keepEventId },
-      include: { eventItems: true },
-    });
+    const [keepEvent, mergeEvents] = await Promise.all([
+      tx.intelligenceEvent.findUnique({
+        where: { id: input.keepEventId },
+        include: { eventItems: true },
+      }),
+      tx.intelligenceEvent.findMany({
+        where: { id: { in: input.mergeEventIds } },
+        include: { eventItems: true },
+      }),
+    ]);
 
     if (!keepEvent) {
       throw new Error(`Keep event ${input.keepEventId} not found.`);
@@ -978,12 +984,17 @@ export async function mergeSemanticEvents(
       throw new Error(`Keep event ${input.keepEventId} does not belong to organization ${input.expectedOrganizationId}`);
     }
 
-    for (const mergeEventId of input.mergeEventIds) {
-      const mergeEvent = await tx.intelligenceEvent.findUnique({
-        where: { id: mergeEventId },
-        include: { eventItems: true },
-      });
+    const mergeEventMap = new Map(mergeEvents.map((event) => [event.id, event]));
+    const eventItemCreates: Array<{
+      eventId: string;
+      itemId: string;
+      role: "SECONDARY";
+      mergeReason: string;
+    }> = [];
+    const allDuplicateItemIds: string[] = [];
 
+    for (const mergeEventId of input.mergeEventIds) {
+      const mergeEvent = mergeEventMap.get(mergeEventId);
       if (!mergeEvent) continue;
 
       const mergedItemIds = new Set(
@@ -993,35 +1004,33 @@ export async function mergeSemanticEvents(
       if (keepEvent.primaryItemId) mergedItemIds.delete(keepEvent.primaryItemId);
 
       for (const itemId of mergedItemIds) {
-        await tx.eventItem.upsert({
-          where: {
-            eventId_itemId: {
-              eventId: keepEvent.id,
-              itemId,
-            },
-          },
-          update: {
-            mergeReason: input.reason,
-            role: "SECONDARY",
-          },
-          create: {
-            eventId: keepEvent.id,
-            itemId,
-            role: "SECONDARY",
-            mergeReason: input.reason,
-          },
+        eventItemCreates.push({
+          eventId: keepEvent.id,
+          itemId,
+          role: "SECONDARY",
+          mergeReason: input.reason,
         });
+        allDuplicateItemIds.push(itemId);
       }
+    }
 
-      if (mergedItemIds.size > 0) {
-        await tx.item.updateMany({
-          where: { id: { in: Array.from(mergedItemIds) } },
-          data: { status: "DUPLICATE" },
-        });
-      }
+    if (eventItemCreates.length > 0) {
+      await tx.eventItem.createMany({
+        data: eventItemCreates,
+        skipDuplicates: true,
+      });
+    }
 
-      await tx.intelligenceEvent.update({
-        where: { id: mergeEventId },
+    if (allDuplicateItemIds.length > 0) {
+      await tx.item.updateMany({
+        where: { id: { in: allDuplicateItemIds } },
+        data: { status: "DUPLICATE" },
+      });
+    }
+
+    if (input.mergeEventIds.length > 0) {
+      await tx.intelligenceEvent.updateMany({
+        where: { id: { in: input.mergeEventIds } },
         data: {
           eventHash: null,
           status: "ARCHIVED",

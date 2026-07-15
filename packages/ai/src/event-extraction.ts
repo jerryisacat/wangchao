@@ -240,19 +240,19 @@ export function fallbackEventExtraction(
   input: EventExtractionInput,
 ): EventExtractionResult {
   return {
-    category: "general",
+    category: "noise",
     entities: [],
     followUpSuggestion: "",
-    importanceExplanation: "基于主题关键词匹配的候选事件，建议人工确认。",
-    isRelevant: true,
+    importanceExplanation: "AI 提取不可用，无法评估相关性，默认标记为不相关。",
+    isRelevant: false,
     matchedKeywords: [],
     raw: {
       mode: "deterministic-fallback",
       reason: "AI extraction unavailable or failed, using rules-based fallback.",
     },
-    relevanceScore: 65,
-    summary: input.item.summary?.trim() || input.item.title,
-    title: input.item.title.trim(),
+    relevanceScore: 0,
+    summary: "",
+    title: "",
   };
 }
 

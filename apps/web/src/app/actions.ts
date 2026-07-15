@@ -2472,6 +2472,7 @@ export async function recordEnhancedFeedbackAction(
     const {
       assertMembershipRole,
       getPrismaClient,
+      recordCategoryPreferenceFeedback,
       recordEnhancedFeedback,
     } = await import("@wangchao/db");
     const { getSessionWorkspace } = await import("@/lib/session");
@@ -2506,6 +2507,15 @@ export async function recordEnhancedFeedbackAction(
         value: valueMap[kind],
       },
     );
+
+    if ((kind === "SCORE_UP" || kind === "SCORE_DOWN") && eventId) {
+      await recordCategoryPreferenceFeedback(prisma, {
+        action: kind === "SCORE_UP" ? "up" : "down",
+        eventId,
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      });
+    }
   } catch (error) {
     logActionError("recordEnhancedFeedbackAction", error);
     message = toUserActionError(error);
@@ -2726,12 +2736,14 @@ export async function toggleSelfHostedModeAction(
       ["OWNER", "ADMIN"],
     );
 
-    await setSelfHostedMode(prisma, { organizationId: workspace.organizationId }, enabled);
+    const { previousValue, newValue } = await setSelfHostedMode(prisma, { organizationId: workspace.organizationId }, enabled);
 
     await recordUsageEvent(prisma, {
       metadata: {
-        action: enabled ? "enable-self-hosted" : "disable-self-hosted",
-        source: "admin-settings",
+        action: "toggle_self_hosted",
+        previousValue,
+        newValue,
+        organizationId: workspace.organizationId,
       },
       organizationId: workspace.organizationId,
       quantity: 1,

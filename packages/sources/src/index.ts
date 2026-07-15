@@ -97,12 +97,6 @@ export const rssSourceAdapter: SourceAdapterDescriptor = {
 };
 
 const DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024;
-function decodeNumericEntities(value: string): string {
-  return value
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(Number.parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number.parseInt(dec, 10)));
-}
-
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
@@ -110,8 +104,7 @@ const xmlParser = new XMLParser({
   parseTagValue: false,
   trimValues: true,
   processEntities: true,
-  tagValueProcessor: (_name, value) => (typeof value === "string" ? decodeNumericEntities(value) : value),
-  isArray: (name) => ["item", "entry"].includes(name),
+  isArray: (name: string) => ["item", "entry"].includes(name),
 });
 
 export async function fetchRssFeed(

@@ -51,7 +51,9 @@ export async function createSearchProvider(
     const provider = creds.search.provider ?? "brave";
     const providerType = provider as SearchProviderType;
     if (providerType === "searxng") {
-      return createSearchProviderFromSources("searxng", { baseUrl: creds.search.apiKey }) as SearchProvider;
+      return creds.search.baseUrl
+        ? createSearchProviderFromSources("searxng", { baseUrl: creds.search.baseUrl }) as SearchProvider
+        : null;
     }
     return createSearchProviderFromSources(providerType, { apiKey: creds.search.apiKey }) as SearchProvider;
   }

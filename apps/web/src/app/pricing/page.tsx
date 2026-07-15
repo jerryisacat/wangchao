@@ -1,4 +1,4 @@
-import { Check, Sparkles } from "lucide-react";
+import { Check, KeyRound, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,9 +15,10 @@ interface PlanTier {
   period: string;
   features: string[];
   plan: Plan;
+  requiresByok: boolean;
 }
 
-function buildPlanTiers(): PlanTier[] {
+function buildPlanTiers(hasByok: boolean): PlanTier[] {
   return PLAN_ORDER.filter((plan) => plan !== "FREE").map((plan) => {
     const entry = PLAN_REGISTRY[plan];
     const isYearly = entry.pricing.yearlyPriceUsd !== null;
@@ -42,35 +43,47 @@ function buildPlanTiers(): PlanTier[] {
       period,
       features,
       plan,
+      requiresByok: plan === "PLUS" && !hasByok,
     };
   });
 }
 
-const PLAN_TIERS: PlanTier[] = [
-  {
-    name: "Free",
-    label: "免费",
-    period: "永久免费",
-    price: "$0",
-    plan: "FREE",
-    features: [
-      "1 个主题",
-      "3 个信源",
-      "每天 100 次官方 AI 调用",
-      "每月 10 次导出",
-      "官方 AI 来源",
-    ],
-  },
-  ...buildPlanTiers(),
-];
-
-export default async function PricingPage() {
+export default async function PricingPage({
+  searchParams,
+}: {
+  searchParams?:
+    | Promise<Record<string, string | string[] | undefined>>
+    | Record<string, string | string[] | undefined>;
+}) {
   const { getSessionWorkspace } = await import("@/lib/session");
-  const { getPrismaClient } = await import(
+  const { getByokCredentialView, getPrismaClient } = await import(
     "@wangchao/db"
   );
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
+
+  const byokCredential = await getByokCredentialView(prisma, {
+    organizationId: workspace.organizationId,
+  });
+
+  const PLAN_TIERS: PlanTier[] = [
+    {
+      name: "Free",
+      label: "免费",
+      period: "永久免费",
+      price: "$0",
+      plan: "FREE",
+      features: [
+        "1 个主题",
+        "3 个信源",
+        "每天 100 次官方 AI 调用",
+        "每月 10 次导出",
+        "官方 AI 来源",
+      ],
+      requiresByok: false,
+    },
+    ...buildPlanTiers(byokCredential.hasKey),
+  ];
 
   const subscription = await prisma.subscription.findUnique({
     where: { organizationId: workspace.organizationId },
@@ -84,6 +97,9 @@ export default async function PricingPage() {
   const currentPlan = subscription?.plan ?? "FREE";
   const isSelfHosted = subscription?.isSelfHosted ?? false;
 
+  const resolvedSearchParams = await Promise.resolve(searchParams ?? {});
+  const notice = readParam(resolvedSearchParams.notice);
+
   return (
     <>
       <PageHeader eyebrow="订阅" title="定价方案">
@@ -91,6 +107,13 @@ export default async function PricingPage() {
           <Link href="/">← 返回情报流</Link>
         </Button>
       </PageHeader>
+
+      {notice ? (
+        <div className="status-banner status-banner-notice" role="status">
+          <Check aria-hidden="true" size={16} />
+          <span>{notice}</span>
+        </div>
+      ) : null}
 
       {isSelfHosted ? (
         <Card variant="work">
@@ -164,6 +187,23 @@ export default async function PricingPage() {
                     >
                       <Link href="/usage">查看用量</Link>
                     </Button>
+                  ) : tier.requiresByok ? (
+                    <div className="mt-4">
+                      <Button
+                        asChild
+                        className="w-full"
+                        size="sm"
+                        variant="secondary"
+                      >
+                        <Link href="/admin/settings?byok_required=true">
+                          <KeyRound aria-hidden="true" size={14} />
+                          配置 BYOK 后升级
+                        </Link>
+                      </Button>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        Plus 计划需先配置 BYOK 才能升级。
+                      </p>
+                    </div>
                   ) : (
                     <form
                       action="/api/billing/ccpayment/create-invoice"
@@ -182,11 +222,16 @@ export default async function PricingPage() {
                     </form>
                   )}
                 </CardContent>
-              </Card>
+               </Card>
             );
           })}
         </div>
       )}
     </>
   );
+}
+
+function readParam(value: string | string[] | undefined): string {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  return typeof rawValue === "string" ? rawValue.trim().slice(0, 80) : "";
 }

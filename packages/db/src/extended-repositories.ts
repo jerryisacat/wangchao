@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import { Prisma, type PrismaClient } from "@prisma/client";
 import {
   decryptCredential,
   encryptCredential,
@@ -265,7 +265,7 @@ export async function markInstantPushFailed(
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
-  return Boolean(error && typeof error === "object" && "code" in error && (error as { code?: unknown }).code === "P2002");
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002";
 }
 
 export async function getTelegramCredentialView(
@@ -516,7 +516,7 @@ export async function createDeliveryLog(
       errorMessage: input.errorMessage ?? null,
       errorCode: input.errorCode ?? null,
       sentAt: input.status === "SENT" ? new Date() : null,
-      metadata: input.metadata as never,
+      metadata: input.metadata as Prisma.InputJsonValue,
     },
   });
 
@@ -542,7 +542,7 @@ export async function updateDeliveryLog(
       errorMessage: input.errorMessage,
       errorCode: input.errorCode,
       sentAt: input.status === "SENT" ? new Date() : undefined,
-      metadata: input.metadata as never,
+      metadata: input.metadata as Prisma.InputJsonValue,
     },
   });
 }
@@ -724,7 +724,7 @@ export async function completeReport(
       sourceIds: input.sourceIds,
       coverageNote: input.coverageNote,
       generatedAt: new Date(),
-      metadata: input.metadata as never,
+      metadata: input.metadata as Prisma.InputJsonValue,
     },
   });
 }
@@ -915,7 +915,7 @@ export async function updatePreferenceMemoryWeight(
   await prisma.preferenceMemory.update({
     where: { id: existing.id },
     data: {
-      value: { signalCount: newSignalCount, weight: clamped } as never,
+      value: { signalCount: newSignalCount, weight: clamped } as Prisma.InputJsonValue,
       explanation,
       confidence: Math.min(0.95, 0.35 + newSignalCount * 0.12),
     },
@@ -1180,12 +1180,19 @@ export async function setSelfHostedMode(
   prisma: PrismaClient,
   scope: TenantScope,
   enabled: boolean,
-): Promise<void> {
+): Promise<{ previousValue: boolean | null; newValue: boolean }> {
+  const existing = await prisma.subscription.findUnique({
+    where: { organizationId: scope.organizationId },
+    select: { isSelfHosted: true },
+  });
+
   await prisma.subscription.upsert({
     where: { organizationId: scope.organizationId },
     update: { isSelfHosted: enabled },
     create: { organizationId: scope.organizationId, isSelfHosted: enabled },
   });
+
+  return { previousValue: existing?.isSelfHosted ?? null, newValue: enabled };
 }
 
 export async function getTodayAiCallCount(
@@ -1416,7 +1423,7 @@ export async function createPaymentInvoice(
     data: {
       organizationId: input.organizationId,
       plan: input.plan,
-      amount: input.amount as never,
+      amount: new Prisma.Decimal(input.amount),
       currency: input.currency ?? "USD",
       status: "PENDING",
       provider: input.provider ?? "ccpayment",
@@ -1459,12 +1466,14 @@ export async function updatePaymentInvoiceStatus(
       ? mergeMetadata(existing?.metadata, metadata)
       : undefined;
 
+  const data: Prisma.PaymentInvoiceUpdateInput = { status };
+  if (mergedMetadata !== undefined) {
+    data.metadata = mergedMetadata as Prisma.InputJsonValue;
+  }
+
   await prisma.paymentInvoice.update({
     where: { id: invoiceId },
-    data: {
-      status,
-      ...(mergedMetadata !== undefined ? { metadata: mergedMetadata as never } : {}),
-    },
+    data,
   });
 }
 

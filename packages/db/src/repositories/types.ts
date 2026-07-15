@@ -446,6 +446,7 @@ export interface DecryptedAiCredential {
 
 export interface DecryptedSearchCredential {
   apiKey: string;
+  baseUrl: string | null;
   provider: string;
 }
 

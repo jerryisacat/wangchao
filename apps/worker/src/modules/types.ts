@@ -3,8 +3,9 @@ export type WorkerCycleType = "fetch" | "source-discovery" | "instant-push" | "r
 export interface WorkerFetchCycleResult {
   analyzedItems: number;
   createdOrUpdatedEvents: number;
-  fetchedSources: number;
   failedSources: number;
+  failedSubCycles: string[];
+  fetchedSources: number;
   filteredItems: number;
   generatedBriefings: number;
   generatedMonthlyBriefings: number;

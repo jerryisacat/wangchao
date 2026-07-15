@@ -497,6 +497,7 @@ export async function getDecryptedCredentials(
       const apiKey = decryptCredential(searchCred.encryptedKey, encryptionKey);
       search = {
         apiKey,
+        baseUrl: searchCred.baseUrl ?? null,
         provider: searchCred.provider ?? "brave",
       };
     } catch {
