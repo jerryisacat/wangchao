@@ -1,5 +1,18 @@
 ## 2026-07-15
 
+### Batch: Module C Sources 抓取可靠性 (#103, #105-107, #110-111)
+
+- Cause: RSS 解析器纯正则不安全、无 BOM 处理、无 body size 上限、provider 无 throttle、arXiv HTTP
+- Changed:
+  - **#103**: 引入 fast-xml-parser 替代正则 RSS 解析；新增 processEntities + tagValueProcessor 解码数字实体引用；parseRssFeed 使用 XMLParser.parse()
+  - **#105**: 新增 stripBom() 在 parseRssFeed/fetchRssFeed 入口统一剥离 BOM
+  - **#104**: fetchRssFeed/validateRssFeedUrl/fetchArticleContent 加 Content-Length 预判和 maxBodyBytes 参数（默认 10MB）
+  - **#106**: discovery.ts 新增 Throttle 类 + withThrottle + withBodyLimit；四个 provider 全部用 withThrottle+withBodyLimit 包装 fetchImpl；arXiv adapter 改用 HTTPS
+  - **#107**: 新增 AdapterError (provider, status, cause)；arXiv/GitHub adapter 改用结构化错误；GitHub 加 X-RateLimit-Remaining 检查；arXiv 复用 parseRssFeed；消除 adapters.ts 与 index.ts 间 5 个重复工具函数
+  - **#110/#111**: GitHub repo 参数 encodeURIComponent；fixture 更新为正确 Atom author/author 格式
+- Files: 修改 packages/sources/src/{index.ts,adapters.ts,discovery.ts,parser.fixtures.ts,adapters.fixtures.ts,package.json}；新增 API AdapterError
+- Verification: typecheck ✅ (7/7), lint ✅ (7/7), test ✅ (7/7)
+
 ### Batch: Module B 商业化+配额 (#33, #117-119, #125-126, #131, #134)
 
 - Cause: PLAN_LIMITS 四处独立定义、所有 web actions 绕过 quota、CCPayment webhook 全表扫、Stripe stub 状态码错误、Subscription 缺 billingInterval

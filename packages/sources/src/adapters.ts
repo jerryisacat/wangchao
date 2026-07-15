@@ -1,13 +1,30 @@
-import type { NormalizedSourceItem } from "./index.js";
+import {
+  parseRssFeed,
+  stripBom,
+  type NormalizedSourceItem,
+} from "./index.js";
+
+export class AdapterError extends Error {
+  constructor(
+    message: string,
+    readonly provider: string,
+    readonly status?: number,
+    override readonly cause?: unknown,
+  ) {
+    super(message);
+    this.name = "AdapterError";
+  }
+}
 
 export interface ArxivFetchOptions {
   fetchImpl?: typeof fetch;
   maxResults?: number;
   timeoutMs?: number;
+  maxBodyBytes?: number;
 }
 
-const ARXIV_API_URL = "http://export.arxiv.org/api/query";
-const ARXIV_NAMESPACE = "http://www.w3.org/2005/Atom";
+const ARXIV_API_URL = "https://export.arxiv.org/api/query";
+const DEFAULT_MAX_BODY_BYTES = 10 * 1024 * 1024;
 
 export async function fetchArxivPapers(
   searchQuery: string,
@@ -16,6 +33,7 @@ export async function fetchArxivPapers(
   const fetchImpl = options.fetchImpl ?? fetch;
   const maxResults = options.maxResults ?? 20;
   const timeoutMs = options.timeoutMs ?? 15_000;
+  const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -33,68 +51,23 @@ export async function fetchArxivPapers(
     });
 
     if (!response.ok) {
-      throw new Error(`arXiv API failed with HTTP ${response.status}`);
+      throw new AdapterError(`arXiv API failed with HTTP ${response.status}`, "arxiv", response.status);
     }
 
-    return parseArxivFeed(await response.text());
+    const contentLength = response.headers.get("content-length");
+    if (contentLength && Number.parseInt(contentLength, 10) > maxBodyBytes) {
+      throw new AdapterError(`arXiv body exceeds max size (${contentLength} bytes)`, "arxiv", 413);
+    }
+
+    const raw = await response.text();
+    const items = parseRssFeed(stripBom(raw));
+    return items.map((item) => ({
+      ...item,
+      rawMetadata: { ...item.rawMetadata, source: "arxiv" },
+    }));
   } finally {
     clearTimeout(timeout);
   }
-}
-
-function parseArxivFeed(xml: string): NormalizedSourceItem[] {
-  const entries = [...xml.matchAll(/<entry\b[\s\S]*?<\/entry>/gi)].map((m) => m[0]);
-
-  return entries
-    .map(parseArxivEntry)
-    .filter((item): item is NormalizedSourceItem => item !== null);
-}
-
-function parseArxivEntry(entryXml: string): NormalizedSourceItem | null {
-  const title = firstAtomText(entryXml, "title");
-  const url = firstArxivLink(entryXml);
-
-  if (!title || !url) return null;
-
-  const summary = firstAtomText(entryXml, "summary");
-  const author = firstAtomText(entryXml, "name");
-  const publishedText = firstAtomText(entryXml, "published");
-  const updatedText = firstAtomText(entryXml, "updated");
-  const publishedAt = parseDate(publishedText ?? updatedText);
-  const canonicalUrl = canonicalizeItemUrl(url);
-
-  return {
-    title: title.replace(/\s+/g, " ").trim(),
-    url,
-    canonicalUrl,
-    summary: summary?.replace(/\s+/g, " ").trim(),
-    author,
-    publishedAt,
-    contentHash: createContentHash(`${title}\n${canonicalUrl}\n${summary ?? ""}`),
-    rawContent: summary?.replace(/\s+/g, " ").trim().slice(0, 20_000),
-    rawMetadata: {
-      publishedText,
-      source: "arxiv",
-      updatedText,
-    },
-  };
-}
-
-function firstAtomText(xml: string, tagName: string): string | undefined {
-  const match = xml.match(
-    new RegExp(`<${tagName}\\b[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "i"),
-  );
-  return match?.[1] ? decodeXml(stripCdata(match[1]).trim()) : undefined;
-}
-
-function firstArxivLink(xml: string): string | undefined {
-  const alternate = xml.match(
-    /<link\b[^>]*\brel=["']alternate["'][^>]*\bhref=["']([^"']+)["'][^>]*>/i,
-  )?.[1];
-  if (alternate) return decodeXml(alternate.trim());
-
-  const anyLink = xml.match(/<link\b[^>]*\bhref=["']([^"']+)["'][^>]*>/i)?.[1];
-  return anyLink ? decodeXml(anyLink.trim()) : undefined;
 }
 
 export interface GitHubReleasesFetchOptions {
@@ -117,7 +90,7 @@ export async function fetchGitHubReleases(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const url = `${GITHUB_API_URL}/repos/${repo}/releases?per_page=${maxResults}`;
+    const url = `${GITHUB_API_URL}/repos/${encodeURIComponent(repo)}/releases?per_page=${maxResults}`;
     const headers: Record<string, string> = {
       accept: "application/vnd.github+json",
       "user-agent": "WangchaoSourceDiscovery/1.0",
@@ -132,7 +105,12 @@ export async function fetchGitHubReleases(
     });
 
     if (!response.ok) {
-      throw new Error(`GitHub API failed with HTTP ${response.status}`);
+      throw new AdapterError(`GitHub API failed with HTTP ${response.status}`, "github", response.status);
+    }
+
+    const rateLimitRemaining = response.headers.get("x-ratelimit-remaining");
+    if (rateLimitRemaining && Number.parseInt(rateLimitRemaining, 10) === 0) {
+      throw new AdapterError("GitHub API rate limit exceeded", "github", 403);
     }
 
     const releases = (await response.json()) as Array<{
@@ -146,17 +124,20 @@ export async function fetchGitHubReleases(
 
     return releases
       .map((release): NormalizedSourceItem | null => {
-        const url = release.html_url ?? "";
+        const itemUrl = release.html_url ?? "";
         const title = release.name ?? release.tag_name ?? "";
-        if (!title || !url) return null;
+        if (!title || !itemUrl) return null;
 
-        const canonicalUrl = canonicalizeItemUrl(url);
+        const parsed = new URL(itemUrl);
+        parsed.hash = "";
+        const canonicalUrl = parsed.toString();
         const summary = release.body?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-        const publishedAt = parseDate(release.published_at);
+        const timestamp = Date.parse(release.published_at ?? "");
+        const publishedAt = Number.isNaN(timestamp) ? undefined : new Date(timestamp);
 
         return {
           title,
-          url,
+          url: itemUrl,
           canonicalUrl,
           summary,
           author: repo,
@@ -176,41 +157,6 @@ export async function fetchGitHubReleases(
   }
 }
 
-function stripCdata(value: string): string {
-  return value.replace(/^<!\[CDATA\[/, "").replace(/\]\]>$/, "");
-}
-
-function decodeXml(value: string): string {
-  return value
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) =>
-      String.fromCodePoint(Number.parseInt(hex, 16)),
-    )
-    .replace(/&#(\d+);/g, (_, dec) =>
-      String.fromCodePoint(Number.parseInt(dec, 10)),
-    )
-    .replaceAll("&amp;", "&")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&apos;", "'");
-}
-
-function parseDate(value: string | undefined): Date | undefined {
-  if (!value) return undefined;
-  const timestamp = Date.parse(value);
-  return Number.isNaN(timestamp) ? undefined : new Date(timestamp);
-}
-
-function canonicalizeItemUrl(url: string): string {
-  const parsed = new URL(url);
-  parsed.hash = "";
-  parsed.hostname = parsed.hostname.toLowerCase();
-  if (parsed.pathname !== "/") {
-    parsed.pathname = parsed.pathname.replace(/\/+$/, "");
-  }
-  return parsed.toString();
-}
-
 function createContentHash(value: string): string {
   let hash = 0x811c9dc5;
   for (let index = 0; index < value.length; index += 1) {
@@ -220,4 +166,4 @@ function createContentHash(value: string): string {
   return `fnv1a:${(hash >>> 0).toString(16).padStart(8, "0")}`;
 }
 
-export { ARXIV_NAMESPACE };
+export {};

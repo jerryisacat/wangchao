@@ -15,6 +15,44 @@ export interface SearchSourcesOptions {
   fetchImpl?: typeof fetch;
 }
 
+const SEARCH_MAX_BODY_BYTES = 2 * 1024 * 1024;
+
+class Throttle {
+  private lastRun = 0;
+  private readonly minIntervalMs: number;
+
+  constructor(requestsPerSecond: number) {
+    this.minIntervalMs = 1000 / requestsPerSecond;
+  }
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    const now = Date.now();
+    const waitMs = Math.max(0, this.minIntervalMs - (now - this.lastRun));
+    if (waitMs > 0) {
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+    this.lastRun = Date.now();
+    return fn();
+  }
+}
+
+const searchThrottle = new Throttle(2);
+
+function withThrottle(fetchImpl: typeof fetch): typeof fetch {
+  return (input, init) => searchThrottle.run(() => fetchImpl(input as string | URL, init));
+}
+
+function withBodyLimit(fetchImpl: typeof fetch, maxBodyBytes: number = SEARCH_MAX_BODY_BYTES): typeof fetch {
+  return async (input, init) => {
+    const response = await fetchImpl(input as string | URL, init);
+    const contentLength = response.headers.get("content-length");
+    if (contentLength && Number.parseInt(contentLength, 10) > maxBodyBytes) {
+      throw new Error(`Response body exceeds max size (${contentLength} bytes)`);
+    }
+    return response;
+  };
+}
+
 export interface BraveSearchProviderOptions {
   apiKey: string;
   baseUrl?: string;
@@ -77,7 +115,8 @@ export class BraveSearchProvider implements SearchProvider {
   constructor(options: BraveSearchProviderOptions) {
     this.apiKey = options.apiKey;
     this.baseUrl = options.baseUrl ?? DEFAULT_BRAVE_SEARCH_URL;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    const baseFetch = options.fetchImpl ?? fetch;
+    this.fetchImpl = withBodyLimit(withThrottle(baseFetch));
   }
 
   async searchSources(
@@ -128,7 +167,8 @@ export class TavilySearchProvider implements SearchProvider {
   constructor(options: TavilySearchProviderOptions) {
     this.apiKey = options.apiKey;
     this.baseUrl = options.baseUrl ?? DEFAULT_TAVILY_SEARCH_URL;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    const baseFetch = options.fetchImpl ?? fetch;
+    this.fetchImpl = withBodyLimit(withThrottle(baseFetch));
   }
 
   async searchSources(
@@ -180,7 +220,8 @@ export class SerperSearchProvider implements SearchProvider {
   constructor(options: SerperSearchProviderOptions) {
     this.apiKey = options.apiKey;
     this.baseUrl = options.baseUrl ?? DEFAULT_SERPER_SEARCH_URL;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    const baseFetch = options.fetchImpl ?? fetch;
+    this.fetchImpl = withBodyLimit(withThrottle(baseFetch));
   }
 
   async searchSources(
@@ -228,7 +269,8 @@ export class SearXngSearchProvider implements SearchProvider {
 
   constructor(options: SearXngSearchProviderOptions) {
     this.baseUrl = options.baseUrl;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    const baseFetch = options.fetchImpl ?? fetch;
+    this.fetchImpl = withBodyLimit(withThrottle(baseFetch));
   }
 
   async searchSources(

@@ -16,7 +16,7 @@ function assertArxivPaperFetch(): Promise<void> {
     <link href="http://arxiv.org/abs/1234.5678v1" rel="alternate" type="text/html"/>
     <id>http://arxiv.org/abs/1234.5678v1</id>
     <summary>This is the abstract.</summary>
-    <name>Author Name</name>
+    <author><name>Author Name</name></author>
     <published>2024-01-15T00:00:00Z</published>
     <updated>2024-01-16T00:00:00Z</updated>
   </entry>
