@@ -526,12 +526,11 @@ async function createCandidateSource(formData: FormData) {
 }
 
 export async function runSourceDiscoveryAction(): Promise<void> {
-  let message = "信源发现已完成。";
+  let message = "信源发现任务已提交，将在后台执行。";
   let type: ActionRedirectType = "notice";
 
   try {
-    const result = await runSourceDiscoveryFromDashboard();
-    message = `信源发现已完成，新增或更新 ${result.candidateSourcesWritten} 个候选源，观察到 ${result.existingSourcesObserved} 个已有源。`;
+    await runSourceDiscoveryFromDashboard();
   } catch (error) {
     logActionError("runSourceDiscoveryAction", error);
     message = toUserActionError(error);
@@ -549,10 +548,10 @@ async function runSourceDiscoveryFromDashboard() {
 
   const {
     assertMembershipRole,
+    createTaskRun,
     getPrismaClient,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
-  const { runSourceDiscoveryCycle } = await import("@wangchao/worker");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -565,38 +564,22 @@ async function runSourceDiscoveryFromDashboard() {
     ["OWNER", "ADMIN"],
   );
 
-  return runSourceDiscoveryCycle({
-    mode: "manual",
-    userId: workspace.userId,
+  await createTaskRun(prisma, {
+    organizationId: workspace.organizationId,
+    type: "SOURCE_DISCOVERY",
+    input: { mode: "manual", userId: workspace.userId },
   });
+
+  return { candidateSourcesWritten: 0, existingSourcesObserved: 0, enqueued: true };
 }
 
 export async function runFetchCycleAction(): Promise<void> {
-  let message = "手动抓取已完成。";
+  let message = "信源发现任务已提交，将在后台执行。";
   let type: ActionRedirectType = "notice";
 
   try {
-    const result = await runFetchCycleFromDashboard();
-    if (result.fetchedSources > 0 || result.failedSources > 0) {
-      const parts: string[] = [];
-      if (result.fetchedSources > 0) {
-        parts.push(`抓取 ${result.fetchedSources} 个信源`);
-      }
-      if (result.insertedOrUpdatedItems > 0) {
-        parts.push(`收录 ${result.insertedOrUpdatedItems} 条新信息`);
-      }
-      if (result.createdOrUpdatedEvents > 0) {
-        parts.push(`生成 ${result.createdOrUpdatedEvents} 个情报事件`);
-      }
-      if (result.failedSources > 0) {
-        parts.push(
-          `${result.failedSources} 个信源抓取失败，可前往信源管理查看详情`,
-        );
-      }
-      message = `刷新完成：${parts.join("，")}。`;
-    } else {
-      message = "刷新完成，暂无新内容。";
-    }
+    await runFetchCycleFromDashboard();
+    message = "手动抓取任务已提交，将在后台执行。";
   } catch (error) {
     logActionError("runFetchCycleAction", error);
     message = toUserActionError(error);
@@ -614,10 +597,10 @@ async function runFetchCycleFromDashboard() {
 
   const {
     assertMembershipRole,
+    createTaskRun,
     getPrismaClient,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
-  const { runFetchCycle } = await import("@wangchao/worker");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -630,7 +613,11 @@ async function runFetchCycleFromDashboard() {
     ["OWNER", "ADMIN", "MEMBER"],
   );
 
-  return runFetchCycle();
+  await createTaskRun(prisma, {
+    organizationId: workspace.organizationId,
+    type: "SOURCE_FETCH",
+    input: { mode: "manual", userId: workspace.userId },
+  });
 }
 
 export async function updateSourceGovernanceAction(
@@ -2724,6 +2711,7 @@ export async function toggleSelfHostedModeAction(
       assertMembershipRole,
       getPrismaClient,
       recordUsageEvent,
+      setSelfHostedMode,
     } = await import("@wangchao/db");
     const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
@@ -2738,14 +2726,7 @@ export async function toggleSelfHostedModeAction(
       ["OWNER", "ADMIN"],
     );
 
-    await prisma.subscription.upsert({
-      where: { organizationId: workspace.organizationId },
-      update: { isSelfHosted: enabled },
-      create: {
-        organizationId: workspace.organizationId,
-        isSelfHosted: enabled,
-      },
-    });
+    await setSelfHostedMode(prisma, { organizationId: workspace.organizationId }, enabled);
 
     await recordUsageEvent(prisma, {
       metadata: {

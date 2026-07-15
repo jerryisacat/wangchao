@@ -64,7 +64,7 @@ Postgres
 | 包管理 | `pnpm` workspace |
 | Web app | `apps/web`，Next.js App Router，提供顶部导航产品壳、首页未读情报流、创建主题、信源管理、简报、已收藏、偏好记忆、`/api/health`、loading/error 状态和 shadcn/Radix/Tailwind v4 组件链。按 `FRONTEND.md` 重构为 Kinetic Intelligence 风格。 |
 | Worker | `apps/worker`，Node.js TypeScript worker，支持 fetch、source discovery、instant push cycle 与 `--health` 健康检查 |
-| 共享包 | `packages/core`, `packages/ai`, `packages/db`, `packages/sources`, `packages/ui` |
+| 共享包 | `packages/core`, `packages/ai`, `packages/db`, `packages/sources` |
 | DB 基础 | `packages/db`，Prisma/Postgres schema、migration、seed、lazy client、tenant/member role guard、usage event 与查询 helper |
 | 情报管线 | `packages/core` + `apps/worker`，提供可解释 relevance/noise、event draft、dedupe hash、gravity ranking、feedback delta 和 preference ranking |
 | 验证命令 | `CI=true pnpm typecheck`, `CI=true pnpm build`, `CI=true pnpm lint`, `CI=true pnpm test` |
@@ -206,7 +206,6 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 | `packages/core` | 领域逻辑：topic profile、relevance、event draft、gravity ranking、preference、Markdown | [docs/L3-modules.md#packagescore](L3-modules.md#packagescore) |
 | `packages/ai` | OpenAI-compatible adapter、parser、source recommendation | [docs/L3-modules.md#packagesai](L3-modules.md#packagesai) |
 | `packages/sources` | RSS/Web source adapter、search provider、discovery | [docs/L3-modules.md#packagessources](L3-modules.md#packagessources) |
-| `packages/ui` | 共享 UI 包（预留，当前空 scaffold） | [docs/L3-modules.md#packagesui](L3-modules.md#packagesui) |
 | `apps/web` | Next.js App Router 产品界面 | [docs/L3-modules.md#appsweb](L3-modules.md#appsweb) |
 | `apps/worker` | Node.js 后台 worker | [docs/L3-modules.md#appsworker](L3-modules.md#appsworker) |
 

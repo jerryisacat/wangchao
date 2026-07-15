@@ -1,5 +1,38 @@
 ## 2026-07-15
 
+### Batch: Module D 数据层+架构 (#113, #115-116, #144)
+
+- Cause: actions 绕过 repository、web 直接 import worker 执行长任务、packages/ui 空壳
+- Changed:
+  - **#115**: 审计 14 个 `prisma.organizationCredential` 引用全部有效（migration 0013 已建表），问题不存在
+  - **#113**: `toggleSelfHostedModeAction` 改用 repository helper `setSelfHostedMode`，消除直接 `prisma.subscription.upsert`
+  - **#116 + #144**: `runFetchCycleAction`/`runSourceDiscoveryAction` 改为 `createTaskRun(type=SOURCE_FETCH/SOURCE_DISCOVERY, PENDING)` 入队，由 worker cron 异步处理；移除 `@wangchao/worker` 从 apps/web/package.json
+  - **#144**: 删除空壳包 `packages/ui`；更新 CODEGUIDE.md 仓库布局表和 L3-modules.md
+- Files: 修改 apps/web/src/app/actions.ts, apps/web/package.json; 删除 packages/ui; 修改 CODEGUIDE.md, docs/L3-modules.md
+- Verification: typecheck ✅ (6/6), lint ✅ (6/6), test ✅ (6/6)
+
+### Docs: 规划 Free 计划广告策略（AdSense，provider-agnostic）
+
+- Cause: 用户希望针对 Free 用户在使用过程中插入广告作为变现补充和付费转化杠杆，经过讨论确定：暂定 Google AdSense 但实现做 provider-agnostic 抽象；自用模式默认展示广告但可在后台深层折叠区关闭；只做规划不立即实施
+- Changed:
+  - `docs/business-model.md` §3.1 计划总览表新增「广告展示」行
+  - `docs/business-model.md` §3.2 Free 计划补充广告说明
+  - `docs/business-model.md` §3.5 自用模式补充广告默认展示行为
+  - `docs/business-model.md` §5.2 Subscription 表新增 `showAdsInSelfHosted` 字段
+  - `docs/business-model.md` §8 前端页面表补充自用模式广告开关 UI 说明
+  - `docs/business-model.md` §11 待讨论事项新增广告位和 provider 迁移两项
+  - `docs/business-model.md` §13 实施阶段新增 Step 7（广告策略落地）和 Step 8（含 AdSense 审核）
+  - `docs/business-model.md` 新增 §14「Free 计划广告策略」完整章节（目标定位、Plan 映射、服务端判定、AdProvider 抽象、数据模型、广告位规划、前置依赖、自用模式开关 UI）
+  - `SPEC.md` §6.0 补充广告策略引用说明
+- Files: docs/business-model.md, SPEC.md
+- Verification: 纯文档变更，无需 typecheck/lint/test/build
+- Notes / Risk:
+  - 本次为规划性文档变更，不涉及代码和数据库 migration
+  - `showAdsInSelfHosted` 字段尚不在 Prisma schema 中，待 Phase 12 商业化基础落地时随 migration 一并加入
+  - AdSense 对工具型/应用型站点审核风险较高，实施前需准备公开内容页作为审核入口
+  - 广告收益预期偏低（个位数美元/月级别），主要价值是付费转化杠杆而非收入
+  - 不触发 Railway 自动部署（无代码变更）
+
 ### Batch: Module C Sources 抓取可靠性 (#103, #105-107, #110-111)
 
 - Cause: RSS 解析器纯正则不安全、无 BOM 处理、无 body size 上限、provider 无 throttle、arXiv HTTP
