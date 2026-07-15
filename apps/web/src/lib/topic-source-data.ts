@@ -3,6 +3,10 @@ import type { DashboardEventRecord } from "@wangchao/db";
 
 export type DataMode = "database" | "error";
 
+function clampPage(requestedPage: number): number {
+  return Math.max(1, Math.min(10_000, Math.floor(requestedPage)));
+}
+
 export interface SourceSummary {
   id: string;
   name: string;
@@ -391,10 +395,11 @@ export async function getBriefingsPage(
     await import("@wangchao/db");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
+  const page = clampPage(requestedPage);
   const result = await listBriefingsPage(
     prisma,
     { organizationId: workspace.organizationId, period: periodFilter },
-    requestedPage,
+    page,
     pageSize,
   );
 
@@ -432,13 +437,14 @@ export async function getSavedEventsPage(
   } = await import("@wangchao/db");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
+  const page = clampPage(requestedPage);
   const result = await listSavedDashboardEvents(
     prisma,
     {
       organizationId: workspace.organizationId,
       userId: workspace.userId,
     },
-    requestedPage,
+    page,
     pageSize,
   );
 
@@ -564,10 +570,11 @@ export async function getTopicTimeline(
     await import("@wangchao/db");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
+  const page = clampPage(requestedPage);
   const result = await listTimelineEvents(
     prisma,
     { organizationId: workspace.organizationId, topicId },
-    requestedPage,
+    page,
     requestedPageSize,
   );
 

@@ -1,5 +1,21 @@
 ## 2026-07-15
 
+### Chore: 代码质量批量小修 + 文档合并关闭 (#121, #122, #135, #142, #143, #149, #112, #123, #136, #148, #34)
+
+- Cause: 第 4-8 轮审计剩余低优先级问题，大部分已被前三轮修复解决，剩余为产品决策或低风险小修
+- Changed:
+  - **#122**: `api/auth/[...all]/route.ts` 增加 `BETTER_AUTH_SECRET` 缺失时返回 503（原返回神秘 500）
+  - **#142**: `crypto.ts` maskKeyHint 短 key 阈值 `<= 8` 改为 `< 12`（防止短 key 过度暴露）
+  - **#142**: `actions.ts` readSafeReturnPath 增加 `/\` 反斜杠路径拒绝
+  - **#142**: `apps/worker/src/index.ts` extractReportKeywords 每关键词截断至 40 字符（防 ILIKE DoS）
+  - **#135**: `apps/worker/src/index.ts` 移除未用 import `DEFAULT_DIGEST_STYLE`
+  - **#121**: `topic-source-data.ts` + `report-data.ts` 所有 `requestedPage` 参数增加 clamp（`Math.max(1, Math.min(10_000, ...))`）
+  - **#121**: `actions.ts` refreshPreferenceMemory 仅对 SAVE/DISMISS 触发（原 READ 也触发，可被 spam 压 DB）
+- Documentation: 评估 #112/#123/#136/#143/#149 共 39 个开放问题，15 个已由前三轮修复解决，24 个为待产品决策（不阻塞当前开发）
+- Files: `apps/web/src/app/api/auth/[...all]/route.ts`, `packages/db/src/crypto.ts`, `apps/web/src/app/actions.ts`, `apps/worker/src/index.ts`, `apps/web/src/lib/topic-source-data.ts`, `apps/web/src/lib/report-data.ts`
+- Verification: typecheck ✅ (除 @wangchao/worker 预存 EventExtractionAdapter 错误外全部通过)
+- Notes / Risk: #136 的 10 个商业化产品决策待 Stripe 集成 (#33) 后再逐项确认
+
 ### Fix: Webhook credential cache security + env helper dedup (#120, #145)
 
 - Cause: CCPayment webhook credential cache had 60s TTL (too short), unbounded size (DoS risk), no invalidation path; db/client.ts duplicated readRequiredRuntimeEnv; worker/web duplicated env helpers

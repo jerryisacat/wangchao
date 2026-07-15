@@ -21,6 +21,10 @@ export interface ReportsPage {
   total: number;
 }
 
+function clampPage(requestedPage: number): number {
+  return Math.max(1, Math.min(10_000, Math.floor(requestedPage)));
+}
+
 export async function getReportsPage(
   requestedPage: number,
   pageSize = 20,
@@ -36,10 +40,11 @@ export async function getReportsPage(
     await import("@wangchao/db");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
+  const page = clampPage(requestedPage);
   const result = await listReports(
     prisma,
     { organizationId: workspace.organizationId },
-    requestedPage,
+    page,
     pageSize,
   );
 

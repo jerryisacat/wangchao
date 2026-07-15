@@ -7,7 +7,6 @@ import {
   createUtcMonthRange,
   createUtcWeekRange,
   buildTopicProfileContext,
-  DEFAULT_DIGEST_STYLE,
   evaluateRelevance,
   generatePreferenceDeltas,
   PLAN_LIMITS,
@@ -827,7 +826,9 @@ function extractReportKeywords(question: string): string[] {
 
   const cjkPhrases = [...question.matchAll(/[\u4e00-\u9fff]{2,10}/g)].map((m) => m[0]);
 
-  return Array.from(new Set([...terms, ...cjkPhrases])).slice(0, 10);
+  return Array.from(new Set([...terms, ...cjkPhrases]))
+    .map((keyword) => keyword.slice(0, 40))
+    .slice(0, 10);
 }
 
 const REPORT_STOP_WORDS = new Set([

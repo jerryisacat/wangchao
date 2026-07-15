@@ -76,7 +76,7 @@ export function decryptCredential(encrypted: string, encryptionKey: string): str
 }
 
 export function maskKeyHint(plaintext: string): string {
-  if (plaintext.length <= 8) {
+  if (plaintext.length < 12) {
     return "***";
   }
   const prefix = plaintext.slice(0, 3);

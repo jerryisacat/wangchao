@@ -328,7 +328,9 @@ async function updateDashboardEventStateFromForm(formData: FormData) {
     organizationId: workspace.organizationId,
     userId: workspace.userId,
   });
-  await refreshPreferenceMemory(prisma, workspace);
+  if (action === "save" || action === "dismiss") {
+    await refreshPreferenceMemory(prisma, workspace);
+  }
   await recordUsageEvent(prisma, {
     metadata: {
       action,
@@ -1075,7 +1077,8 @@ function readJsonRecord(value: unknown): Record<string, unknown> {
 
 function readSafeReturnPath(formData: FormData, key: string): string | null {
   const value = readOptionalField(formData, key);
-  return value.startsWith("/") && !value.startsWith("//") ? value : null;
+  if (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return null;
+  return value;
 }
 
 function readRequiredUrl(formData: FormData, key: string): string {
