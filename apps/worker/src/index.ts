@@ -1,17 +1,4 @@
-import {
-  createOpenAiCompatibleAdapter,
-  dedupEvent,
-  extractEvent,
-  fallbackSourceRecommendation,
-  recommendSourceCandidate,
-  type EventExtractionAdapter,
-  type EventExtractionResult,
-  type SemanticDedupCandidate,
-  type SemanticDedupInput,
-  type SemanticDedupResult,
-  type SourceRecommendation,
-  type SourceRecommendationAdapter,
-} from "@wangchao/ai";
+import { formatSafeError } from "./lib/safe-log.js";
 import {
   createContentHash,
   createIntelligenceEventDraft,
@@ -1039,23 +1026,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       }
     })
     .catch((error: unknown) => {
-      emitStructuredLogEnd(cycleType, startTime, "error", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-      process.stderr.write(
-        `worker error: ${error instanceof Error ? error.message : String(error)}\n`,
-      );
-      if (error instanceof Error && error.stack) {
-        process.stderr.write(`${error.stack}\n`);
-      }
-      if (error !== null && typeof error === "object" && "code" in error) {
-        const code = (error as { code: unknown }).code;
-        const meta = "meta" in error ? (error as { meta: unknown }).meta : undefined;
-        process.stderr.write(`prisma code: ${String(code)}\n`);
-        if (meta !== undefined) {
-          process.stderr.write(`prisma meta: ${JSON.stringify(meta)}\n`);
-        }
-      }
+      const safeError = formatSafeError(error);
+      emitStructuredLogEnd(cycleType, startTime, "error", { error: safeError });
+      process.stderr.write(`worker error: ${safeError.message}\n`);
       process.exitCode = 1;
     })
     .finally(() => disconnectPrismaClient());

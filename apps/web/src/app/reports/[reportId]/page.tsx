@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBanner } from "@/components/common/status-banner";
 import { getReportDetail } from "@/lib/report-data";
+import { sanitizeForDisplay } from "@/lib/sanitize";
 
 export const dynamic = "force-dynamic";
 
@@ -124,7 +125,7 @@ export default async function ReportDetailPage({ params }: ReportDetailPageProps
             <CardContent>
               <div className="report-content">
                 <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                  {report.markdown}
+                  {sanitizeForDisplay(report.markdown)}
                 </pre>
               </div>
             </CardContent>

@@ -10,10 +10,11 @@ export const databaseRuntimeBoundary: DatabaseRuntimeBoundary = {
 
 export {
   disconnectPrismaClient, getPrismaClient } from "./client.js";
-export { decryptCredential, encryptCredential, maskKeyHint, validateApiKeyFormat, fingerprintKey } from "./crypto.js";
+export { decryptCredential, encryptCredential, maskKeyHint, validateApiKeyFormat, fingerprintKey, cryptoSmokeTest } from "./crypto.js";
 export {
   createCcpaymentInvoice,
   getCcpaymentOrderInfo,
+  isCcpaymentTimestampFresh,
   testCcpaymentCredential,
   verifyCcpaymentWebhookSignature,
   type CcpaymentConfig,

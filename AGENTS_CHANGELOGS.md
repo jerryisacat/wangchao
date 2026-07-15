@@ -1,5 +1,19 @@
 ## 2026-07-15
 
+### Security: P0 安全漏洞批量修复 (#140, #139, #138, #137, #127, #102, #101, #132)
+
+- Cause: 开源仓库安全审计发现 8 项 P0 安全问题：缺安全响应头、AI 内容 XSS 风险、敏感信息泄露日志、SSRF 无防护、加密模块弱 KDF、webhook 去重无约束
+- Changed:
+  - **#140**: 新建 `apps/web/src/middleware.ts`，添加 HSTS / X-Content-Type-Options / X-Frame-Options / Referrer-Policy / Permissions-Policy 安全响应头；CSP 仅在 production 启用
+  - **#139**: 新建 `apps/web/src/lib/sanitize.ts`，`sanitizeForDisplay` HTML entity 逃逸 + `sanitizeMarkdownSource` 入库前剥离危险标签；report 页面使用 `sanitizeForDisplay` 做防御性渲染
+  - **#138**: 新建 `apps/worker/src/lib/safe-log.ts`，`formatSafeError` 仅输出 `name/message/code`，`sanitizeErrorMessage` 剥离 URL 凭证和绝对路径；worker 错误 handler 改用安全日志
+  - **#137 + #127**: `claimWebhookEvent` 增加 `P2002` 唯一约束 catch（provider + recordId 已存在唯一索引）；修复 `verifyCcpaymentWebhookSignature` 时间戳单位 bug（秒 vs 毫秒）；webhook route 增加 `isCcpaymentTimestampFresh` 前置校验
+  - **#102 + #101**: 新建 `packages/sources/src/ssrf.ts`，`isPrivateIP` / `resolveAndCheckUrl` / `assertSafeUrl`；所有外部 URL fetch 前（validateRssFeedUrl、fetchText、fetchRssFeed、fetchArticleContent）强制经过 SSRF 防护，阻断私有 IP / loopback / cloud metadata
+  - **#132**: `packages/db/src/crypto.ts` 升级为 per-credential 随机 salt + scrypt KDF；新增 `fingerprintKey`、`cryptoSmokeTest`、`MAX_CREDENTIAL_LENGTH` / `MIN_ENCRYPTION_KEY_LENGTH` 长度边界；旧格式密文保持向后兼容
+- Files: `apps/web/src/middleware.ts` (new), `apps/web/src/lib/sanitize.ts` (new), `apps/web/src/app/reports/[reportId]/page.tsx`, `apps/web/src/lib/event-display.ts`, `apps/worker/src/lib/safe-log.ts` (new), `apps/worker/src/index.ts`, `packages/sources/src/ssrf.ts` (new), `packages/sources/src/index.ts`, `packages/sources/src/discovery.ts`, `packages/db/src/crypto.ts`, `packages/db/src/index.ts`, `packages/db/src/ccpayment.ts`, `packages/db/src/repositories/webhook-event.ts`, `apps/web/src/app/api/billing/ccpayment/webhook/route.ts`, `apps/web/next.config.ts`, `CODEGUIDE.md`, `docs/L3-modules.md`
+- Verification: typecheck ✅ (除 @wangchao/sources 预存依赖缺失外全部通过), lint ✅ (同上)
+- Notes / Risk: `@wangchao/sources` typecheck 失败为预存问题（@mozilla/readability / linkedom 未安装），与本轮无关；SSRF 防护使用 DNS 解析，存在 TOCTOU 窗口但已在最接近 fetch 的位置校验
+
 ### Batch: Module D 数据层+架构 (#113, #115-116, #144)
 
 - Cause: actions 绕过 repository、web 直接 import worker 执行长任务、packages/ui 空壳

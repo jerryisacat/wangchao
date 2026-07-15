@@ -1,3 +1,5 @@
+export { sanitizeForDisplay, sanitizeMarkdownSource } from "./sanitize";
+
 export interface EventDisplayFields {
   explanation: string;
   primaryItemUrl: string;

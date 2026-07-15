@@ -6,6 +6,16 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.join(process.cwd(), "../.."),
   },
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          { key: "X-DNS-Prefetch-Control", value: "on" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

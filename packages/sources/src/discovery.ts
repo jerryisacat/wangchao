@@ -1,3 +1,5 @@
+import { assertSafeUrl } from "./ssrf.js";
+
 export interface SearchResult {
   snippet?: string;
   title: string;
@@ -533,6 +535,7 @@ async function fetchText(
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? 10_000);
 
   try {
+    await assertSafeUrl(url);
     const response = await options.fetchImpl(url, {
       headers: {
         accept: options.accept,

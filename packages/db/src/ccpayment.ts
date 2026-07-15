@@ -159,11 +159,11 @@ export function verifyCcpaymentWebhookSignature(
     return false;
   }
 
-  const timestampMs = Number.parseInt(timestamp, 10);
-  if (!Number.isFinite(timestampMs)) return false;
-  const now = Date.now();
-  const FIVE_MINUTES = 5 * 60 * 1000;
-  if (Math.abs(now - timestampMs) > FIVE_MINUTES) {
+  const timestampSec = Number.parseInt(timestamp, 10);
+  if (!Number.isFinite(timestampSec)) return false;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const FIVE_MINUTES = 5 * 60;
+  if (Math.abs(nowSec - timestampSec) > FIVE_MINUTES) {
     return false;
   }
 
@@ -178,6 +178,14 @@ export function verifyCcpaymentWebhookSignature(
   } catch {
     return false;
   }
+}
+
+export function isCcpaymentTimestampFresh(timestamp: string): boolean {
+  const timestampSec = Number.parseInt(timestamp, 10);
+  if (!Number.isFinite(timestampSec)) return false;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const FIVE_MINUTES = 5 * 60;
+  return Math.abs(nowSec - timestampSec) <= FIVE_MINUTES;
 }
 
 export async function testCcpaymentCredential(

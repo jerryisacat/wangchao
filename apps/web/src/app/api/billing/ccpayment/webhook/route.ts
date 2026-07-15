@@ -5,6 +5,7 @@ import {
   updatePaymentInvoiceStatus,
   verifyCcpaymentWebhookSignature,
   findPaymentInvoiceByOrderId,
+  isCcpaymentTimestampFresh,
 } from "@wangchao/db";
 
 const credentialCache = new Map<string, { secret: string; organizationId: string; expiresAt: number }>();
@@ -29,6 +30,10 @@ export async function POST(request: Request) {
 
   if (!appId || !timestamp || !signature) {
     return new Response("Missing signature headers", { status: 401 });
+  }
+
+  if (!isCcpaymentTimestampFresh(timestamp)) {
+    return new Response("Timestamp out of range", { status: 400 });
   }
 
   const prisma = getPrismaClient();
@@ -61,11 +66,19 @@ export async function POST(request: Request) {
     return webhookSuccess();
   }
 
-  const claimed = await claimWebhookEvent(prisma, {
-    provider: "ccpayment",
-    recordId,
-    organizationId: credential.organizationId,
-  });
+  let claimed: boolean;
+  try {
+    claimed = await claimWebhookEvent(prisma, {
+      provider: "ccpayment",
+      recordId,
+      organizationId: credential.organizationId,
+    });
+  } catch (error) {
+    process.stderr.write(
+      `[ccpayment-webhook] claim failed: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return new Response("Internal error", { status: 500 });
+  }
   if (!claimed) {
     return webhookSuccess();
   }

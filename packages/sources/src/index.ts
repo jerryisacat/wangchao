@@ -1,6 +1,7 @@
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import { XMLParser } from "fast-xml-parser";
+import { assertSafeUrl } from "./ssrf.js";
 
 export type SourceKind = "rss" | "web";
 
@@ -124,6 +125,7 @@ export async function fetchRssFeed(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    await assertSafeUrl(feedUrl);
     const response = await fetchImpl(feedUrl, {
       headers: {
         accept: "application/rss+xml, application/atom+xml, application/xml, text/xml",
@@ -164,6 +166,7 @@ export async function validateRssFeedUrl(
   if (!["http:", "https:"].includes(parsedUrl.protocol)) {
     throw new Error("RSS validation only accepts HTTP/HTTPS URLs.");
   }
+  await assertSafeUrl(feedUrl);
 
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? 10_000;
@@ -260,6 +263,7 @@ export async function fetchArticleContent(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    await assertSafeUrl(articleUrl);
     const response = await fetchImpl(articleUrl, {
       headers: {
         accept: "text/html, application/xhtml+xml",
