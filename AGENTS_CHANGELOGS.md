@@ -1,3 +1,15 @@
+## 2026-07-16
+
+### Fix: 修复 GitHub Actions pnpm 版本冲突
+
+- Cause: CI 同时在 `pnpm/action-setup` 中指定 `version: 11`，并在 `package.json#packageManager` 中指定 `pnpm@11.7.0`，新版 action 将重复版本来源视为错误并在安装阶段退出。
+- Changed: 删除 workflow 中的宽泛 `version: 11`，统一以 `packageManager: pnpm@11.7.0` 作为唯一 pnpm 版本来源。
+- Changed: 同步语义事件合并 fixture 的 Prisma transaction mock，覆盖当前实现使用的 `findMany`、`createMany` 和 `updateMany`，避免 CI 在进入测试阶段后因旧 mock 崩溃。
+- Changed: 恢复 RSS/Atom XML parser 的十进制与十六进制 numeric character reference 解码，修复工具函数整合时误删 `tagValueProcessor` 导致的 parser fixture 回归。
+- Files: `.github/workflows/ci.yml`, `packages/db/src/repositories.fixtures.ts`, `packages/sources/src/index.ts`, `AGENTS_CHANGELOGS.md`
+- Verification: 使用 pnpm 11.7.0 完成 `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、Prisma schema validate、HTTP build artifact smoke 与 `git diff --check`，全部通过。
+- Notes / Risk: Node 24 提示是 GitHub Actions runner 的迁移提示，不通过不安全环境变量降级到 Node 20；本次改动不改变应用运行时 Node.js 22 配置。
+
 ## 2026-07-15
 
 ### Refactor: 4 个超大文件按领域拆分 (#146)

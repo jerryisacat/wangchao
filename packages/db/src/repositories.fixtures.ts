@@ -598,24 +598,23 @@ async function verifyFuzzyEventMatchUpdatesExistingEvent(): Promise<void> {
 
 async function verifySemanticMergeClearsArchivedMatchKeys(): Promise<void> {
   const calls: Array<{ args: unknown; method: string }> = [];
-  let findCount = 0;
   const transaction = {
     eventItem: {
-      upsert: async (args: unknown) => {
-        calls.push({ args, method: "eventItem.upsert" });
-        return {};
+      createMany: async (args: unknown) => {
+        calls.push({ args, method: "eventItem.createMany" });
+        return { count: 1 };
       },
     },
     intelligenceEvent: {
+      findMany: async () => [
+        { eventItems: [], id: "event-merge", primaryItemId: "item-merge" },
+      ],
       findUnique: async () => {
-        findCount += 1;
-        return findCount === 1
-          ? { eventItems: [], id: "event-keep", primaryItemId: "item-keep" }
-          : { eventItems: [], id: "event-merge", primaryItemId: "item-merge" };
+        return { eventItems: [], id: "event-keep", primaryItemId: "item-keep" };
       },
-      update: async (args: unknown) => {
-        calls.push({ args, method: "intelligenceEvent.update" });
-        return {};
+      updateMany: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.updateMany" });
+        return { count: 1 };
       },
     },
     item: {
@@ -636,17 +635,18 @@ async function verifySemanticMergeClearsArchivedMatchKeys(): Promise<void> {
     reason: "same real-world event",
   });
 
-  const relation = readArgsByName(calls, "eventItem.upsert");
-  const relationCreate = readRecord(relation.create, "semantic.relation.create");
-  assert(relationCreate.itemId === "item-merge", "Merged primary item must move to keep event.");
-  assert(relationCreate.role === "SECONDARY", "Merged item must become a secondary report.");
+  const relation = readArgsByName(calls, "eventItem.createMany");
+  const relationData = relation.data as Array<Record<string, unknown>>;
+  assert(Array.isArray(relationData) && relationData.length === 1, "Expected one merged relation.");
+  assert(relationData[0]?.itemId === "item-merge", "Merged primary item must move to keep event.");
+  assert(relationData[0]?.role === "SECONDARY", "Merged item must become a secondary report.");
   const itemUpdate = readArgsByName(calls, "item.updateMany");
   assert(
     readRecord(itemUpdate.data, "semantic.item.data").status === "DUPLICATE",
     "Merged items must become DUPLICATE.",
   );
   const archived = readRecord(
-    readArgsByName(calls, "intelligenceEvent.update").data,
+    readArgsByName(calls, "intelligenceEvent.updateMany").data,
     "semantic.event.data",
   );
   assert(archived.status === "ARCHIVED", "Merged event must be archived.");
