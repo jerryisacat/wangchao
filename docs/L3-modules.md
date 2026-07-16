@@ -40,7 +40,7 @@ wangchao/
 ├── turbo.json                         # Turborepo task pipeline
 ├── tsconfig.base.json                # TypeScript workspace 基础配置
 ├── apps/
-│   ├── web/                          # Next.js App Router 产品界面（含 middleware.ts 安全响应头）
+│   ├── web/                          # Next.js App Router 产品界面（含 proxy.ts nonce CSP 安全响应头）
 │   └── worker/                       # Node.js 后台 worker（含 safe-log.ts 安全日志）
 ├── packages/
 │   ├── core/                         # 共享领域逻辑
@@ -270,13 +270,15 @@ Next.js App Router 产品界面。按 `FRONTEND.md` 重构为 Kinetic Intelligen
 
 ```text
 apps/web/src/
+├── proxy.ts                          # Next.js 16 proxy（每请求 nonce CSP + HSTS/X-Frame-Options 等）
+├── lib/
+│   └── content-security-policy.ts    # production CSP policy builder
 ├── app/                              # Next.js App Router
-│   ├── layout.tsx                    # 根 layout
+│   ├── layout.tsx                    # 根 layout（force-dynamic，确保 nonce CSP 覆盖所有脚本）
 │   ├── page.tsx                      # 首页：未读情报流
 │   ├── loading.tsx                   # route loading 骨架屏
 │   ├── error.tsx                     # route error boundary
 │   ├── globals.css                   # 全局 token、布局、组件样式
-│   ├── middleware.ts                  # Next.js 中间件（安全响应头：HSTS/CSP/X-Frame-Options 等）
 │   ├── actions.ts                    # Server Action barrel re-export（拆分为 actions/ 子目录）
 │   ├── actions/                      # Server Action 按领域拆分
 │   │   ├── _shared.ts                # 共享 helper（readRequiredField/validateEnumValue/matchSourcePackCandidates 等）
@@ -377,7 +379,10 @@ apps/web/src/
 | `apps/web/src/lib/auth.ts` | Better Auth 服务端配置。email/password + session 插件 + Prisma adapter。仅当 `BETTER_AUTH_SECRET` 环境变量设置时启用。 |
 | `apps/web/src/lib/auth-client.ts` | Better Auth 客户端导出 `createAuthClient`，供 login/register 页面和客户端组件使用。 |
 | `apps/web/src/lib/session.ts` | Session helper。`getSessionWorkspace()`：当 `BETTER_AUTH_SECRET` 设置时，从 Better Auth session 读取用户和组织；否则 fallback 到 `ensureDefaultWorkspace()`（兼容默认 workspace 开发模式）。 |
-| `apps/web/src/proxy.ts` | Next.js proxy（原 `middleware.ts`）。仅当 `BETTER_AUTH_SECRET` 设置时激活，保护需要认证的路由，未登录重定向到 `/login`。 |
+| `apps/web/src/proxy.ts` | Next.js 16 proxy（原 `middleware.ts`）。production 为每个请求生成随机 nonce，将 CSP 同时注入 Next.js request headers 与最终 response，使 framework/React Flight 内联脚本安全执行；同时设置 HSTS、X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy。开发环境跳过 CSP 以兼容 HMR。 |
+| `apps/web/src/lib/content-security-policy.ts` | CSP policy builder：校验 base64/base64url nonce，生成包含 `nonce-*`、`strict-dynamic`、禁用 script attributes/object/embed 等边界的 production policy。 |
+| `apps/web/src/app/layout.tsx` | 根 layout；声明 `dynamic = "force-dynamic"`，确保包括登录/注册在内的原静态路由均在请求时渲染，从而让所有 framework/React Flight scripts 获得当前请求 nonce。 |
+| `apps/web/scripts/content-security-policy.fixture.mjs` | CSP 回归 fixture：验证 script directive 必须包含 nonce/strict-dynamic，且不得退化为 `'unsafe-inline'`；传入 `BASE_URL` 时验证每请求 nonce 唯一且所有 production script 标签携带响应 nonce。 |
 | `apps/web/src/app/login/page.tsx` | 登录页。email/password 表单，提交到 Better Auth session。 |
 | `apps/web/src/app/register/page.tsx` | 注册页。email/password 注册，创建用户后重定向。 |
 | `apps/web/src/app/pricing/page.tsx` | 定价页。FREE/PLUS/PRO 三层对比，展示各层配额限制和价格。 |
@@ -407,12 +412,11 @@ apps/web/src/
 - 真实数据接入时，页面应通过 Server Components/Server Actions/Route Handlers 调用 `packages/db`，长任务仍交给 worker。
 - `DATABASE_URL` 未配置时首页抛出错误，不再静默降级为预览模式。
 
-### Auth 与 Middleware 规则
+### Auth 与 Proxy 规则
 
-- 当 `BETTER_AUTH_SECRET` 环境变量设置时，Better Auth 激活：`/login` 和 `/register` 页面可用，`/api/auth/[...all]` 处理认证请求，`proxy.ts` 保护需要认证的路由。
+- 当 `BETTER_AUTH_SECRET` 环境变量设置时，Better Auth 激活：`/login` 和 `/register` 页面可用，`/api/auth/[...all]` 处理认证请求，数据访问通过 `getSessionWorkspace()` 校验 session。
 - 当 `BETTER_AUTH_SECRET` 未设置时，应用运行在兼容模式：`getSessionWorkspace()` fallback 到 `ensureDefaultWorkspace()`，使用默认 workspace/user，不要求登录。这是当前个人版和本地开发的默认行为。
-- `proxy.ts` 仅在 `BETTER_AUTH_SECRET` 设置时执行认证检查，否则直接放行（`next()`）。
-- 认证模式下，`/login`、`/register`、`/pricing` 和 `/api/*` 公开路由不需要 session；其余路由需要登录。
+- `proxy.ts` 不读取认证状态；它在匹配路由上统一设置安全响应头，并在 production 注入每请求 nonce CSP。认证边界仍由 session helper、Server Components、Server Actions 与 Route Handlers 承担。
 
 ### 数据访问模式
 

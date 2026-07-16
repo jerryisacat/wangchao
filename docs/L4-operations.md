@@ -168,9 +168,10 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 ### Auth（Better Auth）
 
-- `BETTER_AUTH_SECRET` Required for auth。设置后激活 Better Auth（email/password + session），`proxy.ts` 保护需要认证的路由，未登录重定向到 `/login`。未设置时应用运行在兼容模式：`getSessionWorkspace()` fallback 到 `ensureDefaultWorkspace()`，使用默认 workspace/user，不要求登录。
+- `BETTER_AUTH_SECRET` Required for auth。设置后激活 Better Auth（email/password + session），数据访问通过 `getSessionWorkspace()` 校验 session。未设置时应用运行在兼容模式：`getSessionWorkspace()` fallback 到 `ensureDefaultWorkspace()`，使用默认 workspace/user，不要求登录。
 - `BETTER_AUTH_URL` Required for auth。Better Auth 的 base URL（如 `https://wangchao.jerryiscat.one`），用于 session callback URL 和邮件链接生成。
 - 当 `BETTER_AUTH_SECRET` 未设置时，`/login` 和 `/register` 页面不生效，应用直接使用默认 workspace，适合个人版和本地开发。
+- production 请求由 `apps/web/src/proxy.ts` 生成随机 CSP nonce，并通过 request header 交给 Next.js 为 framework/React Flight 内联脚本加 nonce；根 layout 使用 request-time rendering，因为静态预渲染页面无法获得每请求 nonce。不要把 `script-src` 简化回只有 `'self'`，也不要以 `'unsafe-inline'` 作为长期修复，否则会分别导致永久骨架屏或削弱 XSS 防护。
 
 ### 支付（CCPayment + Stripe）
 

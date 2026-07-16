@@ -1,3 +1,13 @@
+## 2026-07-17
+
+### Fix: 修复 production CSP 阻断 Next.js 流式渲染
+
+- Cause: production `script-src 'self'` 拒绝 Next.js App Router 无 nonce 的 framework/React Flight 内联脚本；服务端已返回真实数据，但浏览器无法执行 `self.__next_f.push(...)`，首页永久停留在 `loading.tsx` 骨架屏并报 `Connection closed`。
+- Changed: 将 Next.js 16 `middleware.ts` 迁移为 `proxy.ts`；production 为每个请求生成随机 nonce，把同一 CSP 注入 Next.js request headers 与最终 response，使框架脚本自动携带 nonce；根 layout 强制 request-time rendering，避免登录/注册等静态页面因无法获得请求 nonce 而被阻断；保留原安全响应头和开发环境 HMR 兼容；新增 CSP policy builder 与回归 fixture。
+- Files: `apps/web/src/proxy.ts`, `apps/web/src/lib/content-security-policy.ts`, `apps/web/src/app/layout.tsx`, `apps/web/scripts/content-security-policy.fixture.mjs`, `apps/web/package.json`, `CODEGUIDE.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 使用 pnpm 11.7.0 完成 CSP unit fixture、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、HTTP build artifact smoke、`git diff --check`；启动 Next.js production server 后，额外验证 `/login` 连续请求 nonce 不重复，且所有 framework/React Flight script 均携带与 response CSP 一致的 nonce，全部通过。
+- Notes / Risk: 未使用 `'unsafe-inline'` 放宽 production script policy；nonce CSP 要求根 layout 使用 request-time rendering，因此原静态登录/注册等页面不再享受静态缓存。后续 push 会触发 Railway Web 等已连接服务自动部署。
+
 ## 2026-07-16
 
 ### Fix: 修复 Instant Push 与凭证拆分 migration 的 schema 漂移

@@ -179,7 +179,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 - 导出内容必须保留来源链接和生成时间。
 - 商业化阶段必须补 tenant isolation、权限测试、usage audit。
 - AI 凭证与搜索凭证相互独立：UI 通过独立表单实例各自管理状态，`upsertAiCredential` 和 `upsertSearchCredential` 分别操作 `Subscription` 表的不同字段，不互相阻断。删除某一类凭证不会影响另一类。
-- Next.js 中间件（`apps/web/src/middleware.ts`）强制安全响应头：HSTS、X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy；CSP 仅在 production 启用，避免阻断 dev HMR。
+- Next.js 16 proxy（`apps/web/src/proxy.ts`）强制安全响应头：HSTS、X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy；production CSP 使用每请求随机 nonce 授权 Next.js framework/Flight 内联脚本，根 layout 强制 request-time rendering 以确保所有路由的脚本获得当前 nonce；开发环境不启用 CSP，避免阻断 dev HMR。
 - 外部 URL 在 fetch 前必须经过 SSRF 防护（`packages/sources/src/ssrf.ts`）：私有 IP、loopback、cloud metadata 一律阻断。
 - 加密模块（`packages/db/src/crypto.ts`）使用 per-credential 随机 salt + scrypt KDF；旧格式密文保持向后兼容。
 - AI 生成内容渲染前需经 HTML entity 逃逸（`sanitizeForDisplay`），入库前剥离危险标签（`sanitizeMarkdownSource`）。
@@ -230,6 +230,9 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 | `apps/web/src/app/reports/page.tsx` | 专题报告列表页，提交自然语言问题触发异步报告生成。 |
 | `apps/web/src/app/reports/[reportId]/page.tsx` | 专题报告详情页，展示 Markdown 内容和覆盖说明。 |
 | `apps/web/src/lib/report-data.ts` | 报告数据读取 helper（`getReportsPage`/`getReportDetail`）。 |
+| `apps/web/src/proxy.ts` | Next.js 16 request proxy：每请求生成 nonce CSP，并设置 Web 安全响应头。 |
+| `apps/web/src/lib/content-security-policy.ts` | Production CSP policy builder，约束 nonce/strict-dynamic 与 script/object 安全边界。 |
+| `apps/web/scripts/content-security-policy.fixture.mjs` | CSP unit + production server smoke fixture，验证逐请求 nonce 与 framework/Flight script 属性。 |
 
 关键调用链索引：
 
