@@ -19,8 +19,6 @@ export async function getInstantPushSettings(
     prisma.subscription.findUnique({
       where: { organizationId: scope.organizationId },
       select: {
-        instantPushEnabled: true,
-        instantPushEnabledAt: true,
         plan: true,
         status: true,
         isSelfHosted: true,
@@ -37,13 +35,15 @@ export async function getInstantPushSettings(
       select: {
         encryptedKey: true,
         chatId: true,
+        instantPushEnabled: true,
+        instantPushEnabledAt: true,
       },
     }),
   ]);
 
   return {
-    enabled: subscription?.instantPushEnabled ?? false,
-    enabledAt: subscription?.instantPushEnabledAt ?? null,
+    enabled: telegramCred?.instantPushEnabled ?? false,
+    enabledAt: telegramCred?.instantPushEnabledAt ?? null,
     hasTelegramCredential: Boolean(telegramCred?.encryptedKey && telegramCred.chatId),
     plan: subscription?.plan ?? "FREE",
     status: subscription?.status ?? "ACTIVE",
@@ -58,19 +58,24 @@ export async function setInstantPushEnabled(
   enabled: boolean,
 ): Promise<void> {
   const now = new Date();
-  const existing = await prisma.subscription.findUnique({
-    where: { organizationId: scope.organizationId },
+  const credentialKey = {
+    organizationId: scope.organizationId,
+    credentialType: "TELEGRAM" as const,
+  };
+  const existing = await prisma.organizationCredential.findUnique({
+    where: { organizationId_credentialType: credentialKey },
     select: { instantPushEnabledAt: true },
   });
   const enabledAt = enabled ? existing?.instantPushEnabledAt ?? now : null;
-  await prisma.subscription.upsert({
-    where: { organizationId: scope.organizationId },
+  await prisma.organizationCredential.upsert({
+    where: { organizationId_credentialType: credentialKey },
     update: {
       instantPushEnabled: enabled,
       instantPushEnabledAt: enabledAt,
     },
     create: {
       organizationId: scope.organizationId,
+      credentialType: "TELEGRAM",
       instantPushEnabled: enabled,
       instantPushEnabledAt: enabledAt,
     },
@@ -85,8 +90,11 @@ export interface InstantPushOrganizationRecord {
 export async function listInstantPushOrganizations(
   prisma: PrismaClient,
 ): Promise<InstantPushOrganizationRecord[]> {
-  const rows = await prisma.subscription.findMany({
-    where: { instantPushEnabled: true },
+  const rows = await prisma.organizationCredential.findMany({
+    where: {
+      credentialType: "TELEGRAM",
+      instantPushEnabled: true,
+    },
     select: {
       organizationId: true,
       organization: {

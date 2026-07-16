@@ -16,6 +16,11 @@ import {
   updateTopic,
   upsertIntelligenceEventFromItem,
 } from "./repositories.js";
+import {
+  getInstantPushSettings,
+  listInstantPushOrganizations,
+  setInstantPushEnabled,
+} from "./repositories/instant-push.js";
 
 export async function runRepositoryFixtures(): Promise<void> {
   await verifySavedPagination();
@@ -29,6 +34,74 @@ export async function runRepositoryFixtures(): Promise<void> {
   await verifySourceGovernanceMetricsUseActiveEventLinks();
   await verifyFuzzyEventMatchUpdatesExistingEvent();
   await verifySemanticMergeClearsArchivedMatchKeys();
+  await verifyInstantPushSettingsUseTelegramCredential();
+}
+
+async function verifyInstantPushSettingsUseTelegramCredential(): Promise<void> {
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const enabledAt = new Date("2026-07-16T00:00:00.000Z");
+  const prisma = {
+    organizationCredential: {
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "organizationCredential.findMany" });
+        return [
+          {
+            organizationId: "org-1",
+            organization: { memberships: [{ userId: "user-1" }] },
+          },
+        ];
+      },
+      findUnique: async (args: unknown) => {
+        calls.push({ args, method: "organizationCredential.findUnique" });
+        return {
+          chatId: "chat-1",
+          encryptedKey: "encrypted-token",
+          instantPushEnabled: true,
+          instantPushEnabledAt: enabledAt,
+        };
+      },
+      upsert: async (args: unknown) => {
+        calls.push({ args, method: "organizationCredential.upsert" });
+        return {};
+      },
+    },
+    subscription: {
+      findUnique: async (args: unknown) => {
+        calls.push({ args, method: "subscription.findUnique" });
+        return {
+          currentPeriodEnd: null,
+          isSelfHosted: false,
+          plan: "PRO",
+          status: "ACTIVE",
+        };
+      },
+    },
+  } as unknown as PrismaClient;
+
+  const settings = await getInstantPushSettings(prisma, { organizationId: "org-1" });
+  assert(settings.enabled, "Instant push enablement must come from the Telegram credential.");
+  assert(settings.enabledAt === enabledAt, "Instant push enabledAt must come from the Telegram credential.");
+  assert(settings.hasTelegramCredential, "Telegram credential presence must be detected.");
+
+  await setInstantPushEnabled(prisma, { organizationId: "org-1" }, true);
+  const upsert = readArgsByName(calls, "organizationCredential.upsert");
+  const upsertWhere = readRecord(upsert.where, "instantPush.upsert.where");
+  const credentialKey = readRecord(
+    upsertWhere.organizationId_credentialType,
+    "instantPush.upsert.credentialKey",
+  );
+  assert(credentialKey.organizationId === "org-1", "Instant push setting must remain tenant scoped.");
+  assert(credentialKey.credentialType === "TELEGRAM", "Instant push setting must target the Telegram credential.");
+  const upsertUpdate = readRecord(upsert.update, "instantPush.upsert.update");
+  assert(upsertUpdate.instantPushEnabled === true, "Instant push setting must be enabled.");
+  assert(upsertUpdate.instantPushEnabledAt === enabledAt, "Existing enablement boundary must be preserved.");
+
+  const organizations = await listInstantPushOrganizations(prisma);
+  const findMany = readArgsByName(calls, "organizationCredential.findMany");
+  const findManyWhere = readRecord(findMany.where, "instantPush.findMany.where");
+  assert(findManyWhere.credentialType === "TELEGRAM", "Instant push scan must only use Telegram credentials.");
+  assert(findManyWhere.instantPushEnabled === true, "Instant push scan must only use enabled credentials.");
+  assert(organizations[0]?.userId === "user-1", "Instant push scan must retain the organization owner.");
 }
 
 async function verifyTopicUpdateAndAnalysisContextStayTenantScoped(): Promise<void> {

@@ -211,8 +211,6 @@ model Subscription {
   status           SubscriptionStatus @default(ACTIVE)
   billingInterval   BillingInterval    @default(MONTHLY)
   isSelfHosted     Boolean            @default(false)
-  instantPushEnabled  Boolean   @default(false)
-  instantPushEnabledAt DateTime?
 
   stripeCustomerId     String?
   stripeSubscriptionId String?

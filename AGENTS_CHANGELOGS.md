@@ -1,5 +1,13 @@
 ## 2026-07-16
 
+### Fix: 修复 Instant Push 与凭证拆分 migration 的 schema 漂移
+
+- Cause: `0013_credentials_split` 已将 `instantPushEnabled` / `instantPushEnabledAt` 迁移到 `OrganizationCredential(TELEGRAM)` 并从 `Subscription` 删除，但 Prisma schema 与 Instant Push repository 仍查询旧列，导致 Railway cron 在运行时以 `Subscription.instantPushEnabled does not exist` 退出。
+- Changed: 从 Prisma `Subscription` model 删除已迁移字段；Instant Push 设置、开关与组织扫描统一改读写 `OrganizationCredential(TELEGRAM)`；新增 repository fixture 覆盖凭证归属、tenant scope、启用时间保留和扫描过滤。
+- Files: `packages/db/prisma/schema.prisma`, `packages/db/src/repositories/instant-push.ts`, `packages/db/src/repositories.fixtures.ts`, `docs/L2-domain.md`, `docs/L3-modules.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 使用 pnpm 11.7.0 完成 Prisma generate/validate、`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、HTTP build artifact smoke 与 `git diff --check`，全部通过。
+- Notes / Risk: 这是让代码追上已经部署的 `0013_credentials_split`，不新增或执行生产 DDL；生产库无需重新添加已废弃的 Subscription 列。当前环境无可用 Docker daemon，未在全新本地 Postgres 重放 migration；已人工核对 schema 与 `0013` 最终结构一致。
+
 ### Fix: 修复 GitHub Actions pnpm 版本冲突
 
 - Cause: CI 同时在 `pnpm/action-setup` 中指定 `version: 11`，并在 `package.json#packageManager` 中指定 `pnpm@11.7.0`，新版 action 将重复版本来源视为错误并在安装阶段退出。

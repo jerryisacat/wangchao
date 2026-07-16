@@ -13,8 +13,8 @@
 | `User` | 人类账户。当前个人版使用默认用户，不要求真实注册登录。 |
 | `Organization` | 租户和计费边界。当前个人版使用默认组织。 |
 | `Membership` | User-to-Organization 角色映射（OWNER/ADMIN/MEMBER）。 |
-| `Subscription` | Organization 的 1:1 订阅与计费配置。仅承载 plan/status/isSelfHosted/instantPush/Stripe/周期字段，不再存储凭证。凭证已拆分到 OrganizationCredential。 |
-| `OrganizationCredential` | Organization 的凭证分区表。每行一类凭证（AI/SEARCH/BYOK/TELEGRAM/CCPAYMENT），通过 `credentialType` 分区。存储 AES-256-GCM 密文 + 脱敏 hint + provider/model/baseUrl/chatId/appId 等配置字段。`organizationId + credentialType` 唯一。 |
+| `Subscription` | Organization 的 1:1 订阅与计费配置。仅承载 plan/status/isSelfHosted/Stripe/周期字段，不再存储凭证或即时推送开关。 |
+| `OrganizationCredential` | Organization 的凭证分区表。每行一类凭证（AI/SEARCH/BYOK/TELEGRAM/CCPAYMENT），通过 `credentialType` 分区。存储 AES-256-GCM 密文 + 脱敏 hint + provider/model/baseUrl/chatId/appId 等配置字段；Telegram 行同时承载即时推送开关和首次启用时间。`organizationId + credentialType` 唯一。 |
 | `PaymentInvoice` | 支付订单记录。跟踪 CCPayment 和 Stripe 支付，关联 organization，含订单号（`provider + providerOrderId` 唯一）、金额（Decimal）、币种、支付状态和 provider 元数据。 |
 | `Account` | Better Auth 兼容的 OAuth/account 记录。当前用于 email/password 认证，预留第三方 OAuth 扩展。 |
 | `Session` | Better Auth 兼容的会话记录。跟踪用户登录状态和过期时间。 |
@@ -165,7 +165,7 @@ SENDING ──permanent/max attempts──> SKIPPED
 ```
 
 - `eventId + channel` 唯一约束与条件更新共同保证并发幂等。
-- `instantPushEnabledAt` 限定首次启用边界；失败重试由 `FAILED + nextAttemptAt` 驱动。
+- `OrganizationCredential(TELEGRAM).instantPushEnabledAt` 限定首次启用边界；失败重试由 `FAILED + nextAttemptAt` 驱动。
 - Free/到期订阅不可用，有效 Plus/Pro 与自用模式可用；阅读状态不阻止组织级推送。
 - candidate/muted/rejected source 不得进入即时推送候选集。
 
@@ -205,6 +205,7 @@ SENDING ──permanent/max attempts──> SKIPPED
 | `appId` | CCPayment App ID（非密文）。 |
 | `chatId` | Telegram 目标 Chat ID（非密文）。 |
 | `enabled` | Telegram 投递是否启用。 |
+| `instantPushEnabled` / `instantPushEnabledAt` | Telegram 高分情报即时推送开关与首次启用边界，仅用于 `credentialType=TELEGRAM`。 |
 
 规则：
 - 加解密依赖 `ENCRYPTION_KEY` 环境变量，缺失时凭证相关 worker 任务必须 fail-fast，不得静默降级到明文。
