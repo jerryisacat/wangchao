@@ -1,7 +1,41 @@
-import { resolveFilteredNoiseReason } from "./index.js";
+import { canUseCapturedContentForLlm, mapFetchedSourceItem, resolveFilteredNoiseReason } from "./index.js";
 import { TelegramDeliveryError, escapeTelegramHtml, formatEventForInstantPush, sendTelegramMessage, truncateTelegramMessage } from "./telegram.js";
 
 export async function runWorkerFixtures(): Promise<void> {
+  const embedded = mapFetchedSourceItem(
+    { id: "source-1", organizationId: "org-1", topicId: "topic-1", name: "Source", url: "https://example.com/feed" },
+    {
+      canonicalUrl: "https://example.com/item",
+      contentHash: "hash",
+      contentSource: "RSS_EMBEDDED",
+      contentStatus: "READY",
+      rawContent: "# Captured article\n\nMarkdown body.",
+      rawMetadata: {},
+      title: "Article",
+      url: "https://example.com/item",
+    },
+    { candidateObservation: true },
+  );
+  assert(embedded.rawContent?.includes("Markdown body") === true, "Worker persistence mapping must retain RSS Markdown.");
+  assert(embedded.contentStatus === "READY", "Worker persistence mapping must retain content status.");
+  assert(embedded.contentSource === "RSS_EMBEDDED", "Worker persistence mapping must retain content source.");
+  assert(embedded.rawMetadata?.candidateObservation === true, "Candidate observation mapping must retain its audit marker.");
+
+  assert(
+    canUseCapturedContentForLlm("READY", "# Captured\n\nVerified Markdown body."),
+    "READY Markdown should be eligible for LLM extraction.",
+  );
+  assert(
+    !canUseCapturedContentForLlm("READY", ""),
+    "READY without Markdown must not call the LLM.",
+  );
+  for (const status of ["PENDING", "INSUFFICIENT", "FETCH_FAILED", "UNSUPPORTED"] as const) {
+    assert(
+      !canUseCapturedContentForLlm(status, "Untrusted fallback text"),
+      `${status} content must not call the LLM.`,
+    );
+  }
+
   const ruleReason = resolveFilteredNoiseReason({
     llmNoiseReason: "LLM marked this as noise.",
     ruleDecision: {

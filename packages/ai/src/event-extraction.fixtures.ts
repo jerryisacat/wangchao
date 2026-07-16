@@ -1,4 +1,4 @@
-import { parseEventExtractionResponse } from "./event-extraction.js";
+import { buildEventExtractionMessages, parseEventExtractionResponse } from "./event-extraction.js";
 import type { EventExtractionAdapter } from "./event-extraction.js";
 import { extractEvent } from "./event-extraction.js";
 
@@ -12,6 +12,9 @@ export async function runEventExtractionFixtures(): Promise<void> {
   fixtureValidNoiseResponse();
   fixtureEntitiesArrayParsing();
   fixtureMissingTitleReturnsNoise();
+  fixtureDuplicateTitleThrows();
+  fixtureChineseLanguageMismatchThrows();
+  fixtureDynamicPromptLanguageIsConsistent();
   fixtureThinkingTagsSanitized();
   fixtureTypeEnumMismatchThrows();
 }
@@ -48,7 +51,7 @@ async function fixtureTimeoutHandledByAdapter(): Promise<void> {
   try {
     await extractEvent(
       {
-        item: { id: "1", title: "test", url: "https://example.com" },
+        item: { id: "1", rawContent: "Captured Markdown content for adapter timeout testing.", title: "test", url: "https://example.com" },
         topic: { keywords: [], name: "test" },
       },
       { adapter, model: "gpt-4o-mini" },
@@ -72,7 +75,7 @@ async function fixtureNoKeyFallsBack(): Promise<void> {
   try {
     await extractEvent(
       {
-        item: { id: "1", title: "test", url: "https://example.com" },
+        item: { id: "1", rawContent: "Captured Markdown content for missing key testing.", title: "test", url: "https://example.com" },
         topic: { keywords: [], name: "test" },
       },
       { adapter, model: "gpt-4o-mini" },
@@ -87,6 +90,7 @@ async function fixtureNoKeyFallsBack(): Promise<void> {
 function fixtureValidRelevantResponse(): void {
   const content = JSON.stringify({
     isRelevant: true,
+    noiseReason: "",
     relevanceScore: 85,
     title: "Clean Title",
     summary: "This is a concise summary.",
@@ -99,7 +103,7 @@ function fixtureValidRelevantResponse(): void {
 
   const result = parseEventExtractionResponse(content, {
     itemTitle: "Original Title",
-    itemSummary: "Original summary.",
+    outputLanguage: "en",
   });
 
   assert(result.isRelevant === true, "Should be relevant.");
@@ -116,7 +120,15 @@ function fixtureValidRelevantResponse(): void {
 function fixtureValidNoiseResponse(): void {
   const content = JSON.stringify({
     isRelevant: false,
+    relevanceScore: 0,
     noiseReason: "与主题无关的广告",
+    title: "",
+    summary: "",
+    category: "noise",
+    entities: [],
+    followUpSuggestion: "",
+    importanceExplanation: "",
+    matchedKeywords: [],
   });
 
   const result = parseEventExtractionResponse(content);
@@ -139,8 +151,10 @@ function fixtureEntitiesArrayParsing(): void {
           summary: "Test summary.",
           category: "general",
           entities: "not-an-array",
+          followUpSuggestion: "",
           importanceExplanation: "Test.",
           matchedKeywords: ["test"],
+          noiseReason: "",
         }),
       ),
     "Non-array entities should fail schema validation.",
@@ -148,17 +162,20 @@ function fixtureEntitiesArrayParsing(): void {
 }
 
 function fixtureMissingTitleReturnsNoise(): void {
-  const result = parseEventExtractionResponse(
-    JSON.stringify({
+  assertThrows(
+    () => parseEventExtractionResponse(JSON.stringify({
       isRelevant: true,
       relevanceScore: 80,
       summary: "Has summary but no title",
-    }),
+      category: "general",
+      entities: [],
+      followUpSuggestion: "",
+      importanceExplanation: "Reason",
+      matchedKeywords: [],
+      noiseReason: "",
+    }), { outputLanguage: "en" }),
+    "Missing title should fail deterministic quality validation.",
   );
-  assert(result.isRelevant === false, "Missing title should degrade to isRelevant=false.");
-  assert((result.noiseReason ?? "").includes("为空"), "Should explain degradation reason.");
-  assert(result.title === "", "Title should be empty.");
-  assert(result.relevanceScore === 0, "Degraded result should have score 0.");
 }
 
 function fixtureThinkingTagsSanitized(): void {
@@ -169,18 +186,87 @@ function fixtureThinkingTagsSanitized(): void {
       title: "Thoughtful Title",
       summary: "After thinking hard.",
       category: "research",
+      entities: [],
+      followUpSuggestion: "",
       importanceExplanation: "Key insight.",
       matchedKeywords: ["ml"],
+      noiseReason: "",
     },
   )}\n\`\`\``;
 
   const result = parseEventExtractionResponse(content, {
     itemTitle: "Fallback",
-    itemSummary: "Fallback",
+    outputLanguage: "en",
   });
 
   assert(result.isRelevant === true, "Should parse through thinking tags.");
   assert(result.title === "Thoughtful Title", "Title should be extracted correctly.");
+}
+
+function fixtureDuplicateTitleThrows(): void {
+  assertThrows(
+    () => parseEventExtractionResponse(JSON.stringify({
+      isRelevant: true,
+      relevanceScore: 90,
+      noiseReason: "",
+      title: "Grok uploaded my user directory to xAI's servers",
+      summary: "Grok uploaded my user directory to xAI's servers",
+      category: "security",
+      entities: ["Grok", "xAI"],
+      followUpSuggestion: "Track follow-up disclosures.",
+      importanceExplanation: "Potential privacy impact.",
+      matchedKeywords: ["AI"],
+    }), {
+      itemTitle: "Grok uploaded my user directory to xAI's servers",
+      outputLanguage: "en",
+    }),
+    "A summary that repeats the source title must be rejected.",
+  );
+}
+
+function fixtureChineseLanguageMismatchThrows(): void {
+  assertThrows(
+    () => parseEventExtractionResponse(JSON.stringify({
+      isRelevant: true,
+      relevanceScore: 82,
+      noiseReason: "",
+      title: "English only title",
+      summary: "This English-only summary has enough characters but violates the requested language.",
+      category: "general",
+      entities: [],
+      followUpSuggestion: "Keep watching.",
+      importanceExplanation: "It matters.",
+      matchedKeywords: [],
+    }), {
+      itemTitle: "Different source title",
+      outputLanguage: "zh-CN",
+    }),
+    "Chinese output requests must reject summaries without Chinese text.",
+  );
+}
+
+function fixtureDynamicPromptLanguageIsConsistent(): void {
+  const baseInput = {
+    item: {
+      id: "1",
+      rawContent: "# Evidence\n\nThe captured document contains enough factual evidence for extraction.",
+      title: "Source title",
+      url: "https://example.com/article",
+    },
+    topic: { keywords: ["AI"], name: "AI" },
+  };
+  const english = buildEventExtractionMessages({
+    ...baseInput,
+    topic: { ...baseInput.topic, languagePreferences: { outputLanguage: "en" } },
+  }).map((message) => message.content).join("\n");
+  const chinese = buildEventExtractionMessages({
+    ...baseInput,
+    topic: { ...baseInput.topic, languagePreferences: { outputLanguage: "zh-CN" } },
+  }).map((message) => message.content).join("\n");
+  assert(english.includes("English summary"), "English prompt should request English consistently.");
+  assert(!english.includes("concise Chinese summary"), "English prompt must not retain hard-coded Chinese output instructions.");
+  assert(chinese.includes("简体中文"), "Chinese prompt should request Simplified Chinese consistently.");
+  assert(chinese.includes("documentMarkdown"), "Prompt should identify Markdown as the factual document.");
 }
 
 function fixtureTypeEnumMismatchThrows(): void {

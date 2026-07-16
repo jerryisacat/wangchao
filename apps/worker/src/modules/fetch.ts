@@ -1,26 +1,51 @@
 import {
   completeTaskRun,
+  createTaskRun,
   createSourceFetchTaskRun,
   failTaskRun,
   getPrismaClient,
   recordSourceFetchFailure,
   recordSourceFetchSuccess,
   upsertFetchedItems,
-  listItemsWithoutRawContent,
-  updateItemRawContent,
+  listItemsPendingContentCapture,
+  updateItemContentCapture,
   type FetchedSourceRecord,
+  type NormalizedFetchedItemInput,
 } from "@wangchao/db";
-import { fetchRssFeed, isFetchRssRetryable, fetchArticleContent } from "@wangchao/sources";
+import { fetchRssFeed, isFetchRssRetryable, fetchArticleMarkdown, type NormalizedSourceItem } from "@wangchao/sources";
 import { getMaxFetchAttempts, getFetchConcurrency, getBackoffBaseMs, sleep, pLimit } from "./env.js";
 import type { WorkerFetchCycleResult } from "./types.js";
 import { isCycleShuttingDown, isCycleTimeExhausted } from "./lifecycle.js";
+
+export function mapFetchedSourceItem(
+  source: FetchedSourceRecord,
+  item: NormalizedSourceItem,
+  rawMetadata?: Record<string, unknown>,
+): NormalizedFetchedItemInput {
+  return {
+    organizationId: source.organizationId,
+    topicId: source.topicId,
+    sourceId: source.id,
+    title: item.title,
+    url: item.url,
+    canonicalUrl: item.canonicalUrl,
+    summary: item.summary,
+    author: item.author,
+    publishedAt: item.publishedAt,
+    contentHash: item.contentHash,
+    rawContent: item.rawContent,
+    contentStatus: item.contentStatus,
+    contentSource: item.contentSource,
+    rawMetadata: rawMetadata ?? item.rawMetadata,
+  };
+}
 
 export async function runArticleFetchCycle(
   prisma: ReturnType<typeof getPrismaClient>,
   organizationId: string,
 ): Promise<{ fetched: number; failed: number }> {
   const result = { fetched: 0, failed: 0 };
-  const items = await listItemsWithoutRawContent(prisma, { organizationId });
+  const items = await listItemsPendingContentCapture(prisma, { organizationId });
 
   if (items.length === 0) return result;
 
@@ -29,13 +54,38 @@ export async function runArticleFetchCycle(
     items.map((item) =>
       limit(async () => {
         if (isCycleShuttingDown() || isCycleTimeExhausted()) return;
+        const taskRun = await createTaskRun(prisma, {
+          input: { mode: "article-markdown" },
+          itemId: item.id,
+          organizationId,
+          topicId: item.topicId,
+          type: "CONTENT_FETCH",
+        });
         try {
-          const content = await fetchArticleContent(item.url);
-          if (content) {
-            await updateItemRawContent(prisma, item.id, content);
+          const capture = await fetchArticleMarkdown(item.url);
+          await updateItemContentCapture(prisma, item.id, {
+            contentErrorCode: capture.errorCode,
+            contentSource: capture.contentSource,
+            contentStatus: capture.status,
+            rawContent: capture.markdown ?? null,
+          });
+          if (capture.status === "READY") {
             result.fetched += 1;
+          } else {
+            result.failed += 1;
           }
-        } catch {
+          await completeTaskRun(prisma, taskRun.id, {
+            contentStatus: capture.status,
+            errorCode: capture.errorCode ?? null,
+          });
+        } catch (error) {
+          await updateItemContentCapture(prisma, item.id, {
+            contentErrorCode: "CONTENT_CAPTURE_ERROR",
+            contentSource: "ARTICLE_HTML",
+            contentStatus: "FETCH_FAILED",
+            rawContent: null,
+          });
+          await failTaskRun(prisma, taskRun.id, error);
           result.failed += 1;
         }
       }),
@@ -104,19 +154,7 @@ async function fetchSourceAttempt(
     const items = await fetchRssFeed(source.url);
     const writtenItems = await upsertFetchedItems(
       prisma,
-      items.map((item) => ({
-        organizationId: source.organizationId,
-        topicId: source.topicId,
-        sourceId: source.id,
-        title: item.title,
-        url: item.url,
-        canonicalUrl: item.canonicalUrl,
-        summary: item.summary,
-        author: item.author,
-        publishedAt: item.publishedAt,
-        contentHash: item.contentHash,
-        rawMetadata: item.rawMetadata,
-      })),
+      items.map((item) => mapFetchedSourceItem(source, item)),
     );
 
     await recordSourceFetchSuccess(prisma, source.id);

@@ -127,6 +127,7 @@ export async function listInstantPushCandidates(
   const rows = await prisma.intelligenceEvent.findMany({
     where: {
       organizationId: scope.organizationId,
+      summaryStatus: "READY",
       score: { gte: input.scoreThreshold },
       createdAt: { gte: input.enabledAt },
       instantPushLogs: { none: { status: { in: ["SENT", "SKIPPED"] } } },

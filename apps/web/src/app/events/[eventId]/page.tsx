@@ -6,6 +6,7 @@ import {
   Download,
   EyeOff,
   ExternalLink,
+  RotateCcw,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
@@ -16,6 +17,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   recordEnhancedFeedbackAction,
+  regenerateEventSummaryAction,
   updateCategoryPreferenceAction,
   updateDashboardEventStateAction,
 } from "@/app/actions";
@@ -105,7 +107,12 @@ export default async function EventDetailPage({
         </CardHeader>
         <CardContent>
           <article className="event-detail-page">
-            <p className="event-detail-summary">{event.summary}</p>
+            <p
+              className="event-detail-summary"
+              data-summary-status={event.summaryStatus}
+            >
+              {event.summary}
+            </p>
 
             {event.explanation ? (
               <div className="event-detail-reason">
@@ -249,6 +256,14 @@ export default async function EventDetailPage({
             </div>
 
             <div className="event-detail-actions">
+              <form action={regenerateEventSummaryAction}>
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <Button size="sm" type="submit" variant="secondary">
+                  <RotateCcw aria-hidden="true" size={14} />
+                  {event.summaryStatus === "READY" ? "重新采集并生成" : "重新采集"}
+                </Button>
+              </form>
               <Button asChild size="sm" variant="primary">
                 <a href={`/exports/events/${event.eventId}`}>
                   <Download aria-hidden="true" size={14} />
@@ -292,5 +307,4 @@ function formatDateTime(value: string): string {
     year: "numeric",
   }).format(new Date(value));
 }
-
 

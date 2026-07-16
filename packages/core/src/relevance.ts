@@ -198,9 +198,9 @@ export function createIntelligenceEventDraftFromExtraction(
 
   const occurredAt = item.publishedAt ?? item.fetchedAt;
   const eventHash = createEventHash(
-    `${normalizeTitle(extraction.title)}\n${item.url}`,
+    `${normalizeTitle(item.title)}\n${item.url}`,
   );
-  const titleHash = createTitleHash(extraction.title);
+  const titleHash = createTitleHash(item.title);
   const gravityScore = calculateGravityScore(
     extraction.relevanceScore,
     occurredAt,

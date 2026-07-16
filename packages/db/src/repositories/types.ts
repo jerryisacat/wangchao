@@ -70,6 +70,10 @@ export interface NormalizedFetchedItemInput extends TopicScope {
   publishedAt?: Date;
   contentHash?: string;
   rawContent?: string;
+  contentStatus?: "PENDING" | "READY" | "INSUFFICIENT" | "FETCH_FAILED" | "UNSUPPORTED";
+  contentSource?: "RSS_EMBEDDED" | "ARTICLE_HTML" | "LEGACY_TEXT";
+  contentFetchedAt?: Date;
+  contentErrorCode?: string;
   rawMetadata?: Record<string, unknown>;
 }
 
@@ -79,6 +83,8 @@ export interface PendingAnalysisItem {
   organizationId: string;
   publishedAt: Date | null;
   rawContent: string | null;
+  contentStatus: "PENDING" | "READY" | "INSUFFICIENT" | "FETCH_FAILED" | "UNSUPPORTED";
+  contentErrorCode: string | null;
   sourceId: string;
   sourceName: string;
   summary: string | null;
@@ -103,6 +109,8 @@ export interface IntelligenceEventWriteInput extends TopicScope {
   rawAiResponse?: Record<string, unknown>;
   score: number;
   summary: string;
+  summaryStatus?: "PENDING" | "READY" | "CONTENT_FETCH_FAILED" | "CONTENT_INSUFFICIENT" | "CONTENT_UNSUPPORTED" | "AI_FAILED";
+  itemStatus?: "FETCHED" | "ANALYZED";
   title: string;
   titleHash: string;
 }
@@ -124,6 +132,7 @@ export interface DashboardEventRecord {
   sourceUrl: string | null;
   status: "UNREAD" | "READ" | "SAVED" | "DISMISSED" | "ARCHIVED";
   summary: string;
+  summaryStatus: "PENDING" | "READY" | "CONTENT_FETCH_FAILED" | "CONTENT_INSUFFICIENT" | "CONTENT_UNSUPPORTED" | "AI_FAILED";
   title: string;
   topicId: string;
   topicName: string;
@@ -177,6 +186,7 @@ export interface BriefingEventRecord {
   sourceName: string | null;
   sourceUrl: string | null;
   summary: string;
+  summaryStatus: "PENDING" | "READY" | "CONTENT_FETCH_FAILED" | "CONTENT_INSUFFICIENT" | "CONTENT_UNSUPPORTED" | "AI_FAILED";
   title: string;
   topicId: string;
   topicName: string;

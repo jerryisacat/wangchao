@@ -773,13 +773,20 @@ export async function upsertFetchedItems(
       contentHash: item.contentHash,
       fetchedAt: new Date(),
       publishedAt: item.publishedAt,
-      rawContent: item.rawContent,
       rawMetadata: toInputJson(item.rawMetadata),
       sourceId: item.sourceId,
       summary: item.summary,
       title: item.title,
       url: item.url,
     };
+    if (item.rawContent !== undefined || item.contentStatus !== undefined) {
+      if (item.rawContent !== undefined) updateData.rawContent = item.rawContent;
+      else if (item.contentStatus === "INSUFFICIENT") updateData.rawContent = null;
+      updateData.contentStatus = item.contentStatus ?? "READY";
+      updateData.contentSource = item.contentSource;
+      updateData.contentFetchedAt = item.contentFetchedAt ?? new Date();
+      updateData.contentErrorCode = item.contentErrorCode ?? null;
+    }
 
     if (existingKeys.has(key)) {
       toUpdate.push({ topicId: item.topicId, canonicalUrl: item.canonicalUrl, data: updateData });
@@ -797,6 +804,12 @@ export async function upsertFetchedItems(
         publishedAt: item.publishedAt,
         contentHash: item.contentHash,
         rawContent: item.rawContent,
+        contentStatus: item.contentStatus ?? (item.rawContent ? "READY" : "PENDING"),
+        contentSource: item.contentSource,
+        contentFetchedAt:
+          item.contentFetchedAt ??
+          (item.contentStatus !== undefined || item.rawContent ? new Date() : undefined),
+        contentErrorCode: item.contentErrorCode,
         rawMetadata: toInputJson(item.rawMetadata),
       });
     }
@@ -842,6 +855,9 @@ export async function listFetchedItemsForAnalysis(
       topic: {
         status: "ACTIVE",
       },
+      source: {
+        status: "ACTIVE",
+      },
     },
     include: {
       source: {
@@ -867,6 +883,8 @@ export async function listFetchedItemsForAnalysis(
     organizationId: item.organizationId,
     publishedAt: item.publishedAt,
     rawContent: item.rawContent,
+    contentStatus: item.contentStatus,
+    contentErrorCode: item.contentErrorCode,
     sourceId: item.sourceId,
     sourceName: item.source.name,
     summary: item.summary,
@@ -879,30 +897,41 @@ export async function listFetchedItemsForAnalysis(
   }));
 }
 
-export async function updateItemRawContent(
+export async function updateItemContentCapture(
   prisma: PrismaClient,
   itemId: string,
-  rawContent: string,
+  input: {
+    contentErrorCode?: string | null;
+    contentSource?: "RSS_EMBEDDED" | "ARTICLE_HTML" | "LEGACY_TEXT" | null;
+    contentStatus: "PENDING" | "READY" | "INSUFFICIENT" | "FETCH_FAILED" | "UNSUPPORTED";
+    rawContent?: string | null;
+  },
 ): Promise<void> {
   await prisma.item.update({
     where: { id: itemId },
-    data: { rawContent },
+    data: {
+      contentErrorCode: input.contentErrorCode ?? null,
+      contentFetchedAt: input.contentStatus === "PENDING" ? null : new Date(),
+      contentSource: input.contentSource ?? null,
+      contentStatus: input.contentStatus,
+      ...(input.rawContent !== undefined ? { rawContent: input.rawContent } : {}),
+    },
   });
 }
 
-export async function listItemsWithoutRawContent(
+export async function listItemsPendingContentCapture(
   prisma: PrismaClient,
   scope: TenantScope,
   limit = 20,
-): Promise<Array<{ id: string; url: string }>> {
+): Promise<Array<{ id: string; topicId: string; url: string }>> {
   const items = await prisma.item.findMany({
     where: {
       organizationId: scope.organizationId,
       status: "FETCHED",
-      rawContent: null,
+      contentStatus: "PENDING",
       url: { not: "" },
     },
-    select: { id: true, url: true },
+    select: { id: true, topicId: true, url: true },
     orderBy: { fetchedAt: "desc" },
     take: limit,
   });
@@ -920,6 +949,7 @@ export async function listHighScoreEventPagesForDiscovery(
   const events = await prisma.intelligenceEvent.findMany({
     where: {
       organizationId: scope.organizationId,
+      summaryStatus: "READY",
       OR: [
         { score: { gte: scope.threshold } },
         { gravityScore: { gte: scope.threshold } },

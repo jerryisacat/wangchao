@@ -37,7 +37,7 @@ export async function upsertIntelligenceEventFromItem(
         topicId: input.topicId,
       },
     },
-    select: { id: true, primaryItemId: true, status: true },
+    select: { id: true, primaryItemId: true, status: true, summaryStatus: true },
   });
 
   if (existing?.status === "ARCHIVED") existing = null;
@@ -58,7 +58,7 @@ export async function upsertIntelligenceEventFromItem(
           lte: fuzzyWindowEnd,
         },
       },
-      select: { id: true, primaryItemId: true, status: true },
+      select: { id: true, primaryItemId: true, status: true, summaryStatus: true },
     });
 
     if (existingByTitle) {
@@ -68,6 +68,35 @@ export async function upsertIntelligenceEventFromItem(
   }
 
   const event = await prisma.$transaction(async (tx) => {
+    if (
+      existing?.summaryStatus === "READY" &&
+      (input.summaryStatus ?? "READY") !== "READY"
+    ) {
+      await tx.eventItem.upsert({
+        where: {
+          eventId_itemId: {
+            eventId: existing.id,
+            itemId: input.primaryItemId,
+          },
+        },
+        update: {
+          mergeReason: input.mergeReason ?? "已有完整摘要，保留为次要来源",
+          role: "SECONDARY",
+        },
+        create: {
+          eventId: existing.id,
+          itemId: input.primaryItemId,
+          mergeReason: input.mergeReason ?? "已有完整摘要，保留为次要来源",
+          role: "SECONDARY",
+        },
+      });
+      await tx.item.update({
+        where: { id: input.primaryItemId },
+        data: { status: input.itemStatus ?? "ANALYZED" },
+      });
+      return tx.intelligenceEvent.findUniqueOrThrow({ where: { id: existing.id } });
+    }
+
     const updateData = {
       category: input.category,
       entities: input.entities ?? [],
@@ -81,6 +110,8 @@ export async function upsertIntelligenceEventFromItem(
       rawAiResponse: toInputJson(input.rawAiResponse),
       score: input.score,
       summary: input.summary,
+      summaryRequestedAt: input.summaryStatus === "PENDING" ? undefined : null,
+      summaryStatus: input.summaryStatus ?? "READY",
       title: input.title,
       titleHash: input.titleHash,
     };
@@ -97,6 +128,7 @@ export async function upsertIntelligenceEventFromItem(
             status: "UNREAD",
             title: input.title,
             summary: input.summary,
+            summaryStatus: input.summaryStatus ?? "READY",
             category: input.category,
             entities: input.entities ?? [],
             score: input.score,
@@ -163,7 +195,7 @@ export async function upsertIntelligenceEventFromItem(
 
     await tx.item.update({
       where: { id: input.primaryItemId },
-      data: { status: "ANALYZED" },
+      data: { status: input.itemStatus ?? "ANALYZED" },
     });
 
     return upserted;
@@ -350,6 +382,7 @@ function mapDashboardEventRecord(
     sourceUrl: event.primaryItem?.source.url ?? null,
     status: event.status,
     summary: event.summary,
+    summaryStatus: event.summaryStatus,
     title: event.title,
     topicId: event.topicId,
     topicName: event.topic.name,
@@ -518,6 +551,7 @@ export async function listEventsForDailyBriefing(
     where: {
       organizationId: scope.organizationId,
       topicId: scope.topicId,
+      summaryStatus: "READY",
       createdAt: {
         gte: scope.rangeStart,
         lt: scope.rangeEnd,
@@ -578,6 +612,7 @@ export async function listEventsForDailyBriefing(
       sourceName: event.primaryItem?.source.name ?? null,
       sourceUrl: event.primaryItem?.source.url ?? null,
       summary: event.summary,
+      summaryStatus: event.summaryStatus,
       title: event.title,
       topicId: event.topicId,
       topicName: event.topic.name,
@@ -600,6 +635,7 @@ export async function listTimelineEvents(
   const where: Prisma.IntelligenceEventWhereInput = {
     organizationId: scope.organizationId,
     topicId: scope.topicId,
+    summaryStatus: "READY",
     status: { in: ["UNREAD", "READ", "SAVED"] },
     primaryItem: { source: { status: "ACTIVE" } },
   };
@@ -643,6 +679,7 @@ export async function listTimelineEvents(
         eventId: event.id,
         title: event.title,
         summary: event.summary,
+        summaryStatus: event.summaryStatus,
         category: event.category,
         entities: event.entities ?? [],
         explanation: event.explanation,
@@ -830,6 +867,7 @@ export async function getEventMarkdownExportRecord(
     sourceName: event.primaryItem?.source.name ?? null,
     sourceUrl: event.primaryItem?.source.url ?? null,
     summary: event.summary,
+    summaryStatus: event.summaryStatus,
     title: event.title,
     topicId: event.topicId,
     topicName: event.topic.name,
@@ -949,6 +987,7 @@ export async function listUnreadEvents(prisma: PrismaClient, scope: TopicScope) 
     where: {
       organizationId: scope.organizationId,
       topicId: scope.topicId,
+      summaryStatus: "READY",
       status: "UNREAD",
     },
     orderBy: [{ gravityScore: "desc" }, { createdAt: "desc" }],

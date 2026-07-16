@@ -1,8 +1,11 @@
-import { parseRssFeed } from "./index.js";
+import { fetchArticleMarkdown, htmlToSafeMarkdown, parseRssFeed } from "./index.js";
 
 export function runSourceParserFixtures(): Promise<void> {
   return Promise.all([
     assertContentEncodedExtraction(),
+    assertArticleMarkdownExtraction(),
+    assertUnsupportedPlatformSkipsNetwork(),
+    assertUnsafeHtmlIsRemoved(),
     assertAtomAlternateLink(),
     assertNumericEntityDecoding(),
     assertCdataHandling(),
@@ -30,6 +33,54 @@ function assertContentEncodedExtraction(): Promise<void> {
     items[0]?.summary === "<p>Full HTML content here</p>",
     "Should prefer content:encoded over description.",
   );
+  assert(
+    items[0]?.rawContent === "Full HTML content here",
+    "content:encoded should be retained as Markdown.",
+  );
+  assert(items[0]?.contentStatus === "READY", "Embedded RSS content should be ready.");
+  assert(items[0]?.contentSource === "RSS_EMBEDDED", "Embedded RSS source should be recorded.");
+  return Promise.resolve();
+}
+
+async function assertArticleMarkdownExtraction(): Promise<void> {
+  const html = `<!doctype html><html><body><main><article>
+    <h1>Useful article</h1>
+    <p>This paragraph contains enough meaningful content for Readability to identify the page as an article.</p>
+    <p>It also links to <a href="/evidence">supporting evidence</a> and keeps the document auditable.</p>
+  </article></main></body></html>`;
+  const result = await fetchArticleMarkdown("https://93.184.216.34/article", {
+    fetchImpl: async () => new Response(html, {
+      headers: { "content-type": "text/html" },
+      status: 200,
+    }),
+  });
+  assert(result.status === "READY", `Expected READY article, received ${result.status}.`);
+  assert(result.markdown?.includes("Useful article") === true, "Article title should survive Markdown conversion.");
+  assert(result.markdown?.includes("[supporting evidence](https://93.184.216.34/evidence)") === true, "Safe links should be absolute and retained.");
+}
+
+async function assertUnsupportedPlatformSkipsNetwork(): Promise<void> {
+  let called = false;
+  const result = await fetchArticleMarkdown("https://x.com/example/status/123", {
+    fetchImpl: async () => {
+      called = true;
+      return new Response("unexpected");
+    },
+  });
+  assert(result.status === "UNSUPPORTED", "X should be explicitly unsupported until its adapter is implemented.");
+  assert(result.errorCode === "PLATFORM_NOT_SUPPORTED", "Unsupported platforms need a stable error code.");
+  assert(!called, "Unsupported platform URLs must not invoke the generic fetcher.");
+}
+
+function assertUnsafeHtmlIsRemoved(): Promise<void> {
+  const markdown = htmlToSafeMarkdown(
+    `<p onclick="steal()">Safe text <a href="javascript:alert(1)">bad link</a> [literal](javascript:alert(2))</p><script>alert(1)</script><style>body{display:none}</style>`,
+    "https://example.com",
+  );
+  assert(markdown.includes("Safe text bad link"), "Visible safe text should remain.");
+  assert(!markdown.includes("javascript:"), "javascript URLs and literal Markdown link payloads must be neutralized.");
+  assert(!markdown.includes("alert(1)"), "Script contents must be removed.");
+  assert(!markdown.includes("display:none"), "Style contents must be removed.");
   return Promise.resolve();
 }
 

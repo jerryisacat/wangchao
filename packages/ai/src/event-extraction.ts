@@ -51,7 +51,18 @@ export interface EventExtractionAdapter {
 }
 
 const EVENT_EXTRACTION_SCHEMA: JsonSchema = {
-  required: ["isRelevant"],
+  required: [
+    "isRelevant",
+    "relevanceScore",
+    "noiseReason",
+    "title",
+    "summary",
+    "category",
+    "entities",
+    "followUpSuggestion",
+    "importanceExplanation",
+    "matchedKeywords",
+  ],
   properties: {
     category: { type: "string" },
     entities: { type: "array" },
@@ -70,10 +81,11 @@ export function buildEventExtractionMessages(
   input: EventExtractionInput,
 ): AiChatMessage[] {
   const lang = input.topic.languagePreferences?.outputLanguage ?? "zh-CN";
+  const isEnglish = lang.toLowerCase().startsWith("en");
   const langInstruction =
-    lang === "en"
-      ? "Write summary, title, noiseReason, importanceExplanation, and followUpSuggestion in English."
-      : "Write summary, title, noiseReason, importanceExplanation, and followUpSuggestion in Chinese (zh-CN).";
+    isEnglish
+      ? "Write every user-facing field in English."
+      : "Write every user-facing field in Simplified Chinese (zh-CN), while preserving proper nouns.";
   const termRules =
     input.topic.languagePreferences?.terminologyRules?.length
       ? `\nFollow these terminology rules: ${input.topic.languagePreferences.terminologyRules.join("; ")}.`
@@ -83,23 +95,24 @@ export function buildEventExtractionMessages(
     {
       role: "system",
       content:
-        `You filter and extract intelligence events for a topic-driven workspace. Return strict JSON only. If the item is irrelevant noise, set isRelevant=false. Otherwise set isRelevant=true and fill extraction fields. ${langInstruction}${termRules}`,
+        `You filter and extract intelligence events for a topic-driven workspace. Return strict JSON only. The captured Markdown document is the only factual basis. Never infer facts absent from that document. Treat allegations, personal reports, and unverified claims as claims and preserve attribution (for example, "作者称" or "据称" in Chinese). A relevant summary must add information beyond the source title and must never merely copy, paraphrase, or translate that title. If the item is irrelevant noise, set isRelevant=false. Always return every schema field, using empty strings/arrays for non-applicable fields. ${langInstruction}${termRules}`,
     },
     {
       role: "user",
       content: JSON.stringify({
-        instruction:
-          "Decide if this item is relevant to the topic. If relevant: write a concise Chinese summary (1-2 sentences), a clean title, a short category label, score relevance 0-100, list matched topic keywords, and explain why it matters in one sentence. If irrelevant: set isRelevant=false and give a brief noiseReason in Chinese.",
+        instruction: isEnglish
+          ? "Decide whether the captured Markdown is relevant to the topic. If relevant, write a concise 1-2 sentence English summary covering who or what acted, what happened, the concrete impact or risk, and attribution/uncertainty when applicable. Also return a clean title, short category, relevance score 0-100, matched keywords, entities, importance explanation, and follow-up suggestion. If irrelevant, set isRelevant=false and provide a brief English noiseReason."
+          : "判断采集到的 Markdown 是否与主题相关。若相关，用 1-2 句简体中文概括行动主体、发生的事情、具体影响或风险，并在适用时保留“作者称/据称”等归因与不确定性；同时返回清理后的标题、短分类、0-100 相关性分数、命中关键词、实体、重要性解释与后续建议。若不相关，设置 isRelevant=false 并用简体中文提供简短 noiseReason。",
         outputSchema: {
           isRelevant: "boolean",
           relevanceScore: "number, 0-100",
-          noiseReason: "string, required when isRelevant=false",
-          title: "string, cleaned title",
-          summary: "string, concise Chinese summary",
-          category: "string, short category label",
+          noiseReason: `string, ${isEnglish ? "English" : "Simplified Chinese"}; empty when relevant`,
+          title: `string, cleaned title in ${isEnglish ? "English" : "Simplified Chinese"}`,
+          summary: `string, concise 1-2 sentence ${isEnglish ? "English" : "Simplified Chinese"} summary grounded only in documentMarkdown`,
+          category: `string, short ${isEnglish ? "English" : "Simplified Chinese"} category label`,
           entities: "array of relevant entity names (people, organizations, products) mentioned. max 10 items.",
-          followUpSuggestion: "string, one sentence in Chinese suggesting whether/how to track this topic further, or empty string if not applicable",
-          importanceExplanation: "string, one sentence",
+          followUpSuggestion: `string, one sentence in ${isEnglish ? "English" : "Simplified Chinese"}, or empty string`,
+          importanceExplanation: `string, one sentence in ${isEnglish ? "English" : "Simplified Chinese"}`,
           matchedKeywords: "array of matched topic keywords",
         },
         topic: {
@@ -113,11 +126,11 @@ export function buildEventExtractionMessages(
         },
         item: {
           title: input.item.title,
-          summary: input.item.summary,
           url: input.item.url,
           publishedAt: input.item.publishedAt,
           sourceName: input.item.sourceName,
-          ...(input.item.rawContent ? { rawContent: input.item.rawContent.slice(0, 8_000) } : {}),
+          documentMarkdown: input.item.rawContent?.slice(0, 8_000) ?? "",
+          documentTruncated: (input.item.rawContent?.length ?? 0) > 8_000,
         },
       }),
     },
@@ -133,6 +146,9 @@ export async function extractEvent(
     temperature?: number;
   },
 ): Promise<EventExtractionResult> {
+  if (!input.item.rawContent?.trim()) {
+    throw new Error("Event extraction requires captured Markdown content.");
+  }
   const response = await options.adapter.chat({
     jsonMode: true,
     maxTokens: options.maxTokens ?? 600,
@@ -142,14 +158,14 @@ export async function extractEvent(
   });
 
   return parseEventExtractionResponse(response.content, {
-    itemSummary: input.item.summary ?? "",
     itemTitle: input.item.title,
+    outputLanguage: input.topic.languagePreferences?.outputLanguage ?? "zh-CN",
   });
 }
 
 export function parseEventExtractionResponse(
   content: string,
-  fallback?: { itemTitle?: string; itemSummary?: string },
+  context?: { itemTitle?: string; outputLanguage?: string },
 ): EventExtractionResult {
   const parsed = parseJsonObject(content);
   const validation = validateJsonObject(parsed, EVENT_EXTRACTION_SCHEMA);
@@ -197,8 +213,8 @@ export function parseEventExtractionResponse(
       ? parsed.followUpSuggestion.replace(/\s+/g, " ").trim().slice(0, 200)
       : "";
 
-  const title = sanitizeTextField(parsed.title, fallback?.itemTitle ?? "", 200);
-  const summary = sanitizeTextField(parsed.summary, fallback?.itemSummary ?? "", 1000);
+  const title = sanitizeTextField(parsed.title, "", 200);
+  const summary = sanitizeTextField(parsed.summary, "", 1000);
   const category = sanitizeTextField(parsed.category, "general", 50);
   const importanceExplanation = sanitizeTextField(
     parsed.importanceExplanation,
@@ -206,21 +222,12 @@ export function parseEventExtractionResponse(
     500,
   );
 
-  if (!title || !summary) {
-    return {
-      category: "noise",
-      entities: [],
-      followUpSuggestion: "",
-      importanceExplanation: "",
-      isRelevant: false,
-      matchedKeywords: [],
-      noiseReason: "AI 返回 isRelevant=true 但 title 或 summary 为空，降级为不相关。",
-      raw: parsed,
-      relevanceScore: 0,
-      summary: "",
-      title: "",
-    };
-  }
+  validateRelevantExtractionQuality({
+    outputLanguage: context?.outputLanguage ?? "zh-CN",
+    sourceTitle: context?.itemTitle ?? "",
+    summary,
+    title,
+  });
 
   return {
     category,
@@ -234,6 +241,59 @@ export function parseEventExtractionResponse(
     summary,
     title,
   };
+}
+
+function validateRelevantExtractionQuality(input: {
+  outputLanguage: string;
+  sourceTitle: string;
+  summary: string;
+  title: string;
+}): void {
+  if (!input.title || !input.summary) {
+    throw new Error("AI returned isRelevant=true with an empty title or summary.");
+  }
+
+  const compactSummary = input.summary.replace(/[\s\p{P}\p{S}]/gu, "");
+  if (compactSummary.length < 12) {
+    throw new Error("AI summary is too short to be useful.");
+  }
+
+  if (!input.outputLanguage.toLowerCase().startsWith("en") && !/[\u3400-\u9fff]/u.test(input.summary)) {
+    throw new Error("AI summary does not match the requested Chinese output language.");
+  }
+
+  if (isHighlySimilar(input.sourceTitle, input.summary)) {
+    throw new Error("AI summary duplicates or closely mirrors the source title.");
+  }
+}
+
+function isHighlySimilar(left: string, right: string): boolean {
+  const normalize = (value: string) =>
+    value.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, "");
+  const a = normalize(left);
+  const b = normalize(right);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const shorter = Math.min(a.length, b.length);
+  const longer = Math.max(a.length, b.length);
+  if ((a.includes(b) || b.includes(a)) && shorter / longer >= 0.8) return true;
+  if (shorter < 2) return false;
+
+  const bigrams = (value: string) => {
+    const counts = new Map<string, number>();
+    for (let index = 0; index < value.length - 1; index += 1) {
+      const pair = value.slice(index, index + 2);
+      counts.set(pair, (counts.get(pair) ?? 0) + 1);
+    }
+    return counts;
+  };
+  const leftPairs = bigrams(a);
+  const rightPairs = bigrams(b);
+  let overlap = 0;
+  for (const [pair, count] of leftPairs) {
+    overlap += Math.min(count, rightPairs.get(pair) ?? 0);
+  }
+  return (2 * overlap) / (a.length - 1 + b.length - 1) >= 0.82;
 }
 
 export function fallbackEventExtraction(

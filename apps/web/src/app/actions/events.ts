@@ -193,7 +193,7 @@ export async function regenerateEventSummaryAction(
   const eventId = readRequiredField(formData, "eventId");
   const returnTo =
     readSafeReturnPath(formData, "returnTo") ?? `/events/${eventId}`;
-  let message = "摘要已重新生成。";
+  let message = "已加入重新采集与摘要队列。";
   let type: ActionRedirectType = "notice";
 
   try {
@@ -203,15 +203,9 @@ export async function regenerateEventSummaryAction(
 
     const {
       assertMembershipRole,
-      getDecryptedCredentials,
-      getMonthAiCallCount,
       getPrismaClient,
-      getSubscriptionPlanView,
-      getTodayAiCallCount,
-      recordUsageEvent,
     } = await import("@wangchao/db");
     const { getSessionWorkspace } = await import("@/lib/session");
-    const { checkAiCallQuota } = await import("@wangchao/core");
     const prisma = getPrismaClient();
     const workspace = await getSessionWorkspace();
 
@@ -221,17 +215,16 @@ export async function regenerateEventSummaryAction(
       ["OWNER", "ADMIN", "MEMBER"],
     );
 
-    const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
-    const todayAiCalls = await getTodayAiCallCount(prisma, { organizationId: workspace.organizationId });
-    const monthAiCalls = await getMonthAiCallCount(prisma, { organizationId: workspace.organizationId });
-    const aiQuota = checkAiCallQuota(subscription.plan, todayAiCalls, monthAiCalls, subscription.isSelfHosted);
-    if (!aiQuota.allowed) throw new Error(aiQuota.reason ?? "AI call limit reached.");
-
     const event = await prisma.intelligenceEvent.findUnique({
       where: { id: eventId, organizationId: workspace.organizationId },
       include: {
-        primaryItem: { include: { source: { select: { name: true } } } },
-        topic: { select: { name: true, description: true, profile: true } },
+        primaryItem: {
+          select: {
+            contentSource: true,
+            id: true,
+            rawContent: true,
+          },
+        },
       },
     });
 
@@ -243,105 +236,45 @@ export async function regenerateEventSummaryAction(
     }
 
     const sixtySecondsAgo = new Date(Date.now() - 60_000);
-    if (event.updatedAt > sixtySecondsAgo) {
-      message = "刚刚已更新摘要，请稍后再试。";
+    if (event.summaryRequestedAt && event.summaryRequestedAt > sixtySecondsAgo) {
+      message = "刚刚已请求重新采集，请稍后再试。";
       type = "notice";
       revalidatePath(returnTo);
       redirect(actionRedirectHref(returnTo, type, message));
       return;
     }
 
-    const creds = await getDecryptedCredentials(prisma, {
-      organizationId: workspace.organizationId,
-    });
-    if (!creds?.ai?.apiKey || !creds.ai.baseUrl) {
-      const envKey = process.env.AI_API_KEY;
-      const envUrl = process.env.AI_BASE_URL;
-      if (!envKey || !envUrl) {
-        throw new Error("AI_API_KEY_MISSING");
-      }
-    }
+    const canReuseEmbeddedMarkdown =
+      event.primaryItem.contentSource === "RSS_EMBEDDED" &&
+      Boolean(event.primaryItem.rawContent?.trim());
 
-    const { createOpenAiCompatibleAdapter, buildEventExtractionMessages, parseEventExtractionResponse } =
-      await import("@wangchao/ai");
-    const { buildTopicProfileContext } = await import("@wangchao/core");
-    const model = creds?.ai?.model ?? process.env.AI_MODEL ?? "gpt-4o-mini";
-
-    let adapter;
-    if (creds?.ai?.apiKey && creds.ai.baseUrl) {
-      adapter = createOpenAiCompatibleAdapter({
-        apiKey: creds.ai.apiKey,
-        baseUrl: creds.ai.baseUrl,
-      });
-    } else {
-      adapter = createOpenAiCompatibleAdapter({
-        apiKey: process.env.AI_API_KEY!,
-        baseUrl: process.env.AI_BASE_URL!,
-      });
-    }
-
-    const context = buildTopicProfileContext(
-      event.topic.profile,
-      { description: event.topic.description, name: event.topic.name },
-    );
-    const extractionInput = {
-      item: {
-        id: event.primaryItem.id,
-        title: event.primaryItem.title,
-        summary: event.primaryItem.summary,
-        url: event.primaryItem.url,
-        publishedAt: event.primaryItem.publishedAt?.toISOString() ?? null,
-        sourceName: event.primaryItem.source.name,
-        rawContent: event.primaryItem.rawContent ?? null,
-      },
-      topic: {
-        description: context.description,
-        entities: context.entities,
-        excludeScope: context.excludeScope,
-        importanceRules: context.importanceRules,
-        includeScope: context.includeScope,
-        keywords: context.keywords,
-        name: context.name,
-        languagePreferences: context.languagePreferences,
-      },
-    };
-    const messages = buildEventExtractionMessages(extractionInput);
-    const response = await adapter.chat({
-      jsonMode: true,
-      maxTokens: 600,
-      messages,
-      model,
-      temperature: 0.2,
-    });
-    const result = parseEventExtractionResponse(response.content, {
-      itemSummary: event.primaryItem.summary ?? "",
-      itemTitle: event.primaryItem.title,
-    });
-
-    if (result.isRelevant && result.summary) {
-      await prisma.intelligenceEvent.update({
+    await prisma.$transaction([
+      prisma.item.update({
+        where: { id: event.primaryItem.id },
+        data: canReuseEmbeddedMarkdown
+          ? {
+              contentErrorCode: null,
+              contentStatus: "READY",
+              status: "FETCHED",
+            }
+          : {
+              contentErrorCode: null,
+              contentFetchedAt: null,
+              contentSource: null,
+              contentStatus: "PENDING",
+              rawContent: null,
+              status: "FETCHED",
+            },
+      }),
+      prisma.intelligenceEvent.update({
         where: { id: event.id, organizationId: workspace.organizationId },
-        data: { summary: result.summary },
-      });
-      message = "摘要已基于 AI 重新生成。";
-    } else {
-      message = "AI 判定该条目为不相关内容，未更新摘要。";
-    }
-
-    await recordUsageEvent(prisma, {
-      metadata: {
-        action: "regenerate-event-summary",
-        isRelevant: result.isRelevant,
-        source: "event-detail-page",
-      },
-      organizationId: workspace.organizationId,
-      quantity: 1,
-      subjectId: eventId,
-      subjectType: "intelligence-event",
-      type: "AI_CALL",
-      unit: "call",
-      userId: workspace.userId,
-    });
+        data: {
+          summary: "",
+          summaryRequestedAt: new Date(),
+          summaryStatus: "PENDING",
+        },
+      }),
+    ]);
   } catch (error) {
     logActionError("regenerateEventSummaryAction", error);
     message = toUserActionError(error);

@@ -3,11 +3,11 @@ import { formatSafeError } from "./lib/safe-log.js";
 import { setupSignalHandlers } from "./modules/lifecycle.js";
 import { runInstantPushCycle } from "./modules/instant-push.js";
 import { runSourceDiscoveryCycle } from "./modules/discovery.js";
-import { runAnalysisCycle, resolveFilteredNoiseReason } from "./modules/analysis.js";
+import { canUseCapturedContentForLlm, runAnalysisCycle, resolveFilteredNoiseReason } from "./modules/analysis.js";
 import { runSemanticDedupCycle } from "./modules/dedup.js";
 import { runPreferenceLearningCycle } from "./modules/preference.js";
 import { runDailyBriefingCycle, runPeriodBriefingCycle } from "./modules/briefing.js";
-import { fetchSourceWithRetries, runArticleFetchCycle } from "./modules/fetch.js";
+import { fetchSourceWithRetries, mapFetchedSourceItem, runArticleFetchCycle } from "./modules/fetch.js";
 import { createAnalysisRuntimeWithPlan, createSourceRecommendationRuntime } from "./modules/runtime.js";
 import {
   runSourceGovernanceObservationCycle,
@@ -45,6 +45,7 @@ export type {
 
 export {
   resolveFilteredNoiseReason,
+  canUseCapturedContentForLlm,
   runInstantPushCycle,
   runSourceDiscoveryCycle,
   runAnalysisCycle,
@@ -56,6 +57,7 @@ export {
   runCandidateObservationCycle,
   runExpiredCandidateReviewCycle,
   fetchSourceWithRetries,
+  mapFetchedSourceItem,
   runArticleFetchCycle,
 };
 

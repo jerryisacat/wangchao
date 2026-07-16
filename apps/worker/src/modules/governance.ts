@@ -11,6 +11,7 @@ import {
 import { fetchRssFeed } from "@wangchao/sources";
 import { getCandidateObservationLimit, sleep, pLimit } from "./env.js";
 import { isCycleShuttingDown, isCycleTimeExhausted } from "./lifecycle.js";
+import { mapFetchedSourceItem } from "./fetch.js";
 
 export async function runSourceGovernanceObservationCycle(
   prisma: ReturnType<typeof getPrismaClient>,
@@ -59,19 +60,12 @@ export async function runCandidateObservationCycle(
       if (isCycleShuttingDown() || isCycleTimeExhausted()) return;
       try {
         const items = await fetchRssFeed(source.url);
-        const writtenItems = await upsertFetchedItems(prisma, items.map((item) => ({
-          organizationId: source.organizationId,
-          topicId: source.topicId,
-          sourceId: source.id,
-          title: item.title,
-          url: item.url,
-          canonicalUrl: item.canonicalUrl,
-          summary: item.summary,
-          author: item.author,
-          publishedAt: item.publishedAt,
-          contentHash: item.contentHash,
-          rawMetadata: { ...item.rawMetadata, candidateObservation: true },
-        })));
+        const writtenItems = await upsertFetchedItems(prisma, items.map((item) =>
+          mapFetchedSourceItem(source, item, {
+            ...item.rawMetadata,
+            candidateObservation: true,
+          }),
+        ));
         await recordSourceFetchSuccess(prisma, source.id);
         result.observedCandidates += 1;
         result.insertedItems += writtenItems.length;

@@ -6,6 +6,7 @@ export async function GET(_request: Request, context: EventRouteContext) {
   const { eventId } = await Promise.resolve(context.params);
   const { createContentHash, renderEventMarkdown } = await import("@wangchao/core");
   const { buildEventDisplayFields } = await import("@/lib/event-display");
+  const { getSummaryDisplay } = await import("@/lib/summary-status");
   const generatedAt = new Date();
 
   if (!process.env.DATABASE_URL) {
@@ -66,6 +67,7 @@ export async function GET(_request: Request, context: EventRouteContext) {
       summary: event.summary,
       title: event.title,
     });
+    const summaryDisplay = getSummaryDisplay(event.summaryStatus, display.summary);
 
     const markdown = renderEventMarkdown(
       {
@@ -77,7 +79,7 @@ export async function GET(_request: Request, context: EventRouteContext) {
         score: event.score,
         sourceName: event.sourceName,
         sourceUrl: event.sourceUrl,
-        summary: display.summary,
+        summary: summaryDisplay.text,
         title: event.title,
         url: event.url,
       },

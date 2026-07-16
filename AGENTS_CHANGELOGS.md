@@ -1,5 +1,13 @@
 ## 2026-07-17
 
+### Fix: 建立 Markdown 正文采集与摘要状态门禁
+
+- Cause: RSS `content:encoded` 在 Worker upsert 时漏传，普通网页只保留纯文本且采集失败仍会让 LLM 使用 RSS/标题生成摘要，导致标题被复制成摘要并掩盖真实采集失败。
+- Changed: RSS embedded HTML 与 Readability `article.content` 统一清洗为 Markdown；新增 Item 采集状态和 IntelligenceEvent 摘要状态、`CONTENT_FETCH` 审计任务及 migration；只有 READY Markdown 才调用 LLM，prompt 统一动态语言并增加事实依据、归因和确定性质量校验；失败占位事件保留原文链接但不进入简报、即时推送、报告证据或语义去重；详情页改为异步重新采集，首页和详情共用结构化失败提示。X/Twitter 暂不接 API，明确记录为 UNSUPPORTED。
+- Files: `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/0015_content_capture_status/migration.sql`, `packages/db/src/repositories/*`, `packages/sources/src/index.ts`, `packages/sources/src/parser.fixtures.ts`, `packages/ai/src/event-extraction.ts`, `packages/ai/src/event-extraction.fixtures.ts`, `packages/core/src/relevance.ts`, `apps/worker/src/modules/*`, `apps/web/src/app/actions/events.ts`, `apps/web/src/app/events/[eventId]/page.tsx`, `apps/web/src/components/intelligence/intelligence-card.tsx`, `apps/web/src/lib/summary-status.ts`, `SPEC.md`, `CODEGUIDE.md`, `FRONTEND.md`, `docs/L2-domain.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `AGENTS_CHANGELOGS.md`
+- Verification: 使用 pnpm 11.7.0 完成 Prisma format/generate/validate、`CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build` 和 `git diff --check`；新增 RSS/Readability Markdown、安全清理、X unsupported、LLM READY 门禁、prompt 语言/质量、正式简报 READY 过滤和 UI 状态 fixtures 全部通过。Next/Turbopack build 与 sources DNS fixture 因沙箱端口/网络限制改在授权环境运行并通过。
+- Notes / Risk: migration 会把既有非空 `rawContent` 标为 `READY/LEGACY_TEXT`；已在一次性 Postgres 16 空库从 `0001` 完整重放 migration，生产仍需按部署流程执行。X/Twitter 专用 API adapter 留待独立 Issue。本轮未执行生产 migration、commit 或 push。
+
 ### Fix: 修复 production CSP 阻断 Next.js 流式渲染
 
 - Cause: production `script-src 'self'` 拒绝 Next.js App Router 无 nonce 的 framework/React Flight 内联脚本；服务端已返回真实数据，但浏览器无法执行 `self.__next_f.push(...)`，首页永久停留在 `loading.tsx` 骨架屏并报 `Connection closed`。

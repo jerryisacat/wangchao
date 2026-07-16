@@ -118,6 +118,8 @@ async function verifyTopicUpdateAndAnalysisContextStayTenantScoped(): Promise<vo
             publishedAt: null,
             sourceId: "source-1",
             source: { name: "Source One" },
+            contentErrorCode: null,
+            contentStatus: "READY",
             summary: "Summary",
             title: "Title",
             topic: {
@@ -161,9 +163,12 @@ async function verifyTopicUpdateAndAnalysisContextStayTenantScoped(): Promise<vo
   );
   const findArgs = readArgsByName(calls, "item.findMany");
   const include = readRecord(findArgs.include, "analysisItems.include");
+  const analysisWhere = readRecord(findArgs.where, "analysisItems.where");
+  const activeSource = readRecord(analysisWhere.source, "analysisItems.where.source");
   const topic = readRecord(include.topic, "analysisItems.include.topic");
   const select = readRecord(topic.select, "analysisItems.include.topic.select");
   assert(select.name === true, "Analysis item query must load the current topic name.");
+  assert(activeSource.status === "ACTIVE", "Candidate-source items must not enter analysis.");
   assert(
     select.description === true,
     "Analysis item query must load the current topic description.",
@@ -369,6 +374,7 @@ async function verifyDailyBriefingWindowFilter(): Promise<void> {
   assert(createdAt.lt === rangeEnd, "Daily briefing query must exclude the next UTC day boundary.");
   assert(statuses.includes("READ"), "Read events from the same day must remain briefing candidates.");
   assert(!statuses.includes("DISMISSED"), "Dismissed events must stay out of formal briefings.");
+  assert(where.summaryStatus === "READY", "Only successfully summarized events may enter formal briefings.");
   assert(source.status === "ACTIVE", "Only active sources may enter formal briefings.");
 }
 

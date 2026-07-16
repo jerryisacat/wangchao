@@ -72,7 +72,12 @@ export function IntelligenceCard({
         <Link href={`/events/${event.eventId}`}>{event.title}</Link>
       </h3>
 
-      <p className="intelligence-card-summary">{event.summary}</p>
+      <p
+        className="intelligence-card-summary"
+        data-summary-status={event.summaryStatus}
+      >
+        {event.summary}
+      </p>
 
       {event.explanation ? (
         <div className="intelligence-card-reason">

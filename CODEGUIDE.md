@@ -125,7 +125,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 
 - 抓取、AI 分析、简报、导出等长任务必须放在 worker，不放进 request lifecycle。
 - Web app 只 enqueue 任务和读取 durable status，不执行长任务。
-- Worker 负责抓取、item normalize、可解释分析、反馈归纳、简报生成和 source quality observation。
+- Worker 负责抓取、Markdown 正文采集、item normalize、可解释分析、反馈归纳、简报生成和 source quality observation。AI 摘要必须在正文采集 `READY` 后执行。
 - Next.js route handlers 用于外部 API、webhooks、export downloads、status endpoints。Server Actions 用于内部产品 mutations。
 
 ### L1.3 Tenant 与权限边界
@@ -141,6 +141,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 
 - LLM 输出一律视为不可信输入，后端 sanitize，前端安全渲染。
 - RSS、网页内容、LLM 输出全部按不可信输入处理。
+- RSS/网页 HTML 只转换为清洗后的 Markdown 子集：不保留主动内容、事件处理器或非 HTTP(S) 链接；RSS summary 不得在正文采集失败时冒充事实正文。
 - provider response 必须先 sanitize，再 parse，再 validate。
 - 页面和 Markdown 导出只允许把 HTTP/HTTPS URL 渲染为外链。
 - 情报正文、摘要、解释和来源名称不得全大写；来源和原文链接必须使用真实 `<a>`，外链补 `target="_blank"` 和 `rel="noreferrer"`。

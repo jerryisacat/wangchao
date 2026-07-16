@@ -2,7 +2,7 @@ import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import { XMLParser } from "fast-xml-parser";
 import { canonicalizeUrl } from "@wangchao/db";
-import { createContentHash, isHttpUrl, stripHtml } from "@wangchao/core";
+import { createContentHash, isHttpUrl } from "@wangchao/core";
 import { assertSafeUrl } from "./ssrf.js";
 
 export type SourceKind = "rss" | "web";
@@ -52,6 +52,8 @@ export interface NormalizedSourceItem {
   publishedAt?: Date;
   contentHash: string;
   rawContent?: string;
+  contentSource?: "RSS_EMBEDDED";
+  contentStatus?: "READY" | "INSUFFICIENT";
   rawMetadata: Record<string, unknown>;
 }
 
@@ -260,10 +262,28 @@ export interface FetchArticleOptions {
   maxContentLength?: number;
 }
 
-export async function fetchArticleContent(
+export interface ArticleMarkdownResult {
+  contentSource: "ARTICLE_HTML";
+  errorCode?: string;
+  markdown?: string;
+  status: "READY" | "INSUFFICIENT" | "FETCH_FAILED" | "UNSUPPORTED";
+}
+
+const MIN_ARTICLE_MARKDOWN_LENGTH = 80;
+const MAX_STORED_MARKDOWN_LENGTH = 20_000;
+
+export async function fetchArticleMarkdown(
   articleUrl: string,
   options: FetchArticleOptions = {},
-): Promise<string | null> {
+): Promise<ArticleMarkdownResult> {
+  if (isUnsupportedPlatformUrl(articleUrl)) {
+    return {
+      contentSource: "ARTICLE_HTML",
+      errorCode: "PLATFORM_NOT_SUPPORTED",
+      status: "UNSUPPORTED",
+    };
+  }
+
   const fetchImpl = options.fetchImpl ?? fetch;
   const timeoutMs = options.timeoutMs ?? 10_000;
   const maxContentLength = options.maxContentLength ?? 100_000;
@@ -281,32 +301,205 @@ export async function fetchArticleContent(
     });
 
     if (!response.ok) {
-      return null;
+      return {
+        contentSource: "ARTICLE_HTML",
+        errorCode: `HTTP_${response.status}`,
+        status: "FETCH_FAILED",
+      };
     }
 
     const contentLength = response.headers.get("content-length");
     if (contentLength && Number.parseInt(contentLength, 10) > maxContentLength) {
-      return null;
+      return {
+        contentSource: "ARTICLE_HTML",
+        errorCode: "CONTENT_TOO_LARGE",
+        status: "FETCH_FAILED",
+      };
     }
 
     const html = await response.text();
     if (html.length > maxContentLength) {
-      return null;
+      return {
+        contentSource: "ARTICLE_HTML",
+        errorCode: "CONTENT_TOO_LARGE",
+        status: "FETCH_FAILED",
+      };
     }
 
     const { document } = parseHTML(html);
     const reader = new Readability(document);
     const article = reader.parse();
 
-    if (!article?.textContent) {
-      return null;
+    if (!article?.content) {
+      return {
+        contentSource: "ARTICLE_HTML",
+        errorCode: "READABILITY_EMPTY",
+        status: "INSUFFICIENT",
+      };
     }
 
-    return article.textContent.replace(/\s+/g, " ").trim().slice(0, 20_000);
+    const markdown = htmlToSafeMarkdown(article.content, articleUrl);
+    if (markdown.length < MIN_ARTICLE_MARKDOWN_LENGTH) {
+      return {
+        contentSource: "ARTICLE_HTML",
+        errorCode: "CONTENT_TOO_SHORT",
+        markdown: markdown || undefined,
+        status: "INSUFFICIENT",
+      };
+    }
+
+    return {
+      contentSource: "ARTICLE_HTML",
+      markdown: markdown.slice(0, MAX_STORED_MARKDOWN_LENGTH),
+      status: "READY",
+    };
   } catch {
-    return null;
+    return {
+      contentSource: "ARTICLE_HTML",
+      errorCode: "FETCH_ERROR",
+      status: "FETCH_FAILED",
+    };
   } finally {
     clearTimeout(timeout);
+  }
+}
+
+/**
+ * Converts untrusted HTML into a deliberately small Markdown subset. The DOM is
+ * never executed; active/embed elements are dropped and only safe HTTP(S)
+ * links are retained.
+ */
+export function htmlToSafeMarkdown(html: string, baseUrl?: string): string {
+  const { document } = parseHTML(`<!doctype html><html><body>${html}</body></html>`);
+  const root = document.body;
+  const markdown = Array.from(root.childNodes)
+    .map((node) => renderMarkdownNode(node, { baseUrl, listDepth: 0 }))
+    .join("");
+
+  return normalizeMarkdown(markdown).slice(0, MAX_STORED_MARKDOWN_LENGTH);
+}
+
+interface MarkdownRenderContext {
+  baseUrl?: string;
+  listDepth: number;
+}
+
+const DROPPED_HTML_TAGS = new Set([
+  "SCRIPT",
+  "STYLE",
+  "NOSCRIPT",
+  "IFRAME",
+  "OBJECT",
+  "EMBED",
+  "SVG",
+  "CANVAS",
+  "FORM",
+  "INPUT",
+  "BUTTON",
+  "SELECT",
+  "TEXTAREA",
+  "META",
+  "LINK",
+]);
+
+function renderMarkdownNode(node: Node, context: MarkdownRenderContext): string {
+  if (node.nodeType === 3) {
+    return escapeMarkdownText(node.textContent ?? "");
+  }
+  if (node.nodeType !== 1) {
+    return "";
+  }
+
+  const element = node as Element;
+  const tag = element.tagName.toUpperCase();
+  if (DROPPED_HTML_TAGS.has(tag)) return "";
+
+  const children = () =>
+    Array.from(element.childNodes)
+      .map((child) => renderMarkdownNode(child, context))
+      .join("");
+
+  if (/^H[1-6]$/.test(tag)) {
+    const level = Number(tag.slice(1));
+    return `\n\n${"#".repeat(level)} ${children().trim()}\n\n`;
+  }
+  if (["P", "DIV", "SECTION", "ARTICLE", "HEADER", "FOOTER", "MAIN", "ASIDE"].includes(tag)) {
+    return `\n\n${children().trim()}\n\n`;
+  }
+  if (tag === "BR") return "\n";
+  if (["STRONG", "B"].includes(tag)) return `**${children().trim()}**`;
+  if (["EM", "I"].includes(tag)) return `*${children().trim()}*`;
+  if (["DEL", "S", "STRIKE"].includes(tag)) return `~~${children().trim()}~~`;
+  if (tag === "CODE" && element.parentElement?.tagName.toUpperCase() !== "PRE") {
+    return `\`${children().trim().replaceAll("`", "\\`")}\``;
+  }
+  if (tag === "PRE") {
+    const code = (element.textContent ?? "").replaceAll("```", "` ` `").trim();
+    return code ? `\n\n\`\`\`\n${code}\n\`\`\`\n\n` : "";
+  }
+  if (tag === "BLOCKQUOTE") {
+    const body = children().trim().split("\n").map((line) => `> ${line}`).join("\n");
+    return body ? `\n\n${body}\n\n` : "";
+  }
+  if (tag === "A") {
+    const label = children().trim();
+    const href = safeMarkdownUrl(element.getAttribute("href"), context.baseUrl);
+    return href && label ? `[${label}](${href})` : label;
+  }
+  if (tag === "UL" || tag === "OL") {
+    const nextContext = { ...context, listDepth: context.listDepth + 1 };
+    const items = Array.from(element.children)
+      .filter((child) => child.tagName.toUpperCase() === "LI")
+      .map((child, index) => {
+        const marker = tag === "OL" ? `${index + 1}.` : "-";
+        const body = Array.from(child.childNodes)
+          .map((itemNode) => renderMarkdownNode(itemNode, nextContext))
+          .join("")
+          .trim();
+        return `${"  ".repeat(context.listDepth)}${marker} ${body}`;
+      })
+      .join("\n");
+    return items ? `\n${items}\n` : "";
+  }
+  if (tag === "LI") return children();
+
+  return children();
+}
+
+function safeMarkdownUrl(value: string | null, baseUrl?: string): string | null {
+  if (!value) return null;
+  try {
+    const url = baseUrl ? new URL(value, baseUrl) : new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function escapeMarkdownText(value: string): string {
+  return value
+    .replaceAll("\\", "\\\\")
+    .replace(/([`*_[\]()])/g, "\\$1")
+    .replace(/javascript\s*:/gi, "javascript&#58;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replace(/\s+/g, " ");
+}
+
+function normalizeMarkdown(value: string): string {
+  return value
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function isUnsupportedPlatformUrl(value: string): boolean {
+  try {
+    const hostname = new URL(value).hostname.toLowerCase().replace(/^www\./, "");
+    return hostname === "x.com" || hostname.endsWith(".x.com") || hostname === "twitter.com" || hostname.endsWith(".twitter.com");
+  } catch {
+    return false;
   }
 }
 
@@ -327,6 +520,9 @@ function parseRssItem(item: Record<string, unknown>): NormalizedSourceItem | nul
     textOf(item.published) ??
     textOf(item.updated);
   const canonicalUrl = canonicalizeUrl(link);
+  const embeddedMarkdown = encodedContent
+    ? htmlToSafeMarkdown(encodedContent, link)
+    : undefined;
 
   return {
     title,
@@ -336,7 +532,9 @@ function parseRssItem(item: Record<string, unknown>): NormalizedSourceItem | nul
     author,
     publishedAt: parseDate(published),
     contentHash: createContentHash(`${title}\n${canonicalUrl}\n${summary ?? ""}`),
-    rawContent: encodedContent ? stripHtml(encodedContent).slice(0, 20_000) : undefined,
+    rawContent: embeddedMarkdown || undefined,
+    contentSource: encodedContent ? "RSS_EMBEDDED" : undefined,
+    contentStatus: encodedContent ? (embeddedMarkdown ? "READY" : "INSUFFICIENT") : undefined,
     rawMetadata: { publishedText: published ?? null },
   };
 }
@@ -356,6 +554,9 @@ function parseAtomEntry(entry: Record<string, unknown>): NormalizedSourceItem | 
     textOf(entry.published) ??
     textOf(entry.updated);
   const canonicalUrl = canonicalizeUrl(link);
+  const embeddedMarkdown = encodedContent
+    ? htmlToSafeMarkdown(encodedContent, link)
+    : undefined;
 
   return {
     title,
@@ -365,7 +566,9 @@ function parseAtomEntry(entry: Record<string, unknown>): NormalizedSourceItem | 
     author,
     publishedAt: parseDate(published),
     contentHash: createContentHash(`${title}\n${canonicalUrl}\n${summary ?? ""}`),
-    rawContent: encodedContent ? stripHtml(encodedContent).slice(0, 20_000) : undefined,
+    rawContent: embeddedMarkdown || undefined,
+    contentSource: encodedContent ? "RSS_EMBEDDED" : undefined,
+    contentStatus: encodedContent ? (embeddedMarkdown ? "READY" : "INSUFFICIENT") : undefined,
     rawMetadata: { publishedText: published ?? null },
   };
 }
@@ -443,4 +646,3 @@ function parseDate(value: string | undefined): Date | undefined {
   const timestamp = Date.parse(value);
   return Number.isNaN(timestamp) ? undefined : new Date(timestamp);
 }
-

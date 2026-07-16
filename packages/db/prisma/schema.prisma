@@ -38,6 +38,29 @@ enum ItemStatus {
   ERROR
 }
 
+enum ItemContentStatus {
+  PENDING
+  READY
+  INSUFFICIENT
+  FETCH_FAILED
+  UNSUPPORTED
+}
+
+enum ItemContentSource {
+  RSS_EMBEDDED
+  ARTICLE_HTML
+  LEGACY_TEXT
+}
+
+enum EventSummaryStatus {
+  PENDING
+  READY
+  CONTENT_FETCH_FAILED
+  CONTENT_INSUFFICIENT
+  CONTENT_UNSUPPORTED
+  AI_FAILED
+}
+
 enum EventStatus {
   UNREAD
   READ
@@ -77,6 +100,7 @@ enum ExportFormat {
 
 enum TaskRunType {
   SOURCE_FETCH
+  CONTENT_FETCH
   SOURCE_DISCOVERY
   AI_RELEVANCE
   AI_EVENT_EXTRACTION
@@ -124,9 +148,9 @@ model User {
 }
 
 model Organization {
-  id                 String              @id @default(cuid())
+  id                 String                   @id @default(cuid())
   name               String
-  slug               String              @unique
+  slug               String                   @unique
   memberships        Membership[]
   topics             Topic[]
   sources            Source[]
@@ -142,11 +166,11 @@ model Organization {
   deliveryLogs       DeliveryLog[]
   reports            Report[]
   paymentInvoices    PaymentInvoice[]
-  webhookEvents       WebhookEvent[]
+  webhookEvents      WebhookEvent[]
   subscription       Subscription[]
   credentials        OrganizationCredential[]
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
   instantPushLogs    InstantPushLog[]
 }
 
@@ -207,10 +231,10 @@ model Subscription {
   id             String @id @default(cuid())
   organizationId String @unique
 
-  plan             Plan               @default(FREE)
-  status           SubscriptionStatus @default(ACTIVE)
-  billingInterval   BillingInterval    @default(MONTHLY)
-  isSelfHosted     Boolean            @default(false)
+  plan            Plan               @default(FREE)
+  status          SubscriptionStatus @default(ACTIVE)
+  billingInterval BillingInterval    @default(MONTHLY)
+  isSelfHosted    Boolean            @default(false)
 
   stripeCustomerId     String?
   stripeSubscriptionId String?
@@ -220,15 +244,15 @@ model Subscription {
   canceledAt         DateTime?
   metadata           Json?
 
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 }
 
 model OrganizationCredential {
-  id              String          @id @default(cuid())
-  organizationId  String
-  credentialType  CredentialType
+  id             String         @id @default(cuid())
+  organizationId String
+  credentialType CredentialType
 
   encryptedKey    String?
   encryptedSecret String?
@@ -241,8 +265,8 @@ model OrganizationCredential {
   appId  String?
   chatId String?
 
-  enabled             Boolean   @default(false)
-  instantPushEnabled  Boolean   @default(false)
+  enabled              Boolean   @default(false)
+  instantPushEnabled   Boolean   @default(false)
   instantPushEnabledAt DateTime?
 
   createdAt DateTime @default(now())
@@ -344,6 +368,10 @@ model Item {
   fetchedAt          DateTime            @default(now())
   contentHash        String?
   rawContent         String?
+  contentStatus      ItemContentStatus   @default(PENDING)
+  contentSource      ItemContentSource?
+  contentFetchedAt   DateTime?
+  contentErrorCode   String?
   rawMetadata        Json?
   organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   topic              Topic               @relation(fields: [topicId], references: [id], onDelete: Cascade)
@@ -357,41 +385,44 @@ model Item {
 
   @@unique([topicId, canonicalUrl])
   @@index([organizationId, status])
+  @@index([organizationId, contentStatus])
   @@index([topicId, status, publishedAt])
   @@index([sourceId, fetchedAt])
   @@index([contentHash])
 }
 
 model IntelligenceEvent {
-  id                 String           @id @default(cuid())
+  id                 String             @id @default(cuid())
   organizationId     String
   topicId            String
   primaryItemId      String?
-  status             EventStatus      @default(UNREAD)
+  status             EventStatus        @default(UNREAD)
   title              String
   summary            String
+  summaryStatus      EventSummaryStatus @default(READY)
+  summaryRequestedAt DateTime?
   category           String?
-  score              Float            @default(0)
-  gravityScore       Float            @default(0)
+  score              Float              @default(0)
+  gravityScore       Float              @default(0)
   eventHash          String?
   titleHash          String?
   explanation        String?
-  entities           String[]         @default([])
+  entities           String[]           @default([])
   followUpSuggestion String?
   mergeReason        String?
   occurredAt         DateTime?
   rawAiResponse      Json?
-  organization       Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  topic              Topic            @relation(fields: [topicId], references: [id], onDelete: Cascade)
-  primaryItem        Item?            @relation("PrimaryItem", fields: [primaryItemId], references: [id], onDelete: SetNull)
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic              Topic              @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  primaryItem        Item?              @relation("PrimaryItem", fields: [primaryItemId], references: [id], onDelete: SetNull)
   eventItems         EventItem[]
   userStates         UserItemState[]
   feedbackEvents     FeedbackEvent[]
-  briefings          Briefing[]       @relation("BriefingEvents")
+  briefings          Briefing[]         @relation("BriefingEvents")
   exportEvents       ExportEvent[]
   taskRuns           TaskRun[]
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
   instantPushLogs    InstantPushLog[]
 
   @@unique([topicId, eventHash])
@@ -418,16 +449,16 @@ model EventItem {
 }
 
 model UserItemState {
-  id          String            @id @default(cuid())
-  userId      String
-  eventId     String
-  status      EventStatus       @default(UNREAD)
-  saved       Boolean           @default(false)
-  readAt      DateTime?
-  user        User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  event       IntelligenceEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  id        String            @id @default(cuid())
+  userId    String
+  eventId   String
+  status    EventStatus       @default(UNREAD)
+  saved     Boolean           @default(false)
+  readAt    DateTime?
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event     IntelligenceEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
 
   @@unique([userId, eventId])
   @@index([eventId])
@@ -722,13 +753,13 @@ model PaymentInvoice {
 }
 
 model WebhookEvent {
-  id              String   @id @default(cuid())
-  provider        String
-  recordId        String
-  organizationId  String
-  processedAt     DateTime @default(now())
+  id             String   @id @default(cuid())
+  provider       String
+  recordId       String
+  organizationId String
+  processedAt    DateTime @default(now())
 
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([provider, recordId])
   @@index([organizationId])

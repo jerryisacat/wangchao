@@ -176,6 +176,7 @@ export async function searchReportEvidenceEvents(
   const events = await prisma.intelligenceEvent.findMany({
     where: {
       organizationId: scope.organizationId,
+      summaryStatus: "READY",
       status: { in: ["UNREAD", "READ", "SAVED"] },
       ...(query.rangeStart || query.rangeEnd
         ? {

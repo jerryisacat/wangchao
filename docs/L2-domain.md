@@ -20,8 +20,8 @@
 | `Session` | Better Auth 兼容的会话记录。跟踪用户登录状态和过期时间。 |
 | `Topic` | 用户创建的情报主题，包含 topic profile、状态和 owner。 |
 | `Source` | RSS/Web 信源注册条目，带 candidate/active/muted/rejected 状态和质量分。`observeExpiresAt` 是观察到期时间，用于候选源复审机制。设置为 CANDIDATE 状态时自动设置 14 天观察期；到期后 worker 自动复审（有事件产出则提升为 ACTIVE，否则 REJECTED）。 |
-| `Item` | worker 抓取并规范化后的原始条目。 |
-| `IntelligenceEvent` | AI 抽取、去重、评分后的情报单元。通过 EventItem 关联表支持多来源合并（primary + secondary），携带实体和后续跟踪建议。 |
+| `Item` | worker 抓取并规范化后的原始条目；`rawContent` 保存清洗后的 Markdown 快照，结构化字段记录采集状态、来源、时间和错误码。 |
+| `IntelligenceEvent` | AI 抽取、去重、评分后的情报单元。通过 EventItem 关联表支持多来源合并（primary + secondary），携带实体、后续跟踪建议和结构化摘要状态。采集/AI 失败时可作为空摘要占位事件保留。 |
 | `UserItemState` | 用户对某条情报的阅读/收藏/忽略状态。`dismissedAt` 已移除，由 `status=DISMISSED` 隐含。 |
 | `FeedbackEvent` | 原始行为和显式反馈记录，为偏好学习保留信号。 |
 | `PreferenceMemory` | 可解释的、按主题学到的用户偏好记忆。 |
@@ -79,8 +79,18 @@ FETCHED ──error──────────> ERROR
 ANALYZED ──duplicate──────> DUPLICATE
 ```
 
+正文采集是独立门禁：
+
+```text
+PENDING ──RSS embedded / article Markdown ready──> READY
+PENDING ──正文过短或 Readability 为空────────────> INSUFFICIENT
+PENDING ──HTTP/网络/体积错误────────────────────> FETCH_FAILED
+PENDING ──平台无专用 adapter（当前含 X）────────> UNSUPPORTED
+```
+
 规则：
 - `markItemFiltered()` 必须保留原有 `rawMetadata`，只追加过滤原因，避免丢失 RSS 原始追溯信息。
+- `rawContent` 是已清洗的 Markdown 快照；`script/style/embed/form` 等主动内容、事件处理器和非 HTTP(S) 链接不得保留。只有 `contentStatus=READY` 且快照非空才可调用 LLM。
 - 当前规则 relevance 对 title/summary 做大小写不敏感的精确短语包含匹配：excludeScope 命中直接 FILTERED 且 score=0；keywords/entities/includeScope 是独立正信号。命中实体会进入 fallback IntelligenceEvent.entities，命中信号/noiseReason 会进入 decision/TaskRun/Item metadata。LLM 返回 isRelevant=false 时，其 noiseReason 同样写入 extraction/relevance TaskRun 和 Item metadata，不得被泛化文案覆盖。importanceRules 只由 AI extraction 消费；AI 另外读取当前 Source name 与 Topic 行的当前 name/description。标题和 URL 生成 `eventHash`，用 `topicId + eventHash` 幂等 upsert 事件。
 - 多来源合并：精确 event hash 或标题 hash + ±24h 命中已有事件时，直接按已有 event id 更新，不能按新 hash 再创建一条事件；旧 primary 的 `EventItem.role` 改为 `SECONDARY` 且 Item 进入 `DUPLICATE`，新 Item 成为 `PRIMARY/ANALYZED`。语义聚类同样把被合并事件的 Item 关联到保留事件并标记为 `DUPLICATE`；归档的被合并事件清空 eventHash/titleHash，避免未来新报道再次命中已归档行或被唯一键阻塞。
 
@@ -96,6 +106,8 @@ SAVED ───unsave─────> READ（已有 readAt）或 UNREAD
 * ───────archive────> ARCHIVED
 ```
 
+摘要状态独立于阅读状态：`PENDING -> READY | CONTENT_FETCH_FAILED | CONTENT_INSUFFICIENT | CONTENT_UNSUPPORTED | AI_FAILED`。非 `READY` 事件的 `summary` 必须为空，只在 UI/单条导出时根据状态生成提示；它们不进入正式简报、即时推送、专题报告证据或语义去重。重新采集会把事件置回 `PENDING`，由 Worker 异步处理。
+
 规则：
 - Dashboard 主列表只展示 `UNREAD` 和 `SAVED` 事件；`READ` 与 `DISMISSED` 默认从主信息流隐藏。
 - `read` / `save` / `dismiss` 必须同时写 `IntelligenceEvent`、`UserItemState` 和 `FeedbackEvent`，为偏好学习保留信号。
@@ -107,7 +119,7 @@ SAVED ───unsave─────> READ（已有 readAt）或 UNREAD
 
 - `DAILY` 使用 UTC 自然日半开区间 `[rangeStart, rangeEnd)`；`WEEKLY` 使用 UTC 自然周（周一开始）半开区间；`MONTHLY` 使用 UTC 自然月半开区间。当前尚未实现 organization/user 可配置业务时区。
 - 同一 `topicId + period + rangeStart` 只能存在一条 Briefing。Worker 同窗口重跑通过 upsert 刷新内容、`generatedAt` 和事件关系，不新增重复记录。
-- Daily briefing 按 `IntelligenceEvent.createdAt` 选择当日新进入情报库的事件；`UNREAD`、`READ`、`SAVED` 可进入，`DISMISSED`、`ARCHIVED` 不进入。Weekly/Monthly briefing 按 `occurredAt` 倒序聚合窗口内全部事件。
+- Daily briefing 按 `IntelligenceEvent.createdAt` 选择当日新进入情报库且 `summaryStatus=READY` 的事件；`UNREAD`、`READ`、`SAVED` 可进入，`DISMISSED`、`ARCHIVED` 不进入。Weekly/Monthly briefing 按 `occurredAt` 倒序聚合窗口内全部 READY 事件。
 - 正式简报只允许 primary item 属于 `ACTIVE` source；candidate/muted/rejected 继续隔离。
 - Web 简报历史按 organization 分页读取（支持 period 筛选），不能通过固定 Top-N 结果冒充完整历史。
 

@@ -28,7 +28,7 @@ pnpm worker:report-generation
 pnpm smoke:web
 ```
 
-`pnpm test` 会实际执行 `packages/core`、`packages/ai`、`packages/sources`、`packages/db` 和 `apps/worker` 的编译后 fixture；core/db/worker fixture 当前覆盖收藏集合、Daily Briefing、TaskRun 生命周期、标题模糊合并、SourceObservation 指标口径、category feedback/跨 Topic 隔离、Topic profile/analysis context，以及 rule/LLM filter reason 优先级，而不是只做 TypeScript 编译。
+`pnpm test` 会实际执行 `packages/core`、`packages/ai`、`packages/sources`、`packages/db`、`apps/worker` 和 Web 纯函数 fixture；除既有覆盖外，正文采集变更需验证 RSS embedded HTML→Markdown、Readability→Markdown、主动内容清理、X 不触发通用网络抓取、READY LLM 门禁、摘要标题复读/语言质量拒绝、正式简报只选 READY summary，以及 UI 状态文案。
 
 Topic profile 或 analysis 输入变更后，应使用临时 Postgres 验证：更新后的 keywords/entities/include/exclude/importance、当前 Source name 与 Topic 当前 name/description 能从 `listFetchedItemsForAnalysis()` 进入 extraction input / `buildTopicProfileContext()`；使用错误 organizationId 调用 `updateTopic()` 必须失败。不要在真实工作区制造验证数据。
 
@@ -38,7 +38,11 @@ Relevance 变更必须用 core fixture 覆盖：exclude 与正信号同时命中
 
 Worker/导出链路变更后，应在临时 Postgres 中至少验证 `TaskRun.type/status/attempt/maxAttempts/startedAt/finishedAt/output/errorMessage`。AI provider 失败但规则 fallback 成功时，应同时看到失败的 `AI_EVENT_EXTRACTION`、成功且 `llmFallback=true` 的 `AI_RELEVANCE`，并确认 `UsageEvent(type='AI_CALL').quantity` 包含最终失败的逻辑 adapter 调用（内部 HTTP retry 不重复计数）。
 
+正文采集链路必须额外验证 `CONTENT_FETCH` TaskRun 与 `Item.contentStatus/contentSource/contentFetchedAt/contentErrorCode`；`CONTENT_FETCH_FAILED/CONTENT_INSUFFICIENT/CONTENT_UNSUPPORTED/AI_FAILED` 占位事件应在首页和详情可见、保留原文链接，但不得被 briefing、instant push、report evidence 或 semantic dedup 查询选中。详情页重新采集只重置状态，下一轮 Worker 执行实际网络/AI 工作。
+
 Briefing schema 变更后必须运行 `pnpm db:generate`、`pnpm db:validate` 和 migration 验证。
+
+`0015_content_capture_status` 为 Item/IntelligenceEvent 增加非破坏性状态字段并回填既有非空 `rawContent` 为 `READY/LEGACY_TEXT`；部署后新条目会把该列作为安全 Markdown 使用。上线前应在 staging 执行 migration，并抽查既有纯文本快照仍能作为合法 Markdown 读取。
 
 `0013_credentials_split` 执行前需确认目标库无并发写入：它将 Subscription 表上的 22 个凭证列迁移到新建的 OrganizationCredential 表（按 credentialType 分区），再 DROP 原列。迁移期间短暂持有 ACCESS EXCLUSIVE 锁。合理做法是在业务低峰窗前执行 `prisma migrate deploy`，并在 staging 先验证。该 migration 还删除了 `IntelligenceEvent.secondaryItemIds`、`DeliveryLog.idempotencyKey`、`UserItemState.dismissedAt` 三个冗余列——如已有数据依赖这些列，需先确认再部署。`0008_briefing_idempotency` 会在增加唯一索引前合并同一 `topicId + period + rangeStart` 的历史重复记录，保留最新简报，将既有 `ExportEvent` 指向保留记录，并合并 `_BriefingEvents` 关系；生产发布前不得跳过 migration/predeploy。
 
@@ -185,6 +189,7 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 - `WANGCHAO_FETCH_CONCURRENCY` 控制每轮 worker 并发抓取 RSS source 数量，默认 `5`。
 - `WANGCHAO_FETCH_BACKOFF_BASE_MS` 控制重试指数退避的基准延迟毫秒数，默认 `1000`。实际延迟为 `BASE * 2^(attempt-1) * jitter(0.5-1.0)`。
+- 正文采集不需要新增环境变量：RSS embedded content 优先；普通网页使用 Readability + 安全 Markdown 转换；X/Twitter 暂不接入 API，状态为 `UNSUPPORTED`，用户仍可打开原文。
 
 ### 信源治理
 

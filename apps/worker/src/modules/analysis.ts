@@ -47,6 +47,7 @@ function buildExtractionInput(
     url: string;
     publishedAt?: Date | null;
     rawContent?: string | null;
+    contentStatus: "PENDING" | "READY" | "INSUFFICIENT" | "FETCH_FAILED" | "UNSUPPORTED";
     sourceId?: string | null;
     sourceName?: string | null;
     topicDescription?: string | null;
@@ -97,6 +98,30 @@ function buildExtractionInput(
       languagePreferences: context.languagePreferences,
     },
   };
+}
+
+export function canUseCapturedContentForLlm(
+  contentStatus: "PENDING" | "READY" | "INSUFFICIENT" | "FETCH_FAILED" | "UNSUPPORTED",
+  rawContent?: string | null,
+): boolean {
+  return contentStatus === "READY" && Boolean(rawContent?.trim());
+}
+
+function summaryStatusForContent(
+  contentStatus: "PENDING" | "READY" | "INSUFFICIENT" | "FETCH_FAILED" | "UNSUPPORTED",
+): "PENDING" | "CONTENT_FETCH_FAILED" | "CONTENT_INSUFFICIENT" | "CONTENT_UNSUPPORTED" | "AI_FAILED" {
+  switch (contentStatus) {
+    case "PENDING":
+      return "PENDING";
+    case "INSUFFICIENT":
+      return "CONTENT_INSUFFICIENT";
+    case "UNSUPPORTED":
+      return "CONTENT_UNSUPPORTED";
+    case "FETCH_FAILED":
+      return "CONTENT_FETCH_FAILED";
+    case "READY":
+      return "AI_FAILED";
+  }
 }
 
 function extractionToAiEventExtraction(
@@ -160,8 +185,10 @@ export async function runAnalysisCycle(
       let llmNoiseReason: string | undefined;
       let usedLlm = false;
       let usedFallback = false;
+      let summaryStatus: "PENDING" | "READY" | "CONTENT_FETCH_FAILED" | "CONTENT_INSUFFICIENT" | "CONTENT_UNSUPPORTED" | "AI_FAILED" = summaryStatusForContent(item.contentStatus);
+      const hasReadyContent = canUseCapturedContentForLlm(item.contentStatus, item.rawContent);
 
-      if (ai) {
+      if (ai && hasReadyContent) {
         result.llmAttempts += 1;
         const extractionTask = await createTaskRun(prisma, {
           input: { model: ai.model },
@@ -192,6 +219,7 @@ export async function runAnalysisCycle(
           rawAiResponse = { mode: "llm", extraction };
           llmNoiseReason = extraction.noiseReason;
           usedLlm = true;
+          summaryStatus = "READY";
           await completeTaskRun(prisma, extractionTask.id, {
             isRelevant: extraction.isRelevant,
             model: ai.model,
@@ -230,10 +258,15 @@ export async function runAnalysisCycle(
           ruleDecision,
         );
         rawAiResponse = {
-          mode: "explainable-rules",
+          mode: hasReadyContent ? "explainable-rules-ai-failed" : "explainable-rules-content-gate",
           relevance: ruleDecision,
+          contentStatus: item.contentStatus,
           ...(usedFallback ? { llmFallback: true } : {}),
         };
+        summaryStatus = hasReadyContent ? "AI_FAILED" : summaryStatusForContent(item.contentStatus);
+        if (draft) {
+          draft = { ...draft, summary: "" };
+        }
       }
 
       result.analyzedItems += 1;
@@ -263,6 +296,8 @@ export async function runAnalysisCycle(
         primaryItemId: item.id,
         title: draft.title,
         summary: draft.summary,
+        summaryStatus,
+        itemStatus: summaryStatus === "PENDING" ? "FETCHED" : "ANALYZED",
         category: draft.category,
         entities: draft.entities,
         score: draft.score,
@@ -280,6 +315,7 @@ export async function runAnalysisCycle(
         eventId: event.id,
         llmFallback: usedFallback,
         mode: usedLlm ? "llm" : "explainable-rules",
+        summaryStatus,
         outcome: "event-upserted",
       });
     } catch (error) {

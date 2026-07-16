@@ -1,4 +1,5 @@
 import { buildEventDisplayFields } from "@/lib/event-display";
+import { getSummaryDisplay, type EventSummaryStatus } from "@/lib/summary-status";
 import type { DashboardEventRecord } from "@wangchao/db";
 
 export type DataMode = "database" | "error";
@@ -65,6 +66,8 @@ export interface DashboardEventSummary {
   sourceUrl: string;
   status: "UNREAD" | "READ" | "SAVED" | "DISMISSED" | "ARCHIVED";
   summary: string;
+  summaryAvailable: boolean;
+  summaryStatus: EventSummaryStatus;
   title: string;
   topicId: string;
   topicName: string;
@@ -503,6 +506,7 @@ function toDashboardEventSummary(
     summary: event.summary,
     title: event.title,
   });
+  const summaryDisplay = getSummaryDisplay(event.summaryStatus, display.summary);
 
   return {
     category: event.category ?? "general",
@@ -520,7 +524,9 @@ function toDashboardEventSummary(
     sourceName: event.sourceName ?? "Unknown source",
     sourceUrl: event.sourceUrl ?? "",
     status: event.userStatus ?? event.status,
-    summary: display.summary,
+    summary: summaryDisplay.text,
+    summaryAvailable: summaryDisplay.available,
+    summaryStatus: event.summaryStatus,
     title: event.title,
     topicId: event.topicId,
     topicName: event.topicName,

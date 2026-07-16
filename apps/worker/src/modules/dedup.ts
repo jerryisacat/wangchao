@@ -24,6 +24,7 @@ export async function runSemanticDedupCycle(
   const recentEvents = await prisma.intelligenceEvent.findMany({
     where: {
       organizationId,
+      summaryStatus: "READY",
       status: "UNREAD",
       createdAt: { gte: since },
     },
