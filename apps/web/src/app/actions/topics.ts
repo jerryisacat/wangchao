@@ -326,7 +326,6 @@ async function updateTopicFromForm(formData: FormData) {
     formData,
     "topicImportanceRules",
   );
-  const outputLanguage = readOptionalField(formData, "topicOutputLanguage") || "zh-CN";
   const terminologyRules = readProfileListField(formData, "topicTerminologyRules");
   const digestStructure = readOptionalField(formData, "topicDigestStructure") || "standard";
   const digestDetailLevel = readOptionalField(formData, "topicDigestDetailLevel") || "standard";
@@ -386,7 +385,7 @@ async function updateTopicFromForm(formData: FormData) {
         includeScope,
         keywords,
         languagePreferences: {
-          outputLanguage: outputLanguage.trim().slice(0, 20),
+          outputLanguage: "zh-CN",
           terminologyRules,
         },
         digestStyle: {

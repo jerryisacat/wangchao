@@ -306,7 +306,7 @@ PAID ────(触发 Plan 升级)─────> (关联 Subscription.plan 
 
 | 术语 | 定义 |
 |------|------|
-| **Topic Profile** | 主题的机器可读画像。当前已消费并可编辑 keywords/entities/includeScope/excludeScope/importanceRules；新建主题时由 `buildTopicProfile()` 生成初稿。languagePreferences/digestStyle 尚无稳定契约，由 Issue #30 跟踪。 |
+| **Topic Profile** | 主题的机器可读画像。当前已消费并可编辑 keywords/entities/includeScope/excludeScope/importanceRules、languagePreferences.terminologyRules 与 digestStyle；新建主题时由 `buildTopicProfile()` 生成初稿。摘要语言属于用户界面语言而非原文或主题偏好，i18n 前 `languagePreferences.outputLanguage` 固定为 `zh-CN` 占位，不能覆盖 event extraction 的中文输出契约。 |
 | **Gravity Score** | 情报事件的综合排序分。由 `calculateGravityScore()` 基于 importance、time、source quality 等因子计算，Dashboard 排序的基础分。 |
 | **Preference Memory** | 按主题学到的用户偏好，以 `PreferenceMemory(key/value/confidence/explanation)` 存储。`SAVE/EXPORT` 提升权重，`READ` 轻微提升，`DISMISS` 降低；`CATEGORY_UP/DOWN` 显式调整当前 Topic 的类别。增强反馈（`SOURCE_QUALITY_UP/DOWN`、`SCORE_UP/DOWN`、`MORE/LESS_LIKE_THIS`）提供更细粒度的 source/score/entity 信号。偏好信号带 30 天半衰期时间衰减（`generatePreferenceDeltas` 中的 `applyTimeDecay`），旧信号自动衰减。用户可在偏好记忆页编辑权重或删除偏好。归纳时以 `topicId + key` 隔离。 |
 | **Source Observation** | 信源质量观测快照，记录 hitRate/noiseRate/duplicateRate 等指标，作为信源治理审核证据。 |

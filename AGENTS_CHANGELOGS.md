@@ -1,5 +1,13 @@
 ## 2026-07-17
 
+### Fix: 摘要语言固定跟随当前中文界面
+
+- Cause: 事件抽取 prompt 允许 Topic Profile 的 `outputLanguage=en` 让摘要跟随主题偏好或原文语言，解析器也可借由 English context 跳过中文校验；这与摘要应跟随用户界面语言的产品规则不一致。
+- Changed: event extraction prompt 不再读取 Topic Profile 决定输出语言，i18n 前强制摘要及其他用户可见字段使用简体中文；解析器移除 `outputLanguage` 绕过并始终拒绝无中文摘要；主题编辑页移除 English 选项，改为只读说明，保存端固定保留 `languagePreferences.outputLanguage='zh-CN'`，术语规则继续生效。
+- Files: `packages/ai/src/event-extraction.ts`, `packages/ai/src/event-extraction.fixtures.ts`, `apps/web/src/app/actions/topics.ts`, `apps/web/src/app/topics/[topicId]/edit/page.tsx`, `SPEC.md`, `CODEGUIDE.md`, `FRONTEND.md`, `docs/L2-domain.md`, `docs/L3-modules.md`, `AGENTS_CHANGELOGS.md`
+- Verification: `pnpm --filter @wangchao/ai test`、`pnpm --filter @wangchao/web test`、`CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、`git diff --check` 全部通过；fixtures 覆盖 Topic Profile 即使保留 `outputLanguage=en`，prompt 仍要求简体中文，以及纯英文摘要无法通过解析质量校验。全仓测试的 sources DNS fixture 与 Next/Turbopack build 因沙箱网络/端口限制在授权环境重跑并通过。
+- Notes / Risk: 既有 Topic Profile 中的 `outputLanguage=en` 不需要 migration；Worker 已忽略该值，用户下次保存主题时会归一化为 `zh-CN`。完成 i18n 后应从认证用户或界面 locale 注入摘要语言，再恢复多语言选择，不应改回按原文语言生成。
+
 ### Fix: 建立 Markdown 正文采集与摘要状态门禁
 
 - Cause: RSS `content:encoded` 在 Worker upsert 时漏传，普通网页只保留纯文本且采集失败仍会让 LLM 使用 RSS/标题生成摘要，导致标题被复制成摘要并掩盖真实采集失败。

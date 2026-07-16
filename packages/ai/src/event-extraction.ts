@@ -80,12 +80,6 @@ const EVENT_EXTRACTION_SCHEMA: JsonSchema = {
 export function buildEventExtractionMessages(
   input: EventExtractionInput,
 ): AiChatMessage[] {
-  const lang = input.topic.languagePreferences?.outputLanguage ?? "zh-CN";
-  const isEnglish = lang.toLowerCase().startsWith("en");
-  const langInstruction =
-    isEnglish
-      ? "Write every user-facing field in English."
-      : "Write every user-facing field in Simplified Chinese (zh-CN), while preserving proper nouns.";
   const termRules =
     input.topic.languagePreferences?.terminologyRules?.length
       ? `\nFollow these terminology rules: ${input.topic.languagePreferences.terminologyRules.join("; ")}.`
@@ -95,24 +89,22 @@ export function buildEventExtractionMessages(
     {
       role: "system",
       content:
-        `You filter and extract intelligence events for a topic-driven workspace. Return strict JSON only. The captured Markdown document is the only factual basis. Never infer facts absent from that document. Treat allegations, personal reports, and unverified claims as claims and preserve attribution (for example, "作者称" or "据称" in Chinese). A relevant summary must add information beyond the source title and must never merely copy, paraphrase, or translate that title. If the item is irrelevant noise, set isRelevant=false. Always return every schema field, using empty strings/arrays for non-applicable fields. ${langInstruction}${termRules}`,
+        `You filter and extract intelligence events for a topic-driven workspace. Return strict JSON only. The captured Markdown document is the only factual basis. Never infer facts absent from that document. Treat allegations, personal reports, and unverified claims as claims and preserve attribution (for example, "作者称" or "据称"). A relevant summary must add information beyond the source title and must never merely copy, paraphrase, or translate that title. If the item is irrelevant noise, set isRelevant=false. Always return every schema field, using empty strings/arrays for non-applicable fields. Write every user-facing field in Simplified Chinese (zh-CN), matching the current interface language rather than the source document language, while preserving proper nouns.${termRules}`,
     },
     {
       role: "user",
       content: JSON.stringify({
-        instruction: isEnglish
-          ? "Decide whether the captured Markdown is relevant to the topic. If relevant, write a concise 1-2 sentence English summary covering who or what acted, what happened, the concrete impact or risk, and attribution/uncertainty when applicable. Also return a clean title, short category, relevance score 0-100, matched keywords, entities, importance explanation, and follow-up suggestion. If irrelevant, set isRelevant=false and provide a brief English noiseReason."
-          : "判断采集到的 Markdown 是否与主题相关。若相关，用 1-2 句简体中文概括行动主体、发生的事情、具体影响或风险，并在适用时保留“作者称/据称”等归因与不确定性；同时返回清理后的标题、短分类、0-100 相关性分数、命中关键词、实体、重要性解释与后续建议。若不相关，设置 isRelevant=false 并用简体中文提供简短 noiseReason。",
+        instruction: "判断采集到的 Markdown 是否与主题相关。无论原文使用何种语言，都必须用当前界面语言（现阶段固定为简体中文）生成用户可见字段。若相关，用 1-2 句简体中文概括行动主体、发生的事情、具体影响或风险，并在适用时保留“作者称/据称”等归因与不确定性；同时返回清理后的标题、短分类、0-100 相关性分数、命中关键词、实体、重要性解释与后续建议。若不相关，设置 isRelevant=false 并用简体中文提供简短 noiseReason。",
         outputSchema: {
           isRelevant: "boolean",
           relevanceScore: "number, 0-100",
-          noiseReason: `string, ${isEnglish ? "English" : "Simplified Chinese"}; empty when relevant`,
-          title: `string, cleaned title in ${isEnglish ? "English" : "Simplified Chinese"}`,
-          summary: `string, concise 1-2 sentence ${isEnglish ? "English" : "Simplified Chinese"} summary grounded only in documentMarkdown`,
-          category: `string, short ${isEnglish ? "English" : "Simplified Chinese"} category label`,
+          noiseReason: "string, Simplified Chinese; empty when relevant",
+          title: "string, cleaned title in Simplified Chinese",
+          summary: "string, concise 1-2 sentence Simplified Chinese summary grounded only in documentMarkdown",
+          category: "string, short Simplified Chinese category label",
           entities: "array of relevant entity names (people, organizations, products) mentioned. max 10 items.",
-          followUpSuggestion: `string, one sentence in ${isEnglish ? "English" : "Simplified Chinese"}, or empty string`,
-          importanceExplanation: `string, one sentence in ${isEnglish ? "English" : "Simplified Chinese"}`,
+          followUpSuggestion: "string, one sentence in Simplified Chinese, or empty string",
+          importanceExplanation: "string, one sentence in Simplified Chinese",
           matchedKeywords: "array of matched topic keywords",
         },
         topic: {
@@ -159,13 +151,12 @@ export async function extractEvent(
 
   return parseEventExtractionResponse(response.content, {
     itemTitle: input.item.title,
-    outputLanguage: input.topic.languagePreferences?.outputLanguage ?? "zh-CN",
   });
 }
 
 export function parseEventExtractionResponse(
   content: string,
-  context?: { itemTitle?: string; outputLanguage?: string },
+  context?: { itemTitle?: string },
 ): EventExtractionResult {
   const parsed = parseJsonObject(content);
   const validation = validateJsonObject(parsed, EVENT_EXTRACTION_SCHEMA);
@@ -223,7 +214,6 @@ export function parseEventExtractionResponse(
   );
 
   validateRelevantExtractionQuality({
-    outputLanguage: context?.outputLanguage ?? "zh-CN",
     sourceTitle: context?.itemTitle ?? "",
     summary,
     title,
@@ -244,7 +234,6 @@ export function parseEventExtractionResponse(
 }
 
 function validateRelevantExtractionQuality(input: {
-  outputLanguage: string;
   sourceTitle: string;
   summary: string;
   title: string;
@@ -258,8 +247,8 @@ function validateRelevantExtractionQuality(input: {
     throw new Error("AI summary is too short to be useful.");
   }
 
-  if (!input.outputLanguage.toLowerCase().startsWith("en") && !/[\u3400-\u9fff]/u.test(input.summary)) {
-    throw new Error("AI summary does not match the requested Chinese output language.");
+  if (!/[\u3400-\u9fff]/u.test(input.summary)) {
+    throw new Error("AI summary does not match the current Simplified Chinese interface language.");
   }
 
   if (isHighlySimilar(input.sourceTitle, input.summary)) {

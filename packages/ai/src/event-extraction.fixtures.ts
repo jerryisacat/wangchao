@@ -13,8 +13,8 @@ export async function runEventExtractionFixtures(): Promise<void> {
   fixtureEntitiesArrayParsing();
   fixtureMissingTitleReturnsNoise();
   fixtureDuplicateTitleThrows();
-  fixtureChineseLanguageMismatchThrows();
-  fixtureDynamicPromptLanguageIsConsistent();
+  fixtureNonChineseSummaryThrows();
+  fixturePromptUsesCurrentInterfaceLanguage();
   fixtureThinkingTagsSanitized();
   fixtureTypeEnumMismatchThrows();
 }
@@ -92,26 +92,25 @@ function fixtureValidRelevantResponse(): void {
     isRelevant: true,
     noiseReason: "",
     relevanceScore: 85,
-    title: "Clean Title",
-    summary: "This is a concise summary.",
-    category: "release",
+    title: "产品发布",
+    summary: "该公司发布了新产品，并披露了具体功能及其潜在影响。",
+    category: "产品发布",
     entities: ["OpenAI", "GPT-5"],
     followUpSuggestion: "继续观察产品发布节奏。",
-    importanceExplanation: "Matters because of X.",
+    importanceExplanation: "该进展可能影响相关产品路线。",
     matchedKeywords: ["ai", "agent"],
   });
 
   const result = parseEventExtractionResponse(content, {
     itemTitle: "Original Title",
-    outputLanguage: "en",
   });
 
   assert(result.isRelevant === true, "Should be relevant.");
   assert(result.relevanceScore === 85, "Score should match.");
-  assert(result.title === "Clean Title", "Title should match AI output.");
-  assert(result.summary === "This is a concise summary.", "Summary should match.");
-  assert(result.category === "release", "Category should match.");
-  assert(result.importanceExplanation === "Matters because of X.", "Explanation should match.");
+  assert(result.title === "产品发布", "Title should match AI output.");
+  assert(result.summary === "该公司发布了新产品，并披露了具体功能及其潜在影响。", "Summary should match.");
+  assert(result.category === "产品发布", "Category should match.");
+  assert(result.importanceExplanation === "该进展可能影响相关产品路线。", "Explanation should match.");
   assert(result.matchedKeywords.length === 2, "Keywords should be parsed.");
   assert(result.entities.length === 2, "Entities should be parsed.");
   assert(result.followUpSuggestion === "继续观察产品发布节奏。", "Follow-up suggestion should match.");
@@ -166,14 +165,14 @@ function fixtureMissingTitleReturnsNoise(): void {
     () => parseEventExtractionResponse(JSON.stringify({
       isRelevant: true,
       relevanceScore: 80,
-      summary: "Has summary but no title",
+      summary: "这是一段有摘要但缺少标题的中文内容。",
       category: "general",
       entities: [],
       followUpSuggestion: "",
       importanceExplanation: "Reason",
       matchedKeywords: [],
       noiseReason: "",
-    }), { outputLanguage: "en" }),
+    })),
     "Missing title should fail deterministic quality validation.",
   );
 }
@@ -183,9 +182,9 @@ function fixtureThinkingTagsSanitized(): void {
     {
       isRelevant: true,
       relevanceScore: 78,
-      title: "Thoughtful Title",
-      summary: "After thinking hard.",
-      category: "research",
+      title: "研究进展",
+      summary: "研究团队公布了新的实验结果，并说明了相关限制。",
+      category: "研究",
       entities: [],
       followUpSuggestion: "",
       importanceExplanation: "Key insight.",
@@ -196,11 +195,10 @@ function fixtureThinkingTagsSanitized(): void {
 
   const result = parseEventExtractionResponse(content, {
     itemTitle: "Fallback",
-    outputLanguage: "en",
   });
 
   assert(result.isRelevant === true, "Should parse through thinking tags.");
-  assert(result.title === "Thoughtful Title", "Title should be extracted correctly.");
+  assert(result.title === "研究进展", "Title should be extracted correctly.");
 }
 
 function fixtureDuplicateTitleThrows(): void {
@@ -209,22 +207,21 @@ function fixtureDuplicateTitleThrows(): void {
       isRelevant: true,
       relevanceScore: 90,
       noiseReason: "",
-      title: "Grok uploaded my user directory to xAI's servers",
-      summary: "Grok uploaded my user directory to xAI's servers",
-      category: "security",
+      title: "Grok 将用户目录上传至 xAI 服务器",
+      summary: "Grok 将用户目录上传至 xAI 服务器",
+      category: "安全",
       entities: ["Grok", "xAI"],
-      followUpSuggestion: "Track follow-up disclosures.",
-      importanceExplanation: "Potential privacy impact.",
+      followUpSuggestion: "继续跟踪后续披露。",
+      importanceExplanation: "此事可能影响用户隐私。",
       matchedKeywords: ["AI"],
     }), {
-      itemTitle: "Grok uploaded my user directory to xAI's servers",
-      outputLanguage: "en",
+      itemTitle: "Grok 将用户目录上传至 xAI 服务器",
     }),
     "A summary that repeats the source title must be rejected.",
   );
 }
 
-function fixtureChineseLanguageMismatchThrows(): void {
+function fixtureNonChineseSummaryThrows(): void {
   assertThrows(
     () => parseEventExtractionResponse(JSON.stringify({
       isRelevant: true,
@@ -239,13 +236,12 @@ function fixtureChineseLanguageMismatchThrows(): void {
       matchedKeywords: [],
     }), {
       itemTitle: "Different source title",
-      outputLanguage: "zh-CN",
     }),
-    "Chinese output requests must reject summaries without Chinese text.",
+    "The current Chinese interface must reject summaries without Chinese text.",
   );
 }
 
-function fixtureDynamicPromptLanguageIsConsistent(): void {
+function fixturePromptUsesCurrentInterfaceLanguage(): void {
   const baseInput = {
     item: {
       id: "1",
@@ -263,9 +259,9 @@ function fixtureDynamicPromptLanguageIsConsistent(): void {
     ...baseInput,
     topic: { ...baseInput.topic, languagePreferences: { outputLanguage: "zh-CN" } },
   }).map((message) => message.content).join("\n");
-  assert(english.includes("English summary"), "English prompt should request English consistently.");
-  assert(!english.includes("concise Chinese summary"), "English prompt must not retain hard-coded Chinese output instructions.");
-  assert(chinese.includes("简体中文"), "Chinese prompt should request Simplified Chinese consistently.");
+  assert(english.includes("简体中文"), "An English topic preference must still follow the current Chinese interface language.");
+  assert(!english.includes("English summary"), "Topic preferences must not override the interface summary language.");
+  assert(chinese.includes("简体中文"), "The default prompt should request Simplified Chinese consistently.");
   assert(chinese.includes("documentMarkdown"), "Prompt should identify Markdown as the factual document.");
 }
 

@@ -164,15 +164,19 @@ export default async function TopicEditPage({
               <div className="topic-profile-heading">
                 <strong>语言与简报偏好</strong>
                 <span>
-                  输出语言和术语规则影响 AI 摘要生成；简报风格控制日报结构和详细程度。
+                  摘要当前使用简体中文；术语规则影响 AI 摘要生成，简报风格控制日报结构和详细程度。
                 </span>
               </div>
               <label>
-                <span>输出语言</span>
-                <select className="topic-select" defaultValue={lang.outputLanguage} name="topicOutputLanguage">
-                  <option value="zh-CN">简体中文</option>
-                  <option value="en">English</option>
-                </select>
+                <span>摘要语言</span>
+                <input
+                  aria-describedby="topic-summary-language-help"
+                  readOnly
+                  value="简体中文"
+                />
+                <small id="topic-summary-language-help">
+                  完成 i18n 适配后，摘要将自动跟随界面语言。
+                </small>
               </label>
               <label>
                 <span>术语规则（每行一项）</span>

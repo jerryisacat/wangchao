@@ -126,6 +126,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 - 抓取、AI 分析、简报、导出等长任务必须放在 worker，不放进 request lifecycle。
 - Web app 只 enqueue 任务和读取 durable status，不执行长任务。
 - Worker 负责抓取、Markdown 正文采集、item normalize、可解释分析、反馈归纳、简报生成和 source quality observation。AI 摘要必须在正文采集 `READY` 后执行。
+- AI 摘要语言跟随当前界面语言而非原文语言；在 i18n 接入前固定为简体中文，topic profile 不得绕过该约束。
 - Next.js route handlers 用于外部 API、webhooks、export downloads、status endpoints。Server Actions 用于内部产品 mutations。
 
 ### L1.3 Tenant 与权限边界

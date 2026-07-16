@@ -221,7 +221,7 @@ OpenAI-compatible LLM adapter、响应解析、source recommendation。
 | `packages/ai/src/index.ts` | 包公共出口。 |
 | `packages/ai/src/types.ts` | AI adapter 共享类型。 |
 | `packages/ai/src/openai-compatible.ts` | OpenAI-compatible Chat Completions adapter。 |
-| `packages/ai/src/event-extraction.ts` | 事件抽取 prompt、严格 JSON/必填字段解析和质量校验。只把安全 Markdown 当作事实依据，动态统一输出语言，拒绝标题复读、过短摘要和中文目标下无中文的结果。 |
+| `packages/ai/src/event-extraction.ts` | 事件抽取 prompt、严格 JSON/必填字段解析和质量校验。只把安全 Markdown 当作事实依据；摘要及其他用户可见字段跟随当前界面语言，i18n 前固定为简体中文，并拒绝标题复读、过短摘要和无中文摘要。 |
 | `packages/ai/src/event-extraction.fixtures.ts` | Event extraction fixture 测试。 |
 | `packages/ai/src/parser.fixtures.ts` | Parser fixture 测试，覆盖 sanitize/extract/parse/repair/validate 边界。 |
 | `packages/ai/src/adapter.fixtures.ts` | OpenAI-compatible adapter fixture 测试，覆盖 retry、timeout、JSON mode fallback 和非 JSON 错误体处理。 |
@@ -364,7 +364,7 @@ apps/web/src/
 | `apps/web/src/app/sources/page.tsx` | 信源治理页：候选源表单、手动触发 source discovery、LLM/兜底推荐理由展示、质量报告、批准/观察/静音/拒绝动作、批量治理工具栏、过期候选源复审卡片。 |
 | `apps/web/src/app/topics/page.tsx` | 主题管理列表页：展示所有主题（含 PAUSED/ARCHIVED），每行带状态 Badge、编辑/暂停/恢复/归档/删除操作。 |
 | `apps/web/src/app/topics/[topicId]/page.tsx` | 主题详情页：展示主题信息、关联统计（信源数/事件数/简报数）、状态管理操作入口。 |
-| `apps/web/src/app/topics/[topicId]/edit/page.tsx` | 主题编辑页：编辑 name/description 与 keywords/entities/includeScope/excludeScope/importanceRules；每项有长度/条数边界，保存后重定向回详情页。 |
+| `apps/web/src/app/topics/[topicId]/edit/page.tsx` | 主题编辑页：编辑 name/description 与 keywords/entities/includeScope/excludeScope/importanceRules；摘要语言在 i18n 前只读显示为简体中文，术语规则仍可编辑；每项有长度/条数边界，保存后重定向回详情页。 |
 | `apps/web/src/components/topics/delete-topic-button.tsx` | 删除主题客户端按钮组件，带 `confirm()` 二次确认。 |
 | `apps/web/src/app/briefings/page.tsx` | organization-scoped 完整简报历史分页：总数、周期（DAILY/WEEKLY/MONTHLY 筛选 tabs）、UTC 日期窗口、更新时间、上一页/下一页和 Markdown 导出。 |
 | `apps/web/src/app/topics/[topicId]/timeline/page.tsx` | 主题时间线页：按 `occurredAt` 倒序分页展示主题全部正式事件（含 merged sources、score、source link），提供上一页/下一页。 |
