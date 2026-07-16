@@ -1,5 +1,17 @@
 ## 2026-07-15
 
+### Refactor: 4 个超大文件按领域拆分 (#146)
+
+- Cause: 4 个核心文件合计 6469 行（worker/index.ts 1082 / actions.ts 2798 / extended-repositories.ts 1524 / core/index.ts 1065），超出可维护范围
+- Changed:
+  - **core/index.ts** (1065->12 行 barrel)：拆分为 9 个领域模块 — env.ts / text.ts / date-range.ts / hashing.ts / topic-profile.ts / relevance.ts / preference.ts / render-event.ts / render-briefing.ts
+  - **db/extended-repositories.ts** (1524->9 行 barrel)：拆分为 9 个领域模块 — instant-push.ts / telegram-credential.ts / delivery-log.ts / report.ts / preference-memory.ts / byok-credential.ts / subscription.ts / ccpayment-credential.ts / payment-invoice.ts
+  - **worker/index.ts** (1082->114 行)：拆分为 5 个模块 — logging.ts / health.ts / fetch-cycle.ts / telegram-delivery.ts / report.ts；修复预存 EventExtractionAdapter 缺失 import
+  - **web/actions.ts** (2798->7 行 barrel)：拆分为 7 个 action 文件 + 1 个共享 helper — topics.ts / sources.ts / events.ts / credentials.ts / billing.ts / reports.ts / preferences.ts + _shared.ts
+- Files: 新建 30 个领域模块文件；修改 4 个原文件为 barrel re-export；修改 docs/L3-modules.md
+- Verification: typecheck ✅ (6/6 全部通过，包括修复 worker 预存错误), build ✅ (web build 通过)
+- Notes / Risk: 所有 barrel re-export 保持 `import { ... } from "@wangchao/core"` / `"@wangchao/db"` / `"@/app/actions"` 调用方零改动；web actions 使用 `"./_shared"` 无 `.js` 后缀（Bundler moduleResolution）
+
 ### Chore: 代码质量批量小修 + 文档合并关闭 (#121, #122, #135, #142, #143, #149, #112, #123, #136, #148, #34)
 
 - Cause: 第 4-8 轮审计剩余低优先级问题，大部分已被前三轮修复解决，剩余为产品决策或低风险小修
