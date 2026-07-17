@@ -5,26 +5,18 @@ import { Slot } from "radix-ui"
 import { cn } from "@/lib/utils"
 
 const badgeVariants = cva(
-  "inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded border px-2 py-0.5 font-mono text-xs font-bold tracking-0 whitespace-nowrap transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3",
+  "inline-flex w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full px-3 py-1 text-xs font-medium tracking-[0.01em] whitespace-nowrap transition-colors duration-200 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background [&>svg]:pointer-events-none [&>svg]:size-3",
   {
     variants: {
       variant: {
-        default:
-          "border-border bg-muted text-muted-foreground",
-        secondary:
-          "border-transparent bg-secondary text-secondary-foreground",
-        danger:
-          "border-danger/60 bg-danger/16 text-destructive-foreground",
-        outline:
-          "border-border text-foreground [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
-        accent:
-          "border-accent bg-accent/16 text-accent",
-        success:
-          "border-success/60 bg-success/16 text-success-foreground",
-        warning:
-          "border-warning/60 bg-warning/16 text-warning-foreground",
-        muted:
-          "border-transparent bg-muted text-muted-foreground",
+        default: "bg-secondary text-secondary-foreground",
+        secondary: "bg-secondary text-secondary-foreground",
+        danger: "bg-destructive/15 text-destructive",
+        outline: "border border-outline text-foreground",
+        accent: "bg-accent/15 text-accent",
+        success: "bg-success/15 text-success",
+        warning: "bg-warning/15 text-warning",
+        muted: "bg-muted text-muted-foreground",
       },
     },
     defaultVariants: {

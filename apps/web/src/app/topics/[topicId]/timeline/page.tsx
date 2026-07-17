@@ -71,10 +71,10 @@ export default async function TopicTimelinePage({ params, searchParams }: Timeli
                 title="暂无事件"
               />
             ) : (
-              <div className="timeline-list">
+              <div className="divide-y divide-border">
                 {timeline.events.map((event) => (
-                  <article className="timeline-event-row" key={event.eventId}>
-                    <div className="timeline-event-time">
+                  <article className="grid grid-cols-1 items-start gap-2 py-3.5 transition-colors hover:bg-primary/5 md:grid-cols-[minmax(0,0.3fr)_minmax(0,1fr)] md:gap-4" key={event.eventId}>
+                    <div className="flex items-center gap-1.5 font-mono text-xs text-muted-foreground">
                       <Clock3 aria-hidden="true" size={14} />
                       <time dateTime={event.occurredAt ?? undefined}>
                         {event.occurredAt
@@ -88,23 +88,23 @@ export default async function TopicTimelinePage({ params, searchParams }: Timeli
                           : "未知时间"}
                       </time>
                     </div>
-                    <div className="timeline-event-body">
-                      <div className="timeline-event-title-row">
-                        <Link href={`/events/${event.eventId}`}>
-                          <h3>{event.title}</h3>
+                    <div className="grid min-w-0 gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link href={`/events/${event.eventId}`} className="text-foreground transition-colors hover:text-accent">
+                          <h3 className="m-0 text-[15px] font-bold leading-[1.35] [overflow-wrap:anywhere]">{event.title}</h3>
                         </Link>
                         {event.category ? <Badge variant="outline">{event.category}</Badge> : null}
                       </div>
-                      <p className="timeline-event-summary">{event.summary}</p>
-                      <div className="timeline-event-meta">
+                      <p className="m-0 line-clamp-3 text-sm leading-[1.5] text-muted-foreground [overflow-wrap:anywhere]">{event.summary}</p>
+                      <div className="flex flex-wrap gap-3 font-mono text-[11px] text-muted-foreground">
                         <span>来源: {event.sourceName ?? "Unknown"}</span>
                         {event.url ? (
-                          <a href={event.url} target="_blank" rel="noopener noreferrer">
+                          <a href={event.url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
                             原文
                           </a>
                         ) : null}
                         {event.secondarySources.length > 0 ? (
-                          <span className="timeline-event-merged">
+                          <span className="[overflow-wrap:anywhere]">
                             联合报道: {event.secondarySources.map((s) => s.sourceName).join(", ")}
                           </span>
                         ) : null}
@@ -115,11 +115,11 @@ export default async function TopicTimelinePage({ params, searchParams }: Timeli
               </div>
             )}
             {timeline.total > 0 ? (
-              <nav aria-label="时间线分页" className="timeline-pagination">
+              <nav aria-label="时间线分页" className="mt-4 flex min-h-11 items-center justify-between gap-3 border-t border-border pt-3 text-sm text-muted-foreground">
                 <span>
                   第 {timeline.page} / {timeline.pageCount} 页
                 </span>
-                <div className="timeline-pagination-actions">
+                <div className="flex gap-2">
                   {timeline.page > 1 ? (
                     <Button asChild size="sm" variant="ghost">
                       <Link href={timelinePageHref(topic.id, timeline.page - 1)}>上一页</Link>

@@ -88,31 +88,31 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
           description="创建一个观察主题，系统会自动生成关键词并匹配候选信源。"
         />
       ) : (
-        <div className="topic-list">
+        <div className="grid gap-3">
           {topics.map((topic) => (
-            <Card key={topic.id} className="topic-list-item" variant="kinetic">
-              <div className="topic-list-item-main">
-                <div className="topic-list-item-header">
+            <Card key={topic.id} className="grid grid-cols-1 gap-4 p-5 transition-colors hover:bg-primary/5 md:grid-cols-[minmax(0,1fr)_auto] md:items-start" variant="kinetic">
+              <div className="grid min-w-0 gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Link
                     href={`/topics/${topic.id}`}
-                    className="topic-list-item-name"
+                    className="text-base font-bold text-foreground transition-colors hover:text-accent [overflow-wrap:anywhere]"
                   >
                     {topic.name}
                   </Link>
                   <TopicStatusBadge status={topic.status} />
                 </div>
                 {topic.description ? (
-                  <p className="topic-list-item-description">
+                  <p className="m-0 line-clamp-2 text-sm leading-[1.5] text-muted-foreground [overflow-wrap:anywhere]">
                     {topic.description}
                   </p>
                 ) : null}
-                <div className="topic-list-item-meta">
+                <div className="flex flex-wrap gap-3 font-mono text-[11px] text-muted-foreground">
                   <span>{topic.sourceCount} 个信源</span>
                   <span>{topic.eventCount} 条情报</span>
                   <span>更新于 {topic.updatedAt.toLocaleDateString("zh-CN")}</span>
                 </div>
               </div>
-              <div className="topic-list-item-actions">
+              <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0">
                 <Button asChild size="sm" variant="ghost">
                   <Link href={`/topics/${topic.id}/edit`}>编辑</Link>
                 </Button>

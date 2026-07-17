@@ -87,7 +87,7 @@ test("all app pages stay in frame with touch-sized, readable controls", async ({
           document.body.querySelectorAll("*"),
         ).filter(isVisible);
         const overflow = visibleElements
-          .filter((element) => !element.closest(".top-nav-links"))
+          .filter((element) => !element.closest('[aria-label="主导航"]'))
           .filter((element) => {
             const rect = element.getBoundingClientRect();
             return rect.left < -1 || rect.right > window.innerWidth + 1;

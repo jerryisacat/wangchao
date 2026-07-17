@@ -16,7 +16,7 @@ export function InstantPushToggleForm({
 }) {
   const canEnable = allowed && hasTelegramCredential;
   return (
-    <form action={formAction} className="grid gap-3 rounded-md border border-border bg-surface p-4">
+    <form action={formAction} className="grid gap-3 rounded-[16px] bg-muted p-4">
       <input name="enabled" type="hidden" value={currentEnabled ? "false" : "true"} />
       <div>
         <p className="text-sm font-bold">高优先级情报即时推送</p>

@@ -1,4 +1,4 @@
-import { CircleAlert, Check, FileSearch, Loader2 } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, CircleAlert, Check, FileSearch, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { createReportAction } from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
@@ -30,7 +30,10 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
     <>
       <PageHeader eyebrow="按需分析" title="专题报告">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/">← 返回情报流</Link>
+          <Link href="/">
+            <ArrowLeft aria-hidden="true" size={14} />
+            返回情报流
+          </Link>
         </Button>
       </PageHeader>
 
@@ -95,14 +98,17 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
                 title="暂无报告"
               />
             ) : (
-              <div className="preference-list">
+              <div className="divide-y divide-border">
                 {data.reports.map((report) => (
-                  <article className="preference-row" key={report.id}>
-                    <div>
+                  <article
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-4 transition-colors first:pt-0 last:pb-0"
+                    key={report.id}
+                  >
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <Link
+                          className="text-base font-medium text-foreground hover:text-primary hover:underline"
                           href={`/reports/${report.id}`}
-                          className="font-bold hover:underline"
                         >
                           {report.question}
                         </Link>
@@ -119,13 +125,9 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
                         {report.eventCount > 0 ? ` · ${report.eventCount} 条事件` : ""}
                       </p>
                     </div>
-                    <div className="preference-meta">
-                      <Link href={`/reports/${report.id}`}>
-                        <Button size="sm" variant="ghost">
-                          查看
-                        </Button>
-                      </Link>
-                    </div>
+                    <Button asChild size="sm" variant="ghost">
+                      <Link href={`/reports/${report.id}`}>查看</Link>
+                    </Button>
                   </article>
                 ))}
               </div>
@@ -135,19 +137,38 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
       </div>
 
       {data.pageCount > 1 ? (
-        <nav aria-label="分页" className="view-filter">
+        <nav
+          aria-label="分页"
+          className="mt-4 flex min-h-11 items-center justify-between gap-3 border-t border-border pt-3 text-sm text-muted-foreground"
+        >
           {page > 1 ? (
-            <Link href={`/reports?page=${page - 1}`}>← 上一页</Link>
+            <Button asChild size="sm" variant="ghost">
+              <Link href={`/reports?page=${page - 1}`}>
+                <ChevronLeft aria-hidden="true" size={14} />
+                上一页
+              </Link>
+            </Button>
           ) : (
-            <span aria-disabled="true" className="opacity-40">← 上一页</span>
+            <Button size="sm" variant="ghost" disabled aria-disabled="true">
+              <ChevronLeft aria-hidden="true" size={14} />
+              上一页
+            </Button>
           )}
-          <span>
+          <span className="font-medium tabular-nums">
             {data.page} / {data.pageCount}
           </span>
           {page < data.pageCount ? (
-            <Link href={`/reports?page=${page + 1}`}>下一页 →</Link>
+            <Button asChild size="sm" variant="ghost">
+              <Link href={`/reports?page=${page + 1}`}>
+                下一页
+                <ChevronRight aria-hidden="true" size={14} />
+              </Link>
+            </Button>
           ) : (
-            <span aria-disabled="true" className="opacity-40">下一页 →</span>
+            <Button size="sm" variant="ghost" disabled aria-disabled="true">
+              下一页
+              <ChevronRight aria-hidden="true" size={14} />
+            </Button>
           )}
         </nav>
       ) : null}

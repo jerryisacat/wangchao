@@ -24,7 +24,7 @@ export function SelfHostedToggleForm({
       />
 
       {!currentEnabled ? (
-        <div className="rounded-md border border-warning/40 bg-warning/10 p-4 text-xs text-foreground">
+        <div className="rounded-[16px] border border-warning/40 bg-warning/10 p-4 text-xs text-foreground">
           <div className="mb-2 flex items-center gap-1.5 font-bold">
             <CircleAlert aria-hidden="true" size={14} />
             开启自用模式的后果
@@ -46,7 +46,7 @@ export function SelfHostedToggleForm({
           </label>
         </div>
       ) : (
-        <div className="rounded-md border border-border bg-surface p-4 text-xs text-muted-foreground">
+        <div className="rounded-[16px] bg-muted p-4 text-xs text-muted-foreground">
           当前工作区已处于自用模式。关闭后将恢复正常的配额检查和支付流程。
         </div>
       )}

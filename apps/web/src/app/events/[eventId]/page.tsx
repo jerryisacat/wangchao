@@ -92,7 +92,7 @@ export default async function EventDetailPage({
 
       <Card variant="work">
         <CardHeader>
-          <div className="event-detail-kicker">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
             <Badge variant="default">{event.category}</Badge>
             {event.entities && event.entities.length > 0
               ? event.entities.map((entity) => (
@@ -106,23 +106,23 @@ export default async function EventDetailPage({
           <CardTitle>{event.title}</CardTitle>
         </CardHeader>
         <CardContent>
-          <article className="event-detail-page">
+          <article className="grid gap-4">
             <p
-              className="event-detail-summary"
+              className="m-0 text-base leading-relaxed"
               data-summary-status={event.summaryStatus}
             >
               {event.summary}
             </p>
 
             {event.explanation ? (
-              <div className="event-detail-reason">
+              <div className="flex items-start gap-2 rounded-[16px] bg-muted p-4 text-sm leading-relaxed text-muted-foreground">
                 <Sparkles aria-hidden="true" size={14} />
                 <span>{event.explanation}</span>
               </div>
             ) : null}
 
             {event.followUpSuggestion ? (
-              <div className="event-detail-reason">
+              <div className="flex items-start gap-2 rounded-[16px] bg-muted p-4 text-sm leading-relaxed text-muted-foreground">
                 <Sparkles aria-hidden="true" size={14} />
                 <span>后续跟踪：{event.followUpSuggestion}</span>
               </div>
@@ -134,22 +134,22 @@ export default async function EventDetailPage({
               </p>
             ) : null}
 
-            <dl className="event-detail-grid">
-              <div>
-                <dt>主题</dt>
-                <dd>{event.topicName}</dd>
+            <dl className="mt-2 grid grid-cols-1 gap-3 border-t border-border pt-4 sm:grid-cols-3">
+              <div className="rounded-[16px] bg-muted p-4">
+                <dt className="mb-1.5 text-xs font-medium text-muted-foreground">主题</dt>
+                <dd className="m-0 break-words text-sm font-medium text-foreground">{event.topicName}</dd>
               </div>
-              <div>
-                <dt>来源</dt>
-                <dd>{event.sourceName}</dd>
+              <div className="rounded-[16px] bg-muted p-4">
+                <dt className="mb-1.5 text-xs font-medium text-muted-foreground">来源</dt>
+                <dd className="m-0 break-words text-sm font-medium text-foreground">{event.sourceName}</dd>
               </div>
-              <div>
-                <dt>更新时间</dt>
-                <dd>{formatDateTime(event.updatedAt)}</dd>
+              <div className="rounded-[16px] bg-muted p-4">
+                <dt className="mb-1.5 text-xs font-medium text-muted-foreground">更新时间</dt>
+                <dd className="m-0 break-words text-sm font-medium text-foreground">{formatDateTime(event.updatedAt)}</dd>
               </div>
             </dl>
 
-            <div className="event-detail-actions">
+            <div className="flex flex-wrap gap-2">
               <form action={updateDashboardEventStateAction}>
                 <input name="eventId" type="hidden" value={event.eventId} />
                 <input name="returnTo" type="hidden" value={returnTo} />
@@ -194,7 +194,7 @@ export default async function EventDetailPage({
               </form>
             </div>
 
-            <div className="event-detail-actions">
+            <div className="flex flex-wrap gap-2">
               <form action={updateCategoryPreferenceAction}>
                 <input name="eventId" type="hidden" value={event.eventId} />
                 <input name="returnTo" type="hidden" value={returnTo} />
@@ -255,7 +255,7 @@ export default async function EventDetailPage({
               </form>
             </div>
 
-            <div className="event-detail-actions">
+            <div className="flex flex-wrap gap-2">
               <form action={regenerateEventSummaryAction}>
                 <input name="eventId" type="hidden" value={event.eventId} />
                 <input name="returnTo" type="hidden" value={returnTo} />

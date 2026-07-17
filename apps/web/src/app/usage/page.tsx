@@ -117,10 +117,14 @@ export default async function UsagePage() {
         </Button>
       </PageHeader>
 
-      <div className="usage-plan-banner tenant-card">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[16px] border border-border bg-card p-4">
         <div>
-          <span>当前方案</span>
-          <strong>{isSelfHosted ? "自用模式" : limits.label}</strong>
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            当前方案
+          </span>
+          <strong className="mt-1 block text-sm font-medium">
+            {isSelfHosted ? "自用模式" : limits.label}
+          </strong>
         </div>
         <Badge variant={isSelfHosted ? "success" : limits.badge}>
           {isSelfHosted ? "自用" : limits.label}
@@ -142,7 +146,7 @@ export default async function UsagePage() {
             <div className="flex items-center gap-3 py-8 text-center">
               <Activity aria-hidden="true" size={20} />
               <div>
-                <h2 className="text-base font-bold">自用模式 — 用量不限</h2>
+                <h2 className="text-base font-bold">自用模式 - 用量不限</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   当前工作区已开启自用模式，所有配额检查已跳过。
                 </p>
@@ -151,7 +155,7 @@ export default async function UsagePage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="usage-grid">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Card variant="work">
             <CardHeader>
               <CardTitle>主题</CardTitle>
@@ -243,11 +247,13 @@ function UsageMeter({
       ? Math.min(100, Math.round((current / limit) * 100))
       : 0;
 
+  const isOverage = limit !== null && current > limit;
+
   return (
-    <div className="usage-meter">
-      <div className="usage-meter-head">
-        <span className="usage-meter-label">{label}</span>
-        <span className="usage-meter-value">
+    <div className="grid gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm text-muted-foreground">{label}</span>
+        <span className="text-sm font-medium tabular-nums">
           {current}
           {limit !== null ? ` / ${limit}` : ""}
           {unit}
@@ -259,10 +265,13 @@ function UsageMeter({
           aria-valuemax={100}
           aria-valuemin={0}
           aria-valuenow={percentage}
-          className="confidence-meter"
+          className="h-1.5 w-full overflow-hidden rounded-full bg-muted"
           role="progressbar"
         >
-          <span style={{ inlineSize: `${percentage}%` }} />
+          <span
+            className={`block h-full rounded-full transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${isOverage ? "bg-destructive" : "bg-primary"}`}
+            style={{ inlineSize: `${percentage}%` }}
+          />
         </div>
       ) : (
         <Badge variant="accent">不限</Badge>

@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/common/page-header";
+import { StatusBanner } from "@/components/common/status-banner";
 import { PLAN_REGISTRY, PLAN_ORDER, type Plan } from "@wangchao/core";
 
 export const dynamic = "force-dynamic";
@@ -109,10 +110,11 @@ export default async function PricingPage({
       </PageHeader>
 
       {notice ? (
-        <div className="status-banner status-banner-notice" role="status">
-          <Check aria-hidden="true" size={16} />
-          <span>{notice}</span>
-        </div>
+        <StatusBanner
+          icon={<Check aria-hidden="true" size={16} />}
+          message={notice}
+          tone="notice"
+        />
       ) : null}
 
       {isSelfHosted ? (
@@ -121,7 +123,7 @@ export default async function PricingPage({
             <div className="flex items-center gap-3 py-8 text-center">
               <Sparkles aria-hidden="true" size={20} />
               <div>
-                <h2 className="text-base font-bold">自用模式 — 所有功能已解锁</h2>
+                <h2 className="text-base font-bold">自用模式 - 所有功能已解锁</h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   当前工作区已开启自用模式，跳过所有配额检查和支付流程。
                 </p>
@@ -130,11 +132,13 @@ export default async function PricingPage({
           </CardContent>
         </Card>
       ) : (
-        <div className="pricing-grid">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
           {PLAN_TIERS.map((tier) => {
             const isCurrent = currentPlan === tier.plan;
+            const isFeatured = tier.plan === "PLUS";
             return (
               <Card
+                className={isFeatured ? "md:-translate-y-4 ring-2 ring-primary shadow-lg" : undefined}
                 data-current={isCurrent ? "true" : undefined}
                 key={tier.plan}
                 variant="work"
@@ -150,18 +154,21 @@ export default async function PricingPage({
                       <Badge variant="success">当前方案</Badge>
                     ) : null}
                   </div>
-                  <div className="pricing-price">
-                    <span className="pricing-price-value">{tier.price}</span>
-                    <span className="pricing-price-period">{tier.period}</span>
+                  <div className="mt-2 flex items-baseline gap-1">
+                    <span className="text-3xl font-medium tabular-nums">{tier.price}</span>
+                    <span className="text-sm text-muted-foreground">{tier.period}</span>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <ul className="pricing-features">
+                  <ul className="grid gap-2 p-0 m-0 list-none">
                     {tier.features.map((feature) => (
-                      <li key={feature}>
+                      <li
+                        className="flex items-start gap-2 text-sm leading-relaxed"
+                        key={feature}
+                      >
                         <Check
                           aria-hidden="true"
-                          className="text-success"
+                          className="mt-0.5 shrink-0 text-success"
                           size={14}
                         />
                         <span>{feature}</span>

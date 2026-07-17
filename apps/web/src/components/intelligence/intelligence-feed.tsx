@@ -31,7 +31,7 @@ export function IntelligenceFeed({
   }
 
   return (
-    <div className="intelligence-feed">
+    <div className="grid gap-4">
       {events.map((event) => (
         <IntelligenceCard
           event={event}
