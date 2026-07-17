@@ -4,6 +4,16 @@
 
 ## 2026-07-18
 
+## Stage 1 / Task 1.3: 统一受保护路由认证门（#166）
+
+- Phase: implementation plan Stage 1 Task 1.3。
+- Scope: Next.js proxy 真实 Better Auth Session gate、页面安全 `/login?next=`、受保护 API/Action 401、开放重定向防护、Session 过期与 auth-disabled self-hosted 兼容。
+- Alignment: 认证模式不以 cookie 存在作为信任依据；公开入口使用最小 allowlist；页面/API/Action 共用稳定认证语义；所有认证响应保留既有 nonce CSP 与安全头。
+- Missing: 用户生命周期的 SUSPENDED/DELETION_PENDING/DELETED Session gate、邮箱验证、MFA/OAuth lifecycle 仍属后续独立任务；Task 1.4 TaskRun 队列尚未开始。
+- Bugs fixed: 未登录页面此前进入渲染后才失败；受保护 API 无统一 401；登录页直接信任 callback URL；cookie 指向已删除 DB Session 时缺少 proxy 级拒绝。
+- Verification: 纯策略 RED/GREEN fixture、Web typecheck/test、Next production build、disposable PostgreSQL 上 desktop/mobile auth E2E 10/10、auth-disabled `/`/`/sources`/`/pricing` 200 smoke、全量 typecheck/lint/test/build/diff-check 通过；DeepSeek V4 Pro 独立审计 APPROVED（Critical 0 / Important 0）。
+- Follow-up: Task 1.3 commit/push 后自动进入 Task 1.4 #162。
+
 ## Stage 1 / Task 1.2: Better Auth Schema 与认证工作区闭环（#153）
 
 - Phase: implementation plan Stage 1 Task 1.2。

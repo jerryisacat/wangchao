@@ -174,10 +174,12 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 ### Auth（Better Auth）
 
-- `BETTER_AUTH_SECRET` Required for auth。设置后激活 Better Auth（email/password + session），数据访问通过 `getSessionWorkspace()` 校验 session。未设置时应用运行在兼容模式：`getSessionWorkspace()` fallback 到 `ensureDefaultWorkspace()`，使用默认 workspace/user，不要求登录。
+- `BETTER_AUTH_SECRET` Required for auth。设置后激活 Better Auth（email/password + session）：`apps/web/src/proxy.ts` 在进入受保护页面/API/Server Action 前调用 Better Auth `getSession()` 验证数据库 Session，不能只凭 cookie 存在放行；页面无 Session/Session 过期时跳转 `/login?next=<原站内路径+query>`，API/Action 返回 `401 UNAUTHENTICATED`，认证依赖不可用返回 `503 AUTH_UNAVAILABLE`。未设置时 proxy 跳过认证门，`getSessionWorkspace()` fallback 到 `ensureDefaultWorkspace()`，使用默认 workspace/user，不要求登录。
 - `BETTER_AUTH_URL` Required for auth。Better Auth 的 base URL（如 `https://wangchao.jerryiscat.one`），用于 session callback URL 和邮件链接生成。
-- 当 `BETTER_AUTH_SECRET` 未设置时，`/login` 和 `/register` 页面不生效，应用直接使用默认 workspace，适合个人版和本地开发。
-- production 请求由 `apps/web/src/proxy.ts` 生成随机 CSP nonce，并通过 request header 交给 Next.js 为 framework/React Flight 内联脚本加 nonce；根 layout 使用 request-time rendering，因为静态预渲染页面无法获得每请求 nonce。不要把 `script-src` 简化回只有 `'self'`，也不要以 `'unsafe-inline'` 作为长期修复，否则会分别导致永久骨架屏或削弱 XSS 防护。
+- 当 `BETTER_AUTH_SECRET` 未设置时，`/login` 和 `/register` 页面不作为访问前置条件，应用直接使用默认 workspace，适合个人版和本地开发。发布前必须同时 smoke `/` 与 `/sources` 为 200，防止误把 self-hosted 模式锁在登录页外。
+- 公开路由为 `/login`、`/register`、`/pricing`、`/api/auth/*`、`/api/health` 和 CCPayment/Stripe 签名 webhook；checkout、管理页、导出和产品工作台均受保护。新增公开入口时必须显式评审 `auth-access.ts` allowlist，禁止宽泛放行 `/api/*`。
+- 登录 `next` 只接受站内绝对 path；绝对 URL、`//`、反斜杠和控制字符统一回退 `/`。不要在页面或 Action 中直接 `router.push(searchParams.get("next"))`。
+- production 请求由 `apps/web/src/proxy.ts` 生成随机 CSP nonce，并通过 request header 交给 Next.js 为 framework/React Flight 内联脚本加 nonce；redirect/401/503 同样保留 CSP 与全部安全响应头。根 layout 使用 request-time rendering，因为静态预渲染页面无法获得每请求 nonce。不要把 `script-src` 简化回只有 `'self'`，也不要以 `'unsafe-inline'` 作为长期修复。
 
 ### 支付（CCPayment + Stripe）
 
@@ -230,7 +232,7 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 ### Auth E2E 测试
 
-Auth 端到端测试覆盖 Better Auth 注册、自动登录、session reload 恢复、登出/重登录、OWNER Membership 和多用户 Organization 隔离，并在结束时清理 fixture。受保护路由统一跳转属于 Issue #166，当前用例标记为 `fixme`，完成 Task 1.3 后解除。
+Auth 端到端测试覆盖 Better Auth 注册、自动登录、session reload 恢复、登出/重登录、OWNER Membership、多用户 Organization 隔离、未登录访问 `/`/`/sources`/`/admin/settings` 的安全 `next` 跳转、受保护 API `401`、站外 `next` 拒绝，以及 cookie 仍在但数据库 Session 已删除时拒绝访问。redirect/401 还断言安全响应头未丢失；结束时自动清理 fixture。desktop/mobile project 使用 RFC 5737 TEST-NET 地址隔离 Better Auth 内存限流 bucket，不修改产品限流配置。
 
 启用条件：
 - 服务端设置 `BETTER_AUTH_SECRET`，或测试进程设置 `PLAYWRIGHT_AUTH_ENABLED=1`

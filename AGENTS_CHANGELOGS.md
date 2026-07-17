@@ -1,5 +1,23 @@
 ## 2026-07-18
 
+### Fix: Issue #166 统一 Better Auth 受保护路由门与安全登录回跳
+
+- Cause: 页面此前只在渲染期间通过 `getSessionWorkspace()` 间接发现无 Session，`proxy.ts` 仅设置 CSP/安全头；未登录访问工作台、受保护 API 和 Session 过期缺少统一边界。登录页还直接信任 `callbackUrl` 并 `router.push()`，存在开放重定向风险。
+- Changed:
+  - `apps/web/src/proxy.ts` 改为 async 真实 Session gate。认证启用时调用 Better Auth `getSession()` 查询数据库 Session；除 login/register/pricing、auth/health 与签名 webhook 的显式 allowlist 外，页面无 Session 返回 `307 /login?next=<path+query>`，受保护 API/Server Action 返回稳定 `401 UNAUTHENTICATED`，认证依赖异常返回 `503 AUTH_UNAVAILABLE`。认证关闭时完全跳过 gate。
+  - 新增 `apps/web/src/lib/auth-access.ts`：集中公开路由、API path、安全站内 `next` 归一化与登录路径构造；拒绝绝对 URL、protocol-relative URL、反斜杠和控制字符。登录页消费安全 `next`，旧 `callbackUrl` 仅作受同一校验的兼容输入。
+  - 所有 next/redirect/401/503 response 继续经统一 helper 设置 HSTS、X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy 与 production nonce CSP；正常请求仍把同一 nonce 注入 request headers，未削弱既有 Next/Flight CSP。
+  - `getSessionWorkspace()` 使用稳定 `UNAUTHENTICATED` 常量；Server Action `readSafeReturnPath()` 同步拒绝反斜杠/控制字符并以 URL parser 归一化站内路径。
+  - 新增 `auth-access.fixture.mjs` 并接入 Web test；解除 auth Playwright 的 #166 `fixme`，增加三页面/query、受保护 API 401、站外 `next`、数据库 Session 删除、redirect/401 安全头与 desktop/mobile 覆盖。
+- Files: `apps/web/src/proxy.ts`, `apps/web/src/lib/{auth-access,session}.ts`, `apps/web/src/app/login/page.tsx`, `apps/web/src/app/actions/_shared.ts`, `apps/web/scripts/auth-access.fixture.mjs`, `apps/web/package.json`, `tests/smoke/auth.spec.ts`, `CODEGUIDE.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification:
+  - RED: 新策略 fixture 在 `auth-access.ts` 不存在时以 `ERR_MODULE_NOT_FOUND` 失败；GREEN: Web typecheck + 全部 Web fixtures 通过。
+  - Next 16 production build ✓；真实 disposable PostgreSQL + production server 的 auth Playwright desktop/mobile 共 10/10 passed（无 skip）。
+  - auth-disabled production smoke：`/`、`/sources`、`/pricing` 均 200 且不跳转登录。
+  - 全量 `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` / `git diff --check` ✓。
+  - DeepSeek V4 Pro 独立只读审计：APPROVED，Critical 0 / Important 0；仅记录共享 internal origin 常量与编码控制字符 fixture 两项非阻塞 Minor。
+- Notes / Risk: GLM-5.2 编码子 Agent 运行约 14 分钟无输出且未留下 diff，按用户约定停止后由父 Agent 接管。首个 DeepSeek 审计进程误启动长期 server 后卡住且无报告，清理后以禁止测试/server 的窄只读审计成功完成。公开路由采用最小显式 allowlist，未来新增公开入口需单独评审；本轮未部署、未关闭 Issue。
+
 ### Feat: Issue #153 Lane 1 Better Auth Schema 对齐 + User lifecycle 数据层收口
 
 - Cause: Issue #153 Lane 1 要求将 `packages/db` 的 schema、migration、repository 对齐 Better Auth 1.6.23 core 契约（User/Account/Session/Verification）并实现 User 生命周期状态机数据层。此前 Agent 已留下未提交 diff，本轮做最终收口与验证。

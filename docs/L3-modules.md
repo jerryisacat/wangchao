@@ -40,7 +40,7 @@ wangchao/
 ├── turbo.json                         # Turborepo task pipeline
 ├── tsconfig.base.json                # TypeScript workspace 基础配置
 ├── apps/
-│   ├── web/                          # Next.js App Router 产品界面（含 proxy.ts nonce CSP 安全响应头）
+│   ├── web/                          # Next.js App Router 产品界面（含 proxy.ts Session 认证门 + nonce CSP）
 │   └── worker/                       # Node.js 后台 worker（含 safe-log.ts 安全日志）
 ├── packages/
 │   ├── core/                         # 共享领域逻辑
@@ -278,8 +278,9 @@ Next.js App Router 产品界面。按 `FRONTEND.md` 重构为 Kinetic Intelligen
 
 ```text
 apps/web/src/
-├── proxy.ts                          # Next.js 16 proxy（每请求 nonce CSP + HSTS/X-Frame-Options 等）
+├── proxy.ts                          # Next.js 16 proxy（真实 Session 认证门 + nonce CSP + 安全响应头）
 ├── lib/
+│   ├── auth-access.ts                # public allowlist、安全 next、登录/API path 纯策略
 │   └── content-security-policy.ts    # production CSP policy builder
 ├── app/                              # Next.js App Router
 │   ├── layout.tsx                    # 根 layout（force-dynamic，确保 nonce CSP 覆盖所有脚本）
@@ -301,7 +302,7 @@ apps/web/src/
 │   ├── admin/usage/page.tsx          # OWNER/ADMIN 成员与近 30 天用量审计
 │   ├── admin/settings/credential-form.tsx  # 凭证表单客户端组件（密码显隐/Provider 下拉/loading）
 │   ├── admin/settings/telegram-form.tsx  # Telegram 凭证表单客户端组件（Bot Token/Chat ID/测试连接）
-│   ├── login/page.tsx                # 登录页（email/password）
+│   ├── login/page.tsx                # 登录页（email/password + 站内 next 回跳）
 │   ├── register/page.tsx             # 注册页（email/password）
 │   ├── pricing/page.tsx              # 定价页（FREE/PLUS/PRO 三层对比）
 │   ├── usage/page.tsx                # 用量仪表盘（配额进度条、AI 调用/导出统计）
@@ -353,7 +354,7 @@ apps/web/src/
     ├── report-data.ts                # 专题报告数据读取：`getReportsPage()`（分页列表）、`getReportDetail()`（单条详情）
     ├── auth.ts                       # Better Auth 服务端配置；Promise 单例 + ESM 动态加载 DB
     ├── auth-client.ts                # Better Auth 同源浏览器客户端
-    ├── session.ts                    # Session helper：认证用户 ensureUserWorkspace；兼容模式 ensureDefaultWorkspace
+    ├── session.ts                    # Session helper：真实 Session + 认证用户 workspace；兼容模式默认 workspace
     ├── utils.ts                      # cn() = twMerge(clsx(...)) 标准 shadcn helper
     └── topic-source-data.ts          # 工作台与 dedicated audit 数据读取；DATABASE_URL 未配置时抛错
 ```
@@ -386,12 +387,13 @@ apps/web/src/
 | `apps/web/src/app/admin/settings/providers.ts` | Provider 常量集中定义：`AI_PROVIDERS`（AI provider 选项 + defaultBaseUrl）、`SEARCH_PROVIDERS`（搜索 provider 选项）、`defaultAiBaseUrl(provider)` 函数。替代前端 credential-form 内联常量与后端 actions.ts 独立函数，确保前后端使用同一份 Provider 元数据。 |
 | `apps/web/src/lib/auth.ts` | Better Auth 服务端配置。使用 Promise-backed 单例和 ESM `import("@wangchao/db")`，避免 Next 16 production bundle 的 CJS interop 失效；初始化 Promise 拒绝时重置单例，允许后续请求重试；core `emailVerified/image` 不重复声明为 additionalFields。 |
 | `apps/web/src/lib/auth-client.ts` | Better Auth 同源客户端，不读取 server-only `BETTER_AUTH_URL`，避免反向代理/非默认端口下跨 origin 请求被 CSP 阻止。 |
-| `apps/web/src/lib/session.ts` | `getSessionWorkspace()`：认证模式验证 session 后调用 `ensureUserWorkspace()`；兼容模式调用 `ensureDefaultWorkspace()`。 |
-| `apps/web/src/proxy.ts` | Next.js 16 proxy（原 `middleware.ts`）。production 为每个请求生成随机 nonce，将 CSP 同时注入 Next.js request headers 与最终 response，使 framework/React Flight 内联脚本安全执行；同时设置 HSTS、X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy。开发环境跳过 CSP 以兼容 HMR。 |
+| `apps/web/src/lib/auth-access.ts` | 纯认证访问策略：公开 exact/prefix allowlist；`normalizeAuthReturnPath()` 仅允许站内绝对 path，拒绝绝对 URL、`//`、反斜杠和控制字符；`buildLoginPath()` 生成编码后的 `/login?next=`。 |
+| `apps/web/src/lib/session.ts` | `getSessionWorkspace()`：认证模式验证数据库 Session 后调用 `ensureUserWorkspace()`，缺失/过期时抛稳定 `UNAUTHENTICATED`；兼容模式调用 `ensureDefaultWorkspace()`。 |
+| `apps/web/src/proxy.ts` | Next.js 16 proxy（原 `middleware.ts`）。认证启用时，除 login/register/pricing、auth/health 和支付 webhook 外，每个请求均通过 Better Auth `getSession()` 验证数据库 Session：页面无 Session 时 307 到安全 `/login?next=`；受保护 API/Server Action 返回 `401 UNAUTHENTICATED`；认证服务故障返回 `503 AUTH_UNAVAILABLE`。认证关闭时跳过 gate。production 继续为 request/response 注入 nonce CSP，并让 redirect/401/503 保留 HSTS、X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy。开发环境跳过 CSP 以兼容 HMR。 |
 | `apps/web/src/lib/content-security-policy.ts` | CSP policy builder：校验 base64/base64url nonce，生成包含 `nonce-*`、`strict-dynamic`、禁用 script attributes/object/embed 等边界的 production policy。 |
 | `apps/web/src/app/layout.tsx` | 根 layout；声明 `dynamic = "force-dynamic"`，确保包括登录/注册在内的原静态路由均在请求时渲染，从而让所有 framework/React Flight scripts 获得当前请求 nonce。 |
 | `apps/web/scripts/content-security-policy.fixture.mjs` | CSP 回归 fixture：验证 script directive 必须包含 nonce/strict-dynamic，且不得退化为 `'unsafe-inline'`；传入 `BASE_URL` 时验证每请求 nonce 唯一且所有 production script 标签携带响应 nonce。 |
-| `apps/web/src/app/login/page.tsx` | 登录页。email/password 表单，提交到 Better Auth session。 |
+| `apps/web/src/app/login/page.tsx` | 登录页。email/password 表单，提交到 Better Auth session；只消费经过 `normalizeAuthReturnPath()` 的 `next`（兼容旧 `callbackUrl`），拒绝站外开放重定向。 |
 | `apps/web/src/app/register/page.tsx` | 注册页。email/password 注册，创建用户后重定向。 |
 | `apps/web/src/app/pricing/page.tsx` | 定价页。FREE/PLUS/PRO 三层对比，展示各层配额限制和价格。 |
 | `apps/web/src/app/usage/page.tsx` | 用量仪表盘。展示当前周期配额使用进度条（主题/信源/AI 调用/导出），按 `getSubscriptionPlanView()` + `getTodayAiCallCount()`/`getMonthAiCallCount()`/`getMonthExportCount()`/`getTopicCount()`/`getActiveSourceCount()` 读取。 |

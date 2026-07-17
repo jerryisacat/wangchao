@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import type { WorkspaceSeed } from "@wangchao/db";
+import { UNAUTHENTICATED_ERROR } from "@/lib/auth-access";
 import { isAuthEnabled } from "@/lib/auth";
 
 export async function getSessionWorkspace(): Promise<WorkspaceSeed> {
@@ -22,7 +23,7 @@ export async function getSessionWorkspace(): Promise<WorkspaceSeed> {
   });
 
   if (!session) {
-    throw new Error("UNAUTHENTICATED");
+    throw new Error(UNAUTHENTICATED_ERROR);
   }
 
   const prisma = getPrismaClient();

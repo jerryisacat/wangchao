@@ -233,8 +233,15 @@ export function readJsonRecord(value: unknown): Record<string, unknown> {
 
 export function readSafeReturnPath(formData: FormData, key: string): string | null {
   const value = readOptionalField(formData, key);
-  if (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return null;
-  return value;
+  if (!value.startsWith("/") || value.startsWith("//")) return null;
+  if (value.includes("\\") || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  try {
+    const url = new URL(value, "http://wangchao.internal");
+    if (url.origin !== "http://wangchao.internal") return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
 }
 
 export function readRequiredUrl(formData: FormData, key: string): string {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 const AUTH_ENABLED =
   (Boolean(process.env.PLAYWRIGHT_AUTH_ENABLED) || Boolean(process.env.BETTER_AUTH_SECRET)) &&
@@ -46,6 +46,26 @@ async function cleanupAuthFixtures(): Promise<void> {
   await disconnectPrismaClient();
 }
 
+async function loginExistingUser(page: Page, loginPath = "/login"): Promise<void> {
+  await page.goto(loginPath);
+  await page.getByLabel("邮箱").fill(testEmail);
+  await page.getByLabel("密码").fill(testPassword);
+  await page.getByRole("button", { name: "登录" }).click();
+}
+
+async function deleteUserSessions(email: string): Promise<void> {
+  const { getPrismaClient } = await import("../../packages/db/dist/index.js");
+  const prisma = getPrismaClient();
+  const user = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+  if (user) await prisma.session.deleteMany({ where: { userId: user.id } });
+}
+
+async function expectLoginRedirect(page: Page, returnPath: string): Promise<void> {
+  await page.waitForURL(
+    (url) => url.pathname === "/login" && url.searchParams.get("next") === returnPath,
+  );
+}
+
 test.describe("Better Auth end-to-end", () => {
   test.describe.configure({ mode: "serial" });
   test.skip(!AUTH_ENABLED, "BETTER_AUTH_SECRET and DATABASE_URL are required");
@@ -85,14 +105,40 @@ test.describe("Better Auth end-to-end", () => {
     expect(await readMemberships(testEmail)).toEqual(memberships);
   });
 
-  test.fixme("protected pages require authentication", async ({ page }) => {
-    // Issue #166 owns the unified protected-route gate. Remove fixme in Task 1.3.
+  test("protected pages and APIs require authentication", async ({ page }) => {
     await page.context().clearCookies();
-    for (const path of ["/", "/admin/settings"]) {
+
+    const redirectResponse = await page.request.get("/sources?status=ACTIVE", {
+      maxRedirects: 0,
+    });
+    expect(redirectResponse.status()).toBe(307);
+    expect(redirectResponse.headers()["content-security-policy"]).toContain("'nonce-");
+    expect(redirectResponse.headers()["x-frame-options"]).toBe("DENY");
+
+    for (const path of ["/", "/sources?status=ACTIVE", "/admin/settings"]) {
       await page.goto(path);
-      await page.waitForURL(/\/login/, { timeout: 15_000 });
-      await expect(page).toHaveURL(/\/login/);
+      await expectLoginRedirect(page, path);
     }
+
+    const apiResponse = await page.request.post("/api/billing/stripe/checkout");
+    expect(apiResponse.status()).toBe(401);
+    expect(apiResponse.headers()["x-frame-options"]).toBe("DENY");
+    expect(await apiResponse.json()).toMatchObject({ code: "UNAUTHENTICATED" });
+  });
+
+  test("external next targets are rejected", async ({ page }) => {
+    await loginExistingUser(page, "/login?next=https%3A%2F%2Fevil.example%2Fsteal");
+    await page.waitForURL("/", { timeout: 15_000 });
+    await expect(page).toHaveURL("/");
+  });
+
+  test("a cookie with a deleted database session is rejected", async ({ page }) => {
+    await page.context().clearCookies();
+    await loginExistingUser(page);
+    await page.waitForURL("/", { timeout: 15_000 });
+    await deleteUserSessions(testEmail);
+    await page.goto("/sources");
+    await expectLoginRedirect(page, "/sources");
   });
 
   test("second user receives an isolated owner workspace", async ({ browser }) => {
