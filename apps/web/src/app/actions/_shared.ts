@@ -7,9 +7,12 @@ export type DatabaseClient = ReturnType<
 export type ActionRedirectType = "error" | "notice";
 
 export function logActionError(action: string, error: unknown): void {
-  process.stderr.write(
-    `[${action}] ${error instanceof Error ? error.message : String(error)}\n`,
-  );
+  const name = error instanceof Error ? error.name : "Error";
+  const code = (error as { code?: unknown } | null)?.code;
+  const message = error instanceof Error ? error.message : String(error);
+  const codeSegment =
+    typeof code === "string" && code.length > 0 ? `(${code})` : "";
+  process.stderr.write(`[${action}] ${name}${codeSegment}: ${message}\n`);
 }
 
 export function actionRedirectHref(
@@ -23,76 +26,140 @@ export function actionRedirectHref(
 }
 
 export function toUserActionError(error: unknown): string {
-  if (error instanceof Error && error.message === "AI_API_KEY_MISSING") {
-    return "AI API Key 未随保存请求提交，请重新输入后测试并保存。";
+  if (!(error instanceof Error)) {
+    return "操作未完成，请稍后重试。";
   }
 
-  if (error instanceof Error && error.message === "SEARCH_API_KEY_MISSING") {
-    return "搜索 API Key 未随保存请求提交，请重新输入后测试并保存。";
+  const message = error.message;
+
+  switch (message) {
+    case "AI_API_KEY_MISSING":
+      return "AI API Key 未随保存请求提交，请重新输入后测试并保存。";
+    case "SEARCH_API_KEY_MISSING":
+      return "搜索 API Key 未随保存请求提交，请重新输入后测试并保存。";
+    case "TELEGRAM_BOT_TOKEN_MISSING":
+      return "请输入 Telegram Bot Token。";
+    case "TELEGRAM_CHAT_ID_MISSING":
+      return "请输入 Telegram Chat ID。";
+    case "INSTANT_PUSH_PLAN_BLOCKED":
+      return "即时推送仅对 Plus、Pro 或自用模式开放。";
+    case "BYOK_API_KEY_MISSING":
+      return "请输入 BYOK API Key。";
+    case "BYOK_BASE_URL_MISSING":
+      return "请填写 BYOK Base URL。";
+    case "CCPAYMENT_APP_ID_MISSING":
+      return "请输入 CCPayment App ID。";
+    case "CCPAYMENT_APP_SECRET_MISSING":
+      return "请输入 CCPayment App Secret。";
+    case "AI_BASE_URL_INVALID":
+      return "AI Base URL 必须是有效的 HTTP 或 HTTPS 地址。";
+    case "UNAUTHENTICATED":
+      return "登录状态已失效，请刷新页面重新登录后再操作。";
   }
 
-  if (error instanceof Error && error.message === "TELEGRAM_BOT_TOKEN_MISSING") {
-    return "请输入 Telegram Bot Token。";
-  }
-
-  if (error instanceof Error && error.message === "TELEGRAM_CHAT_ID_MISSING") {
-    return "请输入 Telegram Chat ID。";
-  }
-  if (error instanceof Error && error.message === "INSTANT_PUSH_PLAN_BLOCKED") {
-    return "即时推送仅对 Plus、Pro 或自用模式开放。";
-  }
-  if (error instanceof Error && error.message.startsWith("INSTANT_PUSH_TELEGRAM_MISSING")) {
+  if (message.startsWith("INSTANT_PUSH_TELEGRAM_MISSING")) {
     return "请先前往「管理 -> Telegram」配置机器人凭据后再开启即时推送。";
   }
 
-  if (error instanceof Error && error.message === "BYOK_API_KEY_MISSING") {
-    return "请输入 BYOK API Key。";
+  if (isPrismaUniqueConstraintError(error)) {
+    return "该名称或地址已存在，请勿重复创建，或更换后重试。";
   }
 
-  if (error instanceof Error && error.message === "BYOK_BASE_URL_MISSING") {
-    return "请填写 BYOK Base URL。";
-  }
-
-  if (error instanceof Error && error.message === "CCPAYMENT_APP_ID_MISSING") {
-    return "请输入 CCPayment App ID。";
-  }
-
-  if (error instanceof Error && error.message === "CCPAYMENT_APP_SECRET_MISSING") {
-    return "请输入 CCPayment App Secret。";
-  }
-
-  if (error instanceof Error && error.message === "CCPAYMENT_APP_ID_MISSING") {
-    return "请输入 CCPayment App ID。";
+  const quotaHint = describeQuotaMessage(message);
+  if (quotaHint) {
+    return quotaHint;
   }
 
   if (
-    error instanceof Error &&
-    error.message === "CCPAYMENT_APP_SECRET_MISSING"
+    /database connection is required/i.test(message) ||
+    /DATABASE_URL is required/.test(message)
   ) {
-    return "请输入 CCPayment App Secret。";
+    return "数据库连接未就绪，请确认 DATABASE_URL 配置正确且数据库可访问后重启服务。";
   }
 
-  if (error instanceof Error && error.message === "AI_BASE_URL_INVALID") {
-    return "AI Base URL 必须是有效的 HTTP 或 HTTPS 地址。";
-  }
-
-  if (error instanceof Error && /HTTP or HTTPS URL/.test(error.message)) {
-    return "请输入有效的 HTTP 或 HTTPS RSS 地址。";
-  }
-
-  if (error instanceof Error && /ENCRYPTION_KEY is required/.test(error.message)) {
+  if (/ENCRYPTION_KEY is required/.test(message)) {
     return "加密密钥未配置，请设置 ENCRYPTION_KEY 环境变量后重启服务。";
   }
 
-  if (error instanceof Error && /DATABASE_URL is required/.test(error.message)) {
-    return "数据库连接未配置，请设置 DATABASE_URL 环境变量后重启服务。";
+  if (/HTTP or HTTPS URL/.test(message)) {
+    return "请输入有效的 HTTP 或 HTTPS RSS 地址。";
   }
 
-  if (error instanceof Error && /required/.test(error.message)) {
+  if (/not authorized/i.test(message)) {
+    return "当前账号无权执行此操作，请联系工作区管理员调整角色后重试。";
+  }
+
+  if (/\bnot found\b/i.test(message)) {
+    return "操作的对象不存在或已不属于当前工作区，请刷新页面后重试。";
+  }
+
+  if (/too long/i.test(message)) {
+    return "输入内容过长，请精简后重试。";
+  }
+
+  if (/must be/i.test(message)) {
+    return "提交的参数不合法，请检查输入后重试。";
+  }
+
+  if (/required/i.test(message)) {
     return "请补全必填内容后再提交。";
   }
 
-  return "操作未完成，请检查输入或稍后重试。";
+  const detail = sanitizeErrorDetail(message);
+  return `操作未完成${detail ? `：${detail}` : ""}。若持续失败，请查看服务器日志中对应的 [xxxAction] 错误行。`;
+}
+
+function isPrismaUniqueConstraintError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === "string" && code === "P2002";
+}
+
+function describeQuotaMessage(message: string): string | null {
+  const match = message.match(
+    /^([\w ]+?) limit reached \((\d+)\/(\d+|null)\)\.$/i,
+  );
+  if (!match) {
+    if (/limit reached/i.test(message)) {
+      return "已达当前套餐的使用上限，请升级套餐或清理已有记录后重试。";
+    }
+    return null;
+  }
+
+  const resource = quotaResourceLabel(match[1]);
+  const current = match[2];
+  const limit = match[3];
+  const usage = limit === "null" ? `（已用 ${current}）` : `（${current}/${limit}）`;
+
+  return `已达当前套餐的${resource}上限${usage}，请升级套餐或在管理页清理已有记录后重试。`;
+}
+
+function quotaResourceLabel(resource: string | undefined): string {
+  switch ((resource ?? "").toLowerCase()) {
+    case "topic":
+      return "主题数量";
+    case "source":
+      return "信源数量";
+    case "ai":
+    case "ai call":
+      return "AI 调用";
+    case "daily ai call":
+      return "每日 AI 调用";
+    case "monthly ai call":
+      return "每月 AI 调用";
+    case "export":
+    case "monthly export":
+      return "导出";
+    default:
+      return "使用";
+  }
+}
+
+function sanitizeErrorDetail(message: string): string {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    return "";
+  }
+  return trimmed.length > 80 ? `${trimmed.slice(0, 80)}...` : trimmed;
 }
 
 export function readRequiredField(formData: FormData, key: string): string {
@@ -338,7 +405,7 @@ export function dedupeMatchedSources(
 
 export function tokenizeText(value: string): string[] {
   return value
-    .split(/[\s,，、;；:：/|()\[\]{}"'""''<>《》.!?！？\n\r\t]+/)
+    .split(/[\s,，、;；:：/|()\[\]{}"'“”‘’<>《》.!?！？\n\r\t]+/)
     .map((term) => term.trim())
     .filter((term) => term.length >= 2)
     .flatMap((term) => [term, ...extractCjkTerms(term)])
@@ -347,7 +414,7 @@ export function tokenizeText(value: string): string[] {
 }
 
 export function extractCjkTerms(value: string): string[] {
-  return [...value.matchAll(/[\u4e00-\u9fff]{2,8}/g)].map((match) => match[0]);
+  return [...value.matchAll(/[一-鿿]{2,8}/g)].map((match) => match[0]);
 }
 
 export function termsMatch(left: string, right: string): boolean {
