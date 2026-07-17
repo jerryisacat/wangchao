@@ -1,4 +1,4 @@
-import { Download, FileText } from "lucide-react";
+import { ArrowLeft, Download, FileText } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,20 +28,50 @@ export default async function BriefingsPage({ searchParams }: BriefingsPageProps
     <>
       <PageHeader eyebrow="简报中心" title="情报简报">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/">← 返回情报流</Link>
+          <Link href="/">
+            <ArrowLeft aria-hidden="true" size={14} />
+            返回情报流
+          </Link>
         </Button>
       </PageHeader>
 
       <div>
         <Card variant="work">
           <CardHeader>
-            <div className="briefing-filters">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <CardTitle>历史简报 · {briefingPage.total}</CardTitle>
-              <div className="briefing-period-tabs" aria-label="简报周期筛选">
-                <Link data-active={(!periodFilter).toString()} href="/briefings">全部</Link>
-                <Link data-active={(periodFilter === "DAILY").toString()} href="/briefings?period=DAILY">每日</Link>
-                <Link data-active={(periodFilter === "WEEKLY").toString()} href="/briefings?period=WEEKLY">每周</Link>
-                <Link data-active={(periodFilter === "MONTHLY").toString()} href="/briefings?period=MONTHLY">每月</Link>
+              <div
+                aria-label="简报周期筛选"
+                className="inline-flex w-fit items-center justify-center gap-1 rounded-full bg-muted p-1"
+              >
+                <Link
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-transparent px-4 py-1 text-sm font-medium text-muted-foreground transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-primary/5 hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm"
+                  data-active={(!periodFilter).toString()}
+                  href="/briefings"
+                >
+                  全部
+                </Link>
+                <Link
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-transparent px-4 py-1 text-sm font-medium text-muted-foreground transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-primary/5 hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm"
+                  data-active={(periodFilter === "DAILY").toString()}
+                  href="/briefings?period=DAILY"
+                >
+                  每日
+                </Link>
+                <Link
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-transparent px-4 py-1 text-sm font-medium text-muted-foreground transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-primary/5 hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm"
+                  data-active={(periodFilter === "WEEKLY").toString()}
+                  href="/briefings?period=WEEKLY"
+                >
+                  每周
+                </Link>
+                <Link
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-transparent px-4 py-1 text-sm font-medium text-muted-foreground transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-primary/5 hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm"
+                  data-active={(periodFilter === "MONTHLY").toString()}
+                  href="/briefings?period=MONTHLY"
+                >
+                  每月
+                </Link>
               </div>
             </div>
           </CardHeader>
@@ -53,34 +83,44 @@ export default async function BriefingsPage({ searchParams }: BriefingsPageProps
                 title="暂无简报"
               />
             ) : (
-              <div className="briefing-list">
+              <div className="divide-y divide-border">
                 {briefingPage.briefings.map((briefing) => (
-                  <article className="briefing-row" key={briefing.briefingId}>
-                    <div>
-                      <div className="briefing-title-row">
-                        <h3>{briefing.title}</h3>
+                  <article
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-4 transition-colors hover:bg-primary/5 first:pt-0 last:pb-0"
+                    key={briefing.briefingId}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <h3 className="m-0 break-words text-base font-medium leading-snug">
+                          {briefing.title}
+                        </h3>
                         <Badge variant="outline">{periodLabel(briefing.period)}</Badge>
                       </div>
-                      <p>
+                      <p className="mt-1 text-sm text-muted-foreground">
                         {briefing.topicName} · {formatDateRange(briefing.rangeStart, briefing.rangeEnd)}
                         {" · 更新于 "}
                         {formatDateTime(briefing.generatedAt)}
                       </p>
                     </div>
-                    <a href={`/exports/briefings/${briefing.briefingId}`}>
-                      <Download aria-hidden="true" size={14} />
-                      Markdown
-                    </a>
+                    <Button asChild size="sm" variant="ghost">
+                      <a href={`/exports/briefings/${briefing.briefingId}`}>
+                        <Download aria-hidden="true" size={14} />
+                        Markdown
+                      </a>
+                    </Button>
                   </article>
                 ))}
               </div>
             )}
             {briefingPage.total > 0 ? (
-              <nav aria-label="简报分页" className="briefing-pagination">
-                <span>
+              <nav
+                aria-label="简报分页"
+                className="mt-4 flex min-h-11 items-center justify-between gap-3 border-t border-border pt-3 text-sm text-muted-foreground"
+              >
+                <span className="font-medium tabular-nums">
                   第 {briefingPage.page} / {briefingPage.pageCount} 页
                 </span>
-                <div className="briefing-pagination-actions">
+                <div className="flex flex-wrap justify-end gap-2">
                   {briefingPage.page > 1 ? (
                     <Button asChild size="sm" variant="ghost">
                       <Link href={briefingPageHref(briefingPage.page - 1, periodFilter)}>上一页</Link>

@@ -1,30 +1,58 @@
 "use client";
 
-import { LogOut, Plus, Rss, Settings, Sparkles, List } from "lucide-react";
+import {
+  ClipboardList,
+  CreditCard,
+  Gauge,
+  List,
+  LogOut,
+  MoreHorizontal,
+  Plus,
+  Rss,
+  Settings,
+  Sparkles,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
 
-const mainLinks = [
+type NavRole = "OWNER" | "ADMIN" | "MEMBER" | null;
+
+const readingLinks = [
   { href: "/", label: "未读情报" },
-  { href: "/briefings", label: "今日简报" },
-  { href: "/reports", label: "专题报告" },
+  { href: "/briefings", label: "简报" },
+  { href: "/reports", label: "报告" },
   { href: "/saved", label: "已保存" },
-  { href: "/preferences", label: "偏好" },
 ] as const;
+
+const AUTH_ROUTES = ["/login", "/register"];
 
 interface TopNavProps {
   authEnabled?: boolean;
+  role?: NavRole;
   className?: string;
 }
 
-export function TopNav({ authEnabled = false, className }: TopNavProps) {
+export function TopNav({ authEnabled = false, role = null, className }: TopNavProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
+
+  const isAuthRoute = AUTH_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
+  );
+  const isAdmin = role === "OWNER" || role === "ADMIN";
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -36,26 +64,65 @@ export function TopNav({ authEnabled = false, className }: TopNavProps) {
     }
   }
 
-  return (
-    <header className={cn("top-nav", className)}>
-      <div className="top-nav-inner">
-        <Link aria-label="望潮首页" className="top-nav-brand" href="/">
-          <span className="top-nav-brand-mark">
-            <Sparkles aria-hidden="true" size={18} />
-          </span>
-          <span className="top-nav-brand-copy">
-            <span className="top-nav-brand-name">望潮</span>
-            <span className="top-nav-brand-meta">Wangchao</span>
-          </span>
-        </Link>
+  const brand = (
+    <Link
+      aria-label="望潮首页"
+      className="flex min-h-11 items-center gap-2.5 text-foreground"
+      href="/"
+    >
+      <span className="grid size-9 place-items-center rounded-full bg-accent text-accent-foreground">
+        <Sparkles aria-hidden="true" size={18} />
+      </span>
+      <span className="grid gap-0.5">
+        <span className="text-base font-bold leading-none">望潮</span>
+        <span className="font-mono text-[10px] uppercase leading-none text-muted-foreground">
+          Wangchao
+        </span>
+      </span>
+    </Link>
+  );
 
-        <nav aria-label="主导航" className="top-nav-links">
-          {mainLinks.map((link) => {
-            const isActive = link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
+  if (isAuthRoute) {
+    return (
+      <header
+        className={cn(
+          "sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md",
+          className,
+        )}
+      >
+        <div className="mx-auto flex min-h-14 max-w-[920px] items-center px-[max(16px,env(safe-area-inset-left))] pr-[max(16px,env(safe-area-inset-right))] sm:px-6">
+          {brand}
+        </div>
+      </header>
+    );
+  }
+
+  return (
+    <header
+      className={cn(
+        "sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-md",
+        className,
+      )}
+    >
+      <div className="mx-auto flex min-h-14 max-w-[920px] items-center gap-5 px-[max(16px,env(safe-area-inset-left))] pr-[max(16px,env(safe-area-inset-right))] sm:px-6">
+        {brand}
+
+        <nav
+          aria-label="主导航"
+          className="flex min-w-0 flex-1 gap-1 overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {readingLinks.map((link) => {
+            const isActive =
+              link.href === "/" ? pathname === "/" : pathname.startsWith(link.href);
             return (
               <Link
                 aria-current={isActive ? "page" : undefined}
-                className="top-nav-link"
+                className={cn(
+                  "inline-flex min-h-11 items-center whitespace-nowrap rounded-full px-3 text-[13px] font-medium transition-colors duration-200",
+                  isActive
+                    ? "bg-secondary text-secondary-foreground"
+                    : "text-muted-foreground hover:bg-primary/5 hover:text-foreground",
+                )}
                 href={link.href}
                 key={link.href}
               >
@@ -65,8 +132,8 @@ export function TopNav({ authEnabled = false, className }: TopNavProps) {
           })}
         </nav>
 
-        <div className="top-nav-actions">
-          <Button asChild className="top-nav-action" size="sm" variant="primary">
+        <div className="flex shrink-0 items-center gap-2">
+          <Button asChild size="sm" variant="primary">
             <Link
               aria-current={pathname === "/topics/new" ? "page" : undefined}
               href="/topics/new"
@@ -75,50 +142,86 @@ export function TopNav({ authEnabled = false, className }: TopNavProps) {
               <span>新增主题</span>
             </Link>
           </Button>
-          <Button asChild className="top-nav-action" size="sm" variant="secondary">
-            <Link
-              aria-current={pathname.startsWith("/sources") ? "page" : undefined}
-              href="/sources"
-            >
-              <Rss aria-hidden="true" size={14} />
-              <span>信源管理</span>
-            </Link>
-          </Button>
-          <Button asChild className="top-nav-action" size="sm" variant="ghost">
-            <Link
-              aria-current={
-                pathname.startsWith("/topics") && pathname !== "/topics/new"
-                  ? "page"
-                  : undefined
-              }
-              href="/topics"
-            >
-              <List aria-hidden="true" size={14} />
-              <span>主题</span>
-            </Link>
-          </Button>
-          <Button asChild className="top-nav-action" size="sm" variant="ghost">
-            <Link
-              aria-current={pathname.startsWith("/admin") || pathname.startsWith("/usage") ? "page" : undefined}
-              href="/admin/settings"
-            >
-              <Settings aria-hidden="true" size={14} />
-              <span>设置</span>
-            </Link>
-          </Button>
-          {authEnabled ? (
-            <Button
-              aria-label="登出"
-              className="top-nav-action"
-              disabled={loggingOut}
-              onClick={handleLogout}
-              size="sm"
-              variant="ghost"
-            >
-              <LogOut aria-hidden="true" size={14} />
-              <span>{loggingOut ? "正在登出" : "登出"}</span>
-            </Button>
-          ) : null}
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button aria-label="更多" size="icon" variant="ghost">
+                <MoreHorizontal aria-hidden="true" size={18} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>管理</DropdownMenuLabel>
+              <DropdownMenuItem asChild>
+                <Link href="/topics">
+                  <List aria-hidden="true" size={16} />
+                  <span>主题列表</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/sources">
+                  <Rss aria-hidden="true" size={16} />
+                  <span>信源管理</span>
+                </Link>
+              </DropdownMenuItem>
+
+              <DropdownMenuSeparator />
+
+              <DropdownMenuLabel>账户</DropdownMenuLabel>
+              <DropdownMenuItem asChild>
+                <Link href="/preferences">
+                  <Sparkles aria-hidden="true" size={16} />
+                  <span>偏好记忆</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/usage">
+                  <Gauge aria-hidden="true" size={16} />
+                  <span>我的用量</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/pricing">
+                  <CreditCard aria-hidden="true" size={16} />
+                  <span>方案与定价</span>
+                </Link>
+              </DropdownMenuItem>
+
+              {isAdmin ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuLabel>工作区</DropdownMenuLabel>
+                  <DropdownMenuItem asChild>
+                    <Link href="/admin/settings">
+                      <Settings aria-hidden="true" size={16} />
+                      <span>工作区设置</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/admin/usage">
+                      <ClipboardList aria-hidden="true" size={16} />
+                      <span>用量审计</span>
+                    </Link>
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+
+              {authEnabled ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    disabled={loggingOut}
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      void handleLogout();
+                    }}
+                  >
+                    <LogOut aria-hidden="true" size={16} />
+                    <span>{loggingOut ? "正在登出" : "登出"}</span>
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </header>

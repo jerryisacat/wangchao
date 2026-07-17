@@ -9,6 +9,13 @@ interface StatusBannerProps extends ComponentPropsWithoutRef<"div"> {
   tone?: BannerTone;
 }
 
+const toneStyles: Record<BannerTone, string> = {
+  info: "bg-secondary text-secondary-foreground",
+  notice: "bg-accent/15 text-accent",
+  warning: "bg-warning/15 text-warning",
+  error: "bg-destructive/15 text-destructive",
+};
+
 export function StatusBanner({
   className,
   icon,
@@ -18,12 +25,18 @@ export function StatusBanner({
 }: StatusBannerProps) {
   return (
     <div
-      className={cn("status-banner", `status-banner-${tone}`, className)}
       role={tone === "error" ? "alert" : "status"}
+      className={cn(
+        "flex items-center gap-2 rounded-[16px] p-3 text-sm leading-normal",
+        toneStyles[tone],
+        className
+      )}
       {...props}
     >
-      <span aria-hidden="true">{icon}</span>
-      <span>{message}</span>
+      <span aria-hidden="true" className="shrink-0">
+        {icon}
+      </span>
+      <span className="min-w-0">{message}</span>
     </div>
   );
 }

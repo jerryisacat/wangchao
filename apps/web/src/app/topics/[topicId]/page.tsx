@@ -105,9 +105,9 @@ export default async function TopicDetailPage({
         />
       ) : null}
 
-      <div className="topic-detail">
-        <Card className="topic-detail-card" variant="kinetic">
-          <div className="topic-detail-status">
+      <div className="grid gap-4">
+        <Card className="grid gap-4 px-6" variant="kinetic">
+          <div className="flex flex-wrap items-center gap-2">
             <TopicStatusBadge status={topic.status} />
             {topic.status === "ACTIVE" ? (
               <form action={updateTopicStatusAction}>
@@ -153,31 +153,31 @@ export default async function TopicDetailPage({
           </div>
 
           {topic.description ? (
-            <p className="topic-detail-description">{topic.description}</p>
+            <p className="m-0 text-sm leading-[1.6] text-foreground [overflow-wrap:anywhere]">{topic.description}</p>
           ) : null}
 
-          <div className="topic-detail-stats">
-            <div className="topic-detail-stat">
-              <Rss aria-hidden="true" size={16} />
-              <span className="topic-detail-stat-value">{topic.sourceCount}</span>
-              <span className="topic-detail-stat-label">信源</span>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="grid items-center gap-1 rounded-[16px] border border-border bg-muted p-4 text-center">
+              <Rss aria-hidden="true" size={16} className="justify-self-center text-accent" />
+              <span className="font-mono text-xl font-[950] tabular-nums text-foreground [overflow-wrap:anywhere]">{topic.sourceCount}</span>
+              <span className="text-[11px] font-bold uppercase text-muted-foreground">信源</span>
             </div>
-            <div className="topic-detail-stat">
-              <Sparkles aria-hidden="true" size={16} />
-              <span className="topic-detail-stat-value">{topic.eventCount}</span>
-              <span className="topic-detail-stat-label">情报事件</span>
+            <div className="grid items-center gap-1 rounded-[16px] border border-border bg-muted p-4 text-center">
+              <Sparkles aria-hidden="true" size={16} className="justify-self-center text-accent" />
+              <span className="font-mono text-xl font-[950] tabular-nums text-foreground [overflow-wrap:anywhere]">{topic.eventCount}</span>
+              <span className="text-[11px] font-bold uppercase text-muted-foreground">情报事件</span>
             </div>
-            <div className="topic-detail-stat">
-              <FileText aria-hidden="true" size={16} />
-              <span className="topic-detail-stat-value">{topic.briefingCount}</span>
-              <span className="topic-detail-stat-label">简报</span>
+            <div className="grid items-center gap-1 rounded-[16px] border border-border bg-muted p-4 text-center">
+              <FileText aria-hidden="true" size={16} className="justify-self-center text-accent" />
+              <span className="font-mono text-xl font-[950] tabular-nums text-foreground [overflow-wrap:anywhere]">{topic.briefingCount}</span>
+              <span className="text-[11px] font-bold uppercase text-muted-foreground">简报</span>
             </div>
-            <div className="topic-detail-stat">
-              <Clock3 aria-hidden="true" size={16} />
-              <span className="topic-detail-stat-value">
+            <div className="grid items-center gap-1 rounded-[16px] border border-border bg-muted p-4 text-center">
+              <Clock3 aria-hidden="true" size={16} className="justify-self-center text-accent" />
+              <span className="font-mono text-xl font-[950] tabular-nums text-foreground [overflow-wrap:anywhere]">
                 {topic.updatedAt.toLocaleDateString("zh-CN")}
               </span>
-              <span className="topic-detail-stat-label">最后更新</span>
+              <span className="text-[11px] font-bold uppercase text-muted-foreground">最后更新</span>
             </div>
           </div>
         </Card>

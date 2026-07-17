@@ -17,13 +17,28 @@ export function PageHeader({
   title,
 }: PageHeaderProps) {
   return (
-    <header className={cn("page-header", className)}>
-      <div className="page-header-main">
-        {eyebrow ? <div className="eyebrow">{eyebrow}</div> : null}
-        <h1>{title}</h1>
-        {meta ? <div className="page-header-meta">{meta}</div> : null}
+    <header
+      className={cn(
+        "mb-1 flex flex-col gap-4 border-b border-border pb-5 md:flex-row md:items-start md:justify-between",
+        className
+      )}
+    >
+      <div className="min-w-0">
+        {eyebrow ? (
+          <div className="text-xs font-medium tracking-[0.01em] text-muted-foreground">
+            {eyebrow}
+          </div>
+        ) : null}
+        <h1 className="mt-1 [overflow-wrap:anywhere] text-[clamp(1.75rem,4vw,3rem)] leading-[1.1]">
+          {title}
+        </h1>
+        {meta ? (
+          <div className="mt-1.5 text-sm text-muted-foreground">{meta}</div>
+        ) : null}
       </div>
-      {children ? <div className="page-header-actions">{children}</div> : null}
+      {children ? (
+        <div className="flex w-full shrink-0 gap-2 md:w-auto">{children}</div>
+      ) : null}
     </header>
   );
 }

@@ -180,7 +180,7 @@ export function CredentialForm({
   return (
     <form
       action={formAction}
-      className="grid gap-3 rounded-md border border-border bg-surface p-4"
+      className="grid gap-3 rounded-[16px] bg-muted p-4"
       ref={formRef}
       onSubmit={handleSubmit}
     >
@@ -230,7 +230,7 @@ export function CredentialForm({
         </Label>
         <select
           aria-label="Provider"
-          className="h-11 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+          className="h-11 w-full min-w-0 rounded-[12px] border border-outline bg-transparent px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:bg-input/30"
           name={providerFieldName}
           onChange={(e) => handleProviderChange(e.target.value)}
           value={selectedProvider}
@@ -288,7 +288,7 @@ export function CredentialForm({
             {availableModels.length > 0 ? (
               <select
                 aria-label="模型"
-                className="h-11 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 dark:bg-input/30"
+                className="h-11 w-full min-w-0 rounded-[12px] border border-outline bg-transparent px-3 py-1 text-sm shadow-xs outline-none transition-[color,box-shadow] focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:bg-input/30"
                 name="aiModel"
                 onChange={(e) => {
                   setSelectedModel(e.target.value);

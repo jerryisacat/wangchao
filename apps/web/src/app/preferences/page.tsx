@@ -37,36 +37,60 @@ export default async function PreferencesPage() {
                 title="暂无偏好记忆"
               />
             ) : (
-              <div className="preference-list">
+              <div className="divide-y divide-border">
                 {workspace.preferences.map((preference) => (
-                  <article className="preference-row" key={`${preference.topicName}-${preference.key}`}>
-                    <div>
-                      <h3>{preference.key}</h3>
-                      <p>{preference.explanation}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        主题：{preference.topicName}
-                      </p>
-                    </div>
-                    <div className="preference-meta">
-                      <Badge variant={preference.weight > 0 ? "success" : preference.weight < 0 ? "warning" : "muted"}>
-                        {preference.weight > 0 ? <ArrowUp aria-hidden="true" size={10} /> : preference.weight < 0 ? <ArrowDown aria-hidden="true" size={10} /> : null}
-                        {preference.weight > 0 ? "+" : ""}
-                        {preference.weight}
-                      </Badge>
-                      <span>{Math.round(preference.confidence * 100)}%</span>
-                      <div
-                        aria-label={`置信度 ${Math.round(preference.confidence * 100)}%`}
-                        aria-valuemax={100}
-                        aria-valuemin={0}
-                        aria-valuenow={Math.round(preference.confidence * 100)}
-                        className="confidence-meter"
-                        role="progressbar"
-                      >
-                        <span
-                          style={{
-                            inlineSize: `${Math.round(preference.confidence * 100)}%`,
-                          }}
-                        />
+                  <article
+                    className="grid gap-3 py-4"
+                    key={`${preference.topicName}-${preference.key}`}
+                  >
+                    <div className="grid grid-cols-1 items-start gap-2.5 sm:grid-cols-[1fr_auto]">
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-medium leading-tight">
+                          {preference.key}
+                        </h3>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {preference.explanation}
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          主题：{preference.topicName}
+                        </p>
+                      </div>
+                      <div className="grid justify-items-start gap-1.5 sm:justify-items-end">
+                        <Badge
+                          variant={
+                            preference.weight > 0
+                              ? "success"
+                              : preference.weight < 0
+                                ? "warning"
+                                : "muted"
+                          }
+                        >
+                          {preference.weight > 0 ? (
+                            <ArrowUp aria-hidden="true" size={10} />
+                          ) : preference.weight < 0 ? (
+                            <ArrowDown aria-hidden="true" size={10} />
+                          ) : null}
+                          {preference.weight > 0 ? "+" : ""}
+                          {preference.weight}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {Math.round(preference.confidence * 100)}%
+                        </span>
+                        <div
+                          aria-label={`置信度 ${Math.round(preference.confidence * 100)}%`}
+                          aria-valuemax={100}
+                          aria-valuemin={0}
+                          aria-valuenow={Math.round(preference.confidence * 100)}
+                          className="h-1.5 w-24 overflow-hidden rounded-full bg-muted"
+                          role="progressbar"
+                        >
+                          <span
+                            className="block h-full rounded-full bg-primary transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)]"
+                            style={{
+                              inlineSize: `${Math.round(preference.confidence * 100)}%`,
+                            }}
+                          />
+                        </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">

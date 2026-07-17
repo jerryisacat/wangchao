@@ -17,11 +17,11 @@ export default function NewTopicPage() {
         </Button>
       </PageHeader>
 
-      <Card className="topic-lab" variant="kinetic">
-        <div style={{ position: "relative", zIndex: 1, padding: "24px 20px 20px" }}>
+      <Card className="topic-lab p-0" variant="kinetic">
+        <div className="pt-6 px-5 pb-5">
           <form action={createTopicAction} className="grid gap-3">
-            <div className="grid gap-2 text-muted-foreground text-xs font-bold">
-              <Label htmlFor="topicName">主题名称</Label>
+            <div className="grid gap-2">
+              <Label htmlFor="topicName" className="text-xs font-extrabold text-muted-foreground">主题名称</Label>
               <Input
                 className="min-h-16 min-w-0 border-2 text-[clamp(1.25rem,3vw,2rem)] font-black"
                 id="topicName"
@@ -30,8 +30,8 @@ export default function NewTopicPage() {
                 required
               />
             </div>
-            <div className="grid gap-2 text-muted-foreground text-xs font-bold">
-              <Label htmlFor="topicDescription">主题描述</Label>
+            <div className="grid gap-2">
+              <Label htmlFor="topicDescription" className="text-xs font-extrabold text-muted-foreground">主题描述</Label>
               <Textarea
                 id="topicDescription"
                 name="topicDescription"
@@ -39,7 +39,7 @@ export default function NewTopicPage() {
                 rows={3}
               />
             </div>
-            <div className="form-actions">
+            <div className="flex flex-col items-start gap-3 text-xs leading-[1.45] text-muted-foreground md:flex-row md:items-center md:justify-between">
               <span>保存后会自动生成主题关键词，并尝试匹配可验证的候选信源。</span>
               <Button type="submit" variant="primary">
                 <Sparkles aria-hidden="true" size={16} />
