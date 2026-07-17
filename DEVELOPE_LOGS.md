@@ -2,6 +2,18 @@
 
 本文件记录分阶段开发审计和延期功能追踪，辅助 `AGENTS_CHANGELOGS.md` 使用。它不是传统 release changelog；重点是记录每个阶段是否达成 `REFACTOR_PLAN.md` 和 `AGENTS.md` 目标、缺失功能、已知问题、修复情况和后续追踪项。
 
+## 2026-07-18
+
+## Stage 1 / Task 1.2: Better Auth Schema 与认证工作区闭环（#153）
+
+- Phase: implementation plan Stage 1 Task 1.2。
+- Scope: Better Auth 1.6.23 User/Account/Session/Verification schema、0016 migration、User lifecycle repository、真实注册/session、per-user Organization/Membership provisioning。
+- Alignment: schema 与已安装 Better Auth core 契约一致；workspace provisioning 保持 tenant boundary，兼容未启用 auth 的默认工作区模式。
+- Missing: #166 统一受保护路由门、开放重定向防护和 session 过期语义；生命周期 session gate、邮箱验证策略、删除保留期、MFA/OAuth lifecycle 后续实现。
+- Bugs fixed: Next 16 production bundle 下 CJS `require("@wangchao/db")` interop 崩溃；浏览器 client 错误使用 server-only base URL 并被 CSP 阻止；普通 DATABASE_URL 误触发专用 replay；超长 lifecycle fixture。
+- Verification: DB fixtures/typecheck/build、Prisma generate/validate、0015→0016 disposable PostgreSQL replay、Web typecheck/production build、desktop/mobile Better Auth E2E（注册、session reload、登出/重登录、OWNER Membership、双用户组织隔离）通过。
+- Follow-up: Task 1.3 #166 完成时解除 auth smoke 中 protected-route `fixme`。
+
 ## 2026-07-11
 
 ## Phase 15: 高分情报即时推送（#37）

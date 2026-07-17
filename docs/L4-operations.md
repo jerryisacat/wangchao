@@ -32,6 +32,8 @@ pnpm smoke:web
 
 Topic profile 或 analysis 输入变更后，应使用临时 Postgres 验证：更新后的 keywords/entities/include/exclude/importance、当前 Source name 与 Topic 当前 name/description 能从 `listFetchedItemsForAnalysis()` 进入 extraction input / `buildTopicProfileContext()`；使用错误 organizationId 调用 `updateTopic()` 必须失败。不要在真实工作区制造验证数据。
 
+`@wangchao/db` 的普通 `pnpm test` 链式运行 `repositories.fixtures`、`workspace-auth.fixtures` 和 `user-lifecycle.fixtures`；schema 契约由后者调用 `user-lifecycle-schema.fixtures`。普通测试即使环境中存在 `DATABASE_URL` 也不会误触发专用 replay。Migration replay 必须显式运行 `DATABASE_URL=... pnpm --filter @wangchao/db test:migration-replay`：在 disposable PostgreSQL 上先应用 0001→0015、插入 `preexisting-replay-user`（name=NULL）、应用 0016，再执行 fixture。详见 `packages/db/src/migration-replay.fixtures.ts`。
+
 Relevance 变更必须用 core fixture 覆盖：exclude 与正信号同时命中时 exclude 胜出且不生成 draft；仅 entity 或 includeScope 命中也能生成 event；entity match 保留到 event entities；无任何正信号仍被过滤。Worker filtered 分支必须把具体 rule 或 LLM `noiseReason` 写入 Item rawMetadata 和对应 extraction/relevance TaskRun output，而不是覆盖成泛化文案。
 
 多来源或治理指标变更后，应在临时 Postgres 验证：同标题不同 URL 最终只有一个未归档 IntelligenceEvent；最新 Item 为 PRIMARY/ANALYZED，旧 Item 为 SECONDARY/DUPLICATE；source report 的 hit/noise/duplicate 与唯一 active event 数和 fixture 数据一致。
@@ -228,10 +230,10 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 ### Auth E2E 测试
 
-Auth 端到端测试覆盖 Better Auth 注册/登录/登出/路由保护流程。
+Auth 端到端测试覆盖 Better Auth 注册、自动登录、session reload 恢复、登出/重登录、OWNER Membership 和多用户 Organization 隔离，并在结束时清理 fixture。受保护路由统一跳转属于 Issue #166，当前用例标记为 `fixme`，完成 Task 1.3 后解除。
 
 启用条件：
-- 设置 `BETTER_AUTH_SECRET` 环境变量
+- 服务端设置 `BETTER_AUTH_SECRET`，或测试进程设置 `PLAYWRIGHT_AUTH_ENABLED=1`
 - 设置 `DATABASE_URL`（指向已有 migration 的 Postgres）
 - 可选：设置 `PLAYWRIGHT_AUTH_RUN_ID` 避免测试用户冲突
 
@@ -244,7 +246,7 @@ docker run -d --name wangchao-smoke-pg -e POSTGRES_USER=wangchao -e POSTGRES_PAS
 DATABASE_URL=postgresql://wangchao:wangchao@localhost:5433/wangchao?schema=public pnpm --filter @wangchao/db exec prisma migrate deploy
 
 # 运行 auth e2e 测试
-BETTER_AUTH_SECRET=test-secret BETTER_AUTH_URL=http://localhost:3000 DATABASE_URL=postgresql://wangchao:wangchao@localhost:5433/wangchao?schema=public npx playwright test tests/smoke/auth.spec.ts
+BETTER_AUTH_SECRET=test-secret BETTER_AUTH_URL=http://localhost:3000 DATABASE_URL=postgresql://wangchao:***@localhost:5433/wangchao?schema=public PLAYWRIGHT_AUTH_ENABLED=1 pnpm exec playwright test tests/smoke/auth.spec.ts
 ```
 
-未配置 `BETTER_AUTH_SECRET` 时，auth 测试自动 skip。
+未配置 `BETTER_AUTH_SECRET` 且未设置 `PLAYWRIGHT_AUTH_ENABLED=1`，或缺少 `DATABASE_URL` 时，auth 测试自动 skip。浏览器 client 始终使用同源 `/api/auth`；`BETTER_AUTH_URL` 仅用于服务端 Better Auth base URL，必须与测试 Origin 一致。

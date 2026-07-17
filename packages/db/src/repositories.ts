@@ -7,3 +7,4 @@ export * from "./repositories/export.js";
 export * from "./repositories/secondary-sources.js";
 export * from "./repositories/webhook-event.js";
 export * from "./repositories/util.js";
+export * from "./repositories/user-lifecycle.js";

@@ -6,6 +6,13 @@ datasource db {
   provider = "postgresql"
 }
 
+enum UserAccountStatus {
+  ACTIVE
+  SUSPENDED
+  DELETION_PENDING
+  DELETED
+}
+
 enum MembershipRole {
   OWNER
   ADMIN
@@ -131,20 +138,32 @@ enum UsageEventType {
 }
 
 model User {
-  id               String             @id @default(cuid())
-  email            String             @unique
-  name             String?
-  memberships      Membership[]
-  topics           Topic[]
-  itemStates       UserItemState[]
-  feedbackEvents   FeedbackEvent[]
-  preferenceMemory PreferenceMemory[]
-  exportEvents     ExportEvent[]
-  usageEvents      UsageEvent[]
-  accounts         Account[]
-  sessions         Session[]
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id                  String             @id @default(cuid())
+  email               String             @unique
+  name                String
+  emailVerified       Boolean            @default(false)
+  image               String?
+  accountStatus       UserAccountStatus  @default(ACTIVE)
+  suspendedAt         DateTime?
+  suspendedReason     String?
+  suspendEndsAt       DateTime?
+  deletionRequestedAt DateTime?
+  deletedAt           DateTime?
+  lastLoginAt         DateTime?
+  lastActivityAt      DateTime?
+  memberships         Membership[]
+  topics              Topic[]
+  itemStates          UserItemState[]
+  feedbackEvents      FeedbackEvent[]
+  preferenceMemory    PreferenceMemory[]
+  exportEvents        ExportEvent[]
+  usageEvents         UsageEvent[]
+  accounts            Account[]
+  sessions            Session[]
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([accountStatus])
 }
 
 model Organization {
@@ -700,17 +719,20 @@ model Report {
 }
 
 model Account {
-  id           String    @id @default(cuid())
-  userId       String
-  providerId   String
-  accountId    String
-  refreshToken String?
-  accessToken  String?
-  expiresAt    DateTime?
-  password     String?
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                    String    @id @default(cuid())
+  userId                String
+  providerId            String
+  accountId             String
+  refreshToken          String?
+  accessToken           String?
+  expiresAt             DateTime? // Better Auth accessTokenExpiresAt, mapped via auth.ts account.fields
+  refreshTokenExpiresAt DateTime?
+  idToken               String?
+  scope                 String?
+  password              String?
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   @@unique([userId, providerId])
   @@index([providerId, accountId])
@@ -728,6 +750,18 @@ model Session {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@index([expiresAt])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  value      String
+  identifier String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
   @@index([expiresAt])
 }
 

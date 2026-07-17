@@ -1,3 +1,31 @@
+## 2026-07-18
+
+### Feat: Issue #153 Lane 1 Better Auth Schema 对齐 + User lifecycle 数据层收口
+
+- Cause: Issue #153 Lane 1 要求将 `packages/db` 的 schema、migration、repository 对齐 Better Auth 1.6.23 core 契约（User/Account/Session/Verification）并实现 User 生命周期状态机数据层。此前 Agent 已留下未提交 diff，本轮做最终收口与验证。
+- Changed:
+  - Schema（`packages/db/prisma/schema.prisma`）：新增 `enum UserAccountStatus { ACTIVE; SUSPENDED; DELETION_PENDING; DELETED }`；`User` 模型新增 `emailVerified Boolean @default(false)`、`image String?`、`accountStatus UserAccountStatus @default(ACTIVE)`、`suspendedAt`/`suspendedReason`/`suspendEndsAt`/`deletionRequestedAt`/`deletedAt`/`lastLoginAt`/`lastActivityAt` DateTime?，`name` 由 `String?` 改为 `String`（NOT NULL，匹配 Better Auth 1.6.23 core ZodString required），`@@index([accountStatus])`。`Account` 模型新增 `refreshTokenExpiresAt`/`idToken`/`scope`（`expiresAt` 保留并映射到 Better Auth `accessTokenExpiresAt`，映射由 `apps/web/src/lib/auth.ts` `account.fields.accessTokenExpiresAt: "expiresAt"` 完成）。新增 `Verification` 模型（id/value/identifier/expiresAt/createdAt/updatedAt + identifier/expiresAt 索引）。
+  - Migration 0016（`packages/db/prisma/migrations/0016_better_auth_schema_alignment/migration.sql`）：`CREATE TABLE Verification`、`ALTER TABLE User ADD emailVerified/image`、`UPDATE User SET name=email WHERE name IS NULL` + `ALTER COLUMN name SET NOT NULL`、`ALTER TABLE Account ADD refreshTokenExpiresAt/idToken/scope`、`DO $$ CREATE TYPE UserAccountStatus AS ENUM (...)`、`ALTER TABLE User ADD` 7 个生命周期字段（`accountStatus` 带 `NOT NULL DEFAULT 'ACTIVE'`）、`CREATE INDEX User_accountStatus_idx`。全部使用 `IF NOT EXISTS`，对已部分应用的环境幂等。
+  - Repository（`packages/db/src/repositories/user-lifecycle.ts`，320 行）：`getUserLifecycleStatus`/`suspendUser`/`reactivateUser`/`requestUserDeletion`/`markUserDeleted`/`recordUserLogin`/`recordUserActivity`。状态机：ACTIVE->SUSPENDED；SUSPENDED->ACTIVE；ACTIVE|SUSPENDED->DELETION_PENDING；DELETION_PENDING->DELETED（终态）。所有转换使用原子 `updateMany` + `where.accountStatus` 谓词（无 read-before-write 竞态）；`count=0` 时 `findUnique` 区分 `USER_NOT_FOUND` vs `INVALID_TRANSITION`。稳定错误码 `USER_NOT_FOUND`/`INVALID_TRANSITION`/`INVALID_REASON`，错误消息不含 "Prisma"/"prisma"。`suspendUser` reject 空/whitespace reason（`INVALID_REASON`），在 DB 调用前校验。`requestUserDeletion` 进入 `DELETION_PENDING` 时清空 suspension metadata。`markUserDeleted` 设置 `deletedAt` 但不动 suspension/deletion-request 审计字段。`recordUserLogin` 只更新 `lastLoginAt`，`recordUserActivity` 只更新 `lastActivityAt`，两者都拒绝 `DELETED` 用户。所有时间函数接受 `now` 参数注入便于测试。
+  - Exports（`packages/db/src/index.ts`、`packages/db/src/repositories.ts`）：导出 user-lifecycle repository 的公共类型和函数。
+  - Fixtures：状态机 fixture 拆为 `user-lifecycle.fixtures.ts`（782 行）与 `user-lifecycle-schema.fixtures.ts`（166 行），符合单文件 `<800` 行规则；新增 `workspace-auth.fixtures.ts` 覆盖 Membership 复用、hashed slug、OWNER 和多用户隔离；`migration-replay.fixtures.ts` 显式验证 0015→0016 旧用户回填、PG enum、Better Auth 字段和新用户默认值。
+  - Runtime auth：`auth.ts` 改为 Promise-backed ESM 动态加载 DB，修复 Next 16 production bundle 中 `require("@wangchao/db")` 导致 `getPrismaClient is not a function`；初始化 Promise 拒绝时重置单例供后续请求重试；移除 Better Auth core 字段的重复 additionalFields。`auth-client.ts` 改为同源 client，避免非默认端口/反向代理下请求错误 origin 并被 CSP 拦截。`session.ts` 调用 `ensureUserWorkspace`；Membership 读取与 `SHA-256(userId)` 确定性 Organization/Membership upsert 位于同一事务，唯一键保证并发幂等。
+  - Tests：普通 DB `test` 只运行 repositories/workspace-auth/user-lifecycle fixtures，即使设置普通 `DATABASE_URL` 也不误跑 replay；新增显式 `test:migration-replay`。Auth Playwright 直接断言 Membership/Organization，覆盖注册、自动登录、reload session 恢复、登出/重登录和两用户隔离并自动清理；#166 路由门用例暂标 `fixme`。
+- Files: `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/0016_better_auth_schema_alignment/migration.sql`, `packages/db/src/repositories/{user-lifecycle,workspace}.ts`, `packages/db/src/{user-lifecycle,user-lifecycle-schema,workspace-auth,migration-replay}.fixtures.ts`, `packages/db/src/index.ts`, `packages/db/package.json`, `apps/web/src/lib/{auth,auth-client,session}.ts`, `apps/web/src/app/api/auth/[...all]/route.ts`, `tests/smoke/auth.spec.ts`, `CODEGUIDE.md`, `docs/L2-domain.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `AGENTS_CHANGELOGS.md`
+- 官方依据：Better Auth 1.6.23 安装包 `node_modules/.pnpm/better-auth@1.6.23/...` 与 `@better-auth/core@1.6.23` 的 `dist/db/schema/{user,account,session,verification}.d.mts` 与 `dist/db/get-tables.mjs`。User: `name: z.ZodString`（required, NOT nullable）、`emailVerified: z.ZodDefault<z.ZodBoolean>`、`image: z.ZodOptional<z.ZodNullable<z.ZodString>>`。Account: `accessTokenExpiresAt`/`refreshTokenExpiresAt`/`idToken`/`scope` 均为 Optional Nullable；`auth.ts account.fields.accessTokenExpiresAt: "expiresAt"` 完成 accessTokenExpiresAt->expiresAt 列映射。Verification: `id`/`value`/`identifier`/`expiresAt`/`createdAt`/`updatedAt`。Session 字段未变。
+- Verification:
+  - `pnpm --filter @wangchao/db run db:format` ✓（prisma format）
+  - `pnpm --filter @wangchao/db run db:generate` ✓（prisma generate，Prisma Client v7.8.0）
+  - `pnpm --filter @wangchao/db run db:validate` ✓（schema valid）
+  - `pnpm --filter @wangchao/db run typecheck` ✓（tsc --noEmit）
+  - `pnpm --filter @wangchao/db run build` ✓（tsc emit dist/）
+  - `pnpm --filter @wangchao/db test` ✓（repositories + workspace-auth + user-lifecycle/schema fixtures）
+  - `pnpm --filter @wangchao/web typecheck` ✓；production `next build` ✓
+  - Auth Playwright desktop/mobile：各 2 passed、1 skipped（#166 已知后续边界）
+  - `git diff --check` ✓
+  - 真实 PostgreSQL replay（disposable PG 16）：顺序应用 0001→0015，在 0015 状态插入 `preexisting-replay-user`（name=NULL），应用 0016，再执行 `pnpm --filter @wangchao/db test:migration-replay` ✓。
+- Notes / Risk: #153 的 schema、migration、生命周期 repository、真实注册/session 和单用户自动 workspace 已完成；统一受保护路由门、开放重定向防护与 session 过期语义属于紧随其后的 #166。后续生命周期 runtime 仍包括 SUSPENDED/DELETION_PENDING/DELETED session gate、邮箱验证策略、删除保留期、MFA 与 OAuth lifecycle。未部署。
+
 ## 2026-07-17
 
 ### Fix: 修复 AES-256-GCM 随机 salt 未参与加密 KDF 导致凭证无法解密（含旧密文兼容与严格校验）

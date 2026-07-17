@@ -105,6 +105,7 @@ export {
   deleteSearchCredential,
   deleteTopic,
   ensureDefaultWorkspace,
+  ensureUserWorkspace,
   failTaskRun,
   getBriefingMarkdownForDownload,
   getDashboardEventById,
@@ -175,6 +176,7 @@ export {
   type CreateTopicInput,
   type CreateTopicWithRssSourceInput,
   type ExpiredCandidateSourceRecord,
+  type EnsureUserWorkspaceInput,
   type RecordCategoryPreferenceFeedbackInput,
   type CredentialTestResult,
   type DashboardEventAction,
@@ -211,3 +213,17 @@ export {
   type UpdateSourceGovernanceStatusInput,
   type WorkspaceSeed,
 } from "./repositories.js";
+export {
+  getUserLifecycleStatus,
+  suspendUser,
+  reactivateUser,
+  requestUserDeletion,
+  markUserDeleted,
+  recordUserLogin,
+  recordUserActivity,
+  UserLifecycleTransitionError,
+  type UserAccountStatus,
+  type UserLifecycleStatus,
+  type UserLifecycleErrorCode,
+  type SuspendUserInput,
+} from "./repositories/user-lifecycle.js";

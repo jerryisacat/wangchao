@@ -14,9 +14,10 @@ export async function getSessionWorkspace(): Promise<WorkspaceSeed> {
   }
 
   const { getAuth } = await import("@/lib/auth");
-  const { getPrismaClient } = await import("@wangchao/db");
+  const { ensureUserWorkspace, getPrismaClient } = await import("@wangchao/db");
 
-  const session = await getAuth().api.getSession({
+  const auth = await getAuth();
+  const session = await auth.api.getSession({
     headers: await headers(),
   });
 
@@ -25,54 +26,9 @@ export async function getSessionWorkspace(): Promise<WorkspaceSeed> {
   }
 
   const prisma = getPrismaClient();
-  const userId = session.user.id;
-
-  const membership = await prisma.membership.findFirst({
-    where: { userId },
-    include: {
-      organization: {
-        select: {
-          id: true,
-          name: true,
-          slug: true,
-        },
-      },
-    },
-    orderBy: { createdAt: "asc" },
+  return ensureUserWorkspace(prisma, {
+    email: session.user.email,
+    name: session.user.name,
+    userId: session.user.id,
   });
-
-  if (membership) {
-    return {
-      organizationId: membership.organization.id,
-      organizationName: membership.organization.name,
-      organizationSlug: membership.organization.slug,
-      role: membership.role,
-      userEmail: session.user.email,
-      userId,
-    };
-  }
-
-  const slug = userId.slice(-12).toLowerCase();
-  const organization = await prisma.organization.create({
-    data: {
-      name: `${session.user.name ?? session.user.email} 的工作区`,
-      slug,
-    },
-  });
-  await prisma.membership.create({
-    data: {
-      organizationId: organization.id,
-      userId,
-      role: "OWNER",
-    },
-  });
-
-  return {
-    organizationId: organization.id,
-    organizationName: organization.name,
-    organizationSlug: organization.slug,
-    role: "OWNER" as const,
-    userEmail: session.user.email,
-    userId,
-  };
 }

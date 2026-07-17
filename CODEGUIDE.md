@@ -224,6 +224,9 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 | `packages/db/prisma/migrations/0009_delivery_report_feedback/migration.sql` | 新增 DeliveryLog/Report 模型、Telegram 凭证字段、增强 FeedbackKind 枚举。 |
 | `packages/db/src/extended-repositories.ts` | Telegram 凭证、DeliveryLog、Report CRUD、证据检索和偏好编辑函数。 |
 | `packages/db/src/repositories.fixtures.ts` | Repository runtime fixtures，覆盖收藏、daily briefing、TaskRun、标题模糊合并和 SourceObservation 指标口径。 |
+| `packages/db/src/repositories/workspace.ts` | 默认 workspace 与认证用户独立 workspace 的原子 provisioning。 |
+| `packages/db/src/repositories/user-lifecycle.ts` | User 生命周期原子状态机与稳定领域错误。 |
+| `packages/db/src/migration-replay.fixtures.ts` | Better Auth 0016 migration 的显式 disposable PostgreSQL replay 验证。 |
 | `apps/worker/src/index.fixtures.ts` | Worker runtime fixture，覆盖 rule/LLM filter reason 的选择优先级。 |
 | `apps/web/src/app/admin/usage/page.tsx` | OWNER/ADMIN 工作区成员与近 30 天用量审计页。 |
 | `apps/web/src/app/admin/settings/credential-form.tsx` | AI/搜索凭证表单，模型嗅探下拉、自定义 provider 手动确认、计费提示 |

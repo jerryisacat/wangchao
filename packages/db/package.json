@@ -17,7 +17,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:validate": "prisma validate --schema prisma/schema.prisma",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node -e \"await import('./dist/repositories.fixtures.js').then((m) => m.runRepositoryFixtures())\"",
+    "test": "tsc -p tsconfig.json && node -e \"await import('./dist/repositories.fixtures.js').then((m) => m.runRepositoryFixtures()).then(() => import('./dist/workspace-auth.fixtures.js').then((m) => m.runWorkspaceAuthFixtures())).then(() => import('./dist/user-lifecycle.fixtures.js').then((m) => m.runUserLifecycleFixtures()))\"",
+    "test:migration-replay": "tsc -p tsconfig.json && node -e \"await import('./dist/migration-replay.fixtures.js').then((m) => m.runMigrationReplayFixtures())\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "prisma": {
