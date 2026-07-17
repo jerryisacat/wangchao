@@ -1,5 +1,20 @@
 ## 2026-07-17
 
+### Fix: 修复 AES-256-GCM 随机 salt 未参与加密 KDF 导致凭证无法解密（含旧密文兼容与严格校验）
+
+- Cause: `encryptCredential` 先用 `deriveKey(encryptionKey)` 以 STATIC_SALT 派生 key 加密，之后才生成随机 salt 存入密文；`decryptCredential` 却以存储的随机 salt 派生 key 解密。两次 KDF 使用不同 salt，key 不匹配导致 AES-GCM auth tag 验证失败，所有新加密的凭证无法解密。此外，修复前已有大量四段旧密文存在于 DB 中，这些记录的 ciphertext 实际用 STATIC_SALT 派生 key 加密，新逻辑按 stored random salt 解密必然失败。
+- Changed:
+  - `encryptCredential` 调整为先生成随机 salt，再用 `deriveKey(encryptionKey, salt)` 派生 key 加密，确保加密和解密使用同一 salt。四段格式 `salt:iv:ciphertext:tag` 不变。
+  - `decryptCredential` 对四段格式先按 stored salt 解密；若 AES-GCM auth 失败，再仅为兼容旧 bug 尝试 STATIC_SALT 派生 key。fallback 仅适用于修复前四段旧密文；新格式密文 salt 被篡改时两条路径均失败，不得降级绕过认证。代码注释明确 fallback 只用于旧密文，旧记录在后续重新保存时升级格式，不声明自动迁移已发生。
+  - I1 窄 authenticated-decrypt helper（`tryAuthenticatedDecrypt`）：在 component 长度、base64 和 encryptionKey 长度前置校验通过后，deriveKey/createDecipheriv/setAuthTag/update 在 catch 外执行，仅围绕 `decipher.final()` 捕获认证失败并返回 discriminated result `{ ok, plaintext? }`。此时 `final()` 失败代表 auth 不通过，配置/编程/KDF 错误不被 fallback 吞掉。
+  - I2 稳定安全错误：stored salt 和 STATIC_SALT 两次认证均失败时抛固定 `new Error("Credential decryption failed")`，不泄露 `Unsupported state or unable to authenticate data` 等 Node/OpenSSL 内部字符串。格式/base64/长度错误仍保留明确 `Invalid...` 类错误，不全部吞成认证失败。三段路径同样使用窄 helper，认证失败也返回固定安全错误。
+  - I3 payload 上限：`decryptCredential()` 入口在 split/base64 decode 之前检查 `encrypted` UTF-8 byte 长度。新增 `MAX_ENCRYPTED_CREDENTIAL_LENGTH = 16384`（注释说明依据：plaintext 最大 8192 bytes × base64 膨胀 4/3 + metadata segments ≈ 10990 bytes，16384 为保守上限）。超限立即抛 `Encrypted credential exceeds maximum allowed length`，不执行 base64/KDF。
+  - 严格校验 decoded component：四段 salt === 16 bytes、iv === 12、tag === 16；三段 iv === 12、tag === 16；ciphertext 不得为空。新增 `decodeBase64Strict` helper，通过 round-trip re-encode 检测拒绝非 canonical base64（Node `Buffer.from(x, 'base64')` 宽松接受垃圾字符）。`STATIC_SALT` 不导出为公共 API。
+  - `cryptoSmokeTest()` 纳入 `repositories.fixtures.ts` 测试套件执行。共 11 项 crypto fixture 覆盖：(1) 随机 salt round-trip + 四段格式；(2) 同明文多次加密密文不同；(3) 错误 key 失败；(4) ciphertext/tag/salt/IV 篡改失败（含 IV）；(5) legacy 三段格式兼容；(6) 旧 bug 四段密文兼容 fallback + 错误 key 失败；(7) malformed payload 拒绝（2/5 段、空串）；(8) 严格 component 校验（短 salt/IV/tag、非法 base64、空 ciphertext、空 salt，四段与三段各覆盖）；(9) 认证失败稳定错误（错误 key/篡改密文/旧 bug 错误 key/三段错误 key 均等于 `"Credential decryption failed"` 且不含 Node 内部字符串）；(10) 格式/长度/base64 错误不被 fallback 吞掉（短 salt/非法 base64/短 key 保留各自明确错误）；(11) 超大 payload 拒绝（超 16384 bytes 立即抛长度错误，不执行 base64/KDF）。
+- Files: `packages/db/src/crypto.ts`, `packages/db/src/repositories.fixtures.ts`, `docs/L3-modules.md`, `AGENTS_CHANGELOGS.md`
+- Verification: `pnpm --filter @wangchao/db test`（含 `tsc` 编译 + fixture 执行）✓；`pnpm --filter @wangchao/db typecheck` ✓；`git diff --check` ✓。未执行全量 `pnpm typecheck/lint/test/build`（父 Agent 负责）。
+- Notes / Risk: 修复前已加密并存储在 DB 中的四段格式凭证可通过 STATIC_SALT fallback 正常解密，无需重新输入。新加密的凭证使用 stored random salt，fallback 路径不影响新密文安全性。legacy 三段格式凭证仍可正常解密。窄 helper 确保 deriveKey 等前置操作的异常不会被 fallback 吞掉。超大 payload 在入口被拦截，防止 DoS。测试中硬编码 legacy salt `wangchao-credential-salt-v1` 是刻意冻结兼容契约，若生产常量被误改则测试应失败。本次未执行 git commit/push/部署。
+
 ### Fix: 摘要语言固定跟随当前中文界面
 
 - Cause: 事件抽取 prompt 允许 Topic Profile 的 `outputLanguage=en` 让摘要跟随主题偏好或原文语言，解析器也可借由 English context 跳过中文校验；这与摘要应跟随用户界面语言的产品规则不一致。

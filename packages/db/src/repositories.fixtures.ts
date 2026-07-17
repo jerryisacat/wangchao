@@ -21,8 +21,16 @@ import {
   listInstantPushOrganizations,
   setInstantPushEnabled,
 } from "./repositories/instant-push.js";
+import {
+  cryptoSmokeTest,
+  decryptCredential,
+  encryptCredential,
+} from "./crypto.js";
+import { createCipheriv, randomBytes, scryptSync } from "node:crypto";
 
 export async function runRepositoryFixtures(): Promise<void> {
+  await verifyCryptoRoundTrip();
+  await verifyCryptoSmokeTestExecutes();
   await verifySavedPagination();
   await verifyReadPreservesSavedState();
   await verifyCategoryFeedbackIsPersistedAndLearned();
@@ -760,4 +768,631 @@ function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+/**
+ * Run a synchronous function and return the thrown Error, or null if it
+ * did not throw. Used by crypto tests that need to inspect error messages.
+ */
+function captureError(fn: () => unknown): Error | null {
+  try {
+    fn();
+    return null;
+  } catch (e) {
+    return e as Error;
+  }
+}
+
+/**
+ * Crypto credentials must round-trip with the random salt format.
+ *
+ * The 4-part format is `salt:iv:ciphertext:tag`.
+ * Encryption must derive the key using the same random salt that is stored,
+ * otherwise decryption with the stored salt produces a different key and
+ * AES-GCM auth tag verification fails.
+ */
+async function verifyCryptoRoundTrip(): Promise<void> {
+  const testKey = "a".repeat(32);
+  const testPlaintext = "wangchao-crypto-round-trip-plaintext";
+
+  // Round-trip: encrypt then decrypt must return original plaintext.
+  const encrypted = encryptCredential(testPlaintext, testKey);
+  const decrypted = decryptCredential(encrypted, testKey);
+  assert(
+    decrypted === testPlaintext,
+    "Crypto round-trip: decrypted text must match the original plaintext.",
+  );
+
+  // 4-part format: salt:iv:ciphertext:tag
+  const parts = encrypted.split(":");
+  assert(parts.length === 4, "Encrypted credential must use the 4-part salt:iv:ciphertext:tag format.");
+}
+
+/**
+ * Encrypting the same plaintext twice must produce different ciphertexts,
+ * because each encryption uses a fresh random salt and IV.
+ */
+async function verifyCryptoProducesDifferentCiphertexts(): Promise<void> {
+  const testKey = "a".repeat(32);
+  const testPlaintext = "wangchao-crypto-uniqueness-plaintext";
+
+  const encrypted1 = encryptCredential(testPlaintext, testKey);
+  const encrypted2 = encryptCredential(testPlaintext, testKey);
+  assert(encrypted1 !== encrypted2, "Two encryptions of the same plaintext must produce different ciphertexts.");
+
+  // Both must still decrypt back correctly.
+  assert(decryptCredential(encrypted1, testKey) === testPlaintext, "First ciphertext must decrypt correctly.");
+  assert(decryptCredential(encrypted2, testKey) === testPlaintext, "Second ciphertext must decrypt correctly.");
+}
+
+/**
+ * Decrypting with the wrong key must fail (AES-GCM auth tag mismatch).
+ */
+async function verifyCryptoWrongKeyFails(): Promise<void> {
+  const correctKey = "a".repeat(32);
+  const wrongKey = "b".repeat(32);
+  const testPlaintext = "wangchao-crypto-wrong-key-plaintext";
+
+  const encrypted = encryptCredential(testPlaintext, correctKey);
+
+  let threw = false;
+  try {
+    decryptCredential(encrypted, wrongKey);
+  } catch {
+    threw = true;
+  }
+  assert(threw, "Decrypting with a wrong key must throw an error.");
+}
+
+/**
+ * Tampering with any of the salt, IV, ciphertext, or tag must fail decryption.
+ */
+async function verifyCryptoTamperDetection(): Promise<void> {
+  const testKey = "a".repeat(32);
+  const testPlaintext = "wangchao-crypto-tamper-plaintext";
+  const encrypted = encryptCredential(testPlaintext, testKey);
+  const parts = encrypted.split(":");
+
+  // Tamper salt (part 0)
+  {
+    const tamperedSalt = Buffer.from(parts[0]!, "base64");
+    tamperedSalt[0] = (tamperedSalt[0]! + 1) & 0xff;
+    const tampered = [tamperedSalt.toString("base64"), parts[1]!, parts[2]!, parts[3]!].join(":");
+    let threw = false;
+    try {
+      decryptCredential(tampered, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "Tampering with the salt must cause decryption to fail.");
+  }
+
+  // Tamper ciphertext (part 2)
+  {
+    const tamperedCt = Buffer.from(parts[2]!, "base64");
+    tamperedCt[0] = (tamperedCt[0]! + 1) & 0xff;
+    const tampered = [parts[0]!, parts[1]!, tamperedCt.toString("base64"), parts[3]!].join(":");
+    let threw = false;
+    try {
+      decryptCredential(tampered, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "Tampering with the ciphertext must cause decryption to fail.");
+  }
+
+  // Tamper tag (part 3)
+  {
+    const tamperedTag = Buffer.from(parts[3]!, "base64");
+    tamperedTag[0] = (tamperedTag[0]! + 1) & 0xff;
+    const tampered = [parts[0]!, parts[1]!, parts[2]!, tamperedTag.toString("base64")].join(":");
+    let threw = false;
+    try {
+      decryptCredential(tampered, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "Tampering with the tag must cause decryption to fail.");
+  }
+
+  // Tamper IV (part 1)
+  {
+    const tamperedIv = Buffer.from(parts[1]!, "base64");
+    tamperedIv[0] = (tamperedIv[0]! + 1) & 0xff;
+    const tampered = [parts[0]!, tamperedIv.toString("base64"), parts[2]!, parts[3]!].join(":");
+    let threw = false;
+    try {
+      decryptCredential(tampered, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "Tampering with the IV must cause decryption to fail.");
+  }
+}
+
+/**
+ * The legacy 3-part format `iv:ciphertext:tag` (no salt, static salt used)
+ * must still decrypt correctly for backward compatibility with existing data.
+ */
+async function verifyCryptoLegacyThreePartFormat(): Promise<void> {
+  const testKey = "a".repeat(32);
+  const testPlaintext = "wangchao-crypto-legacy-plaintext";
+
+  // Manually construct a legacy 3-part ciphertext using the static salt.
+  const STATIC_SALT = "wangchao-credential-salt-v1";
+  const iv = randomBytes(12);
+  const key = scryptSync(testKey, STATIC_SALT, 32);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(testPlaintext, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  const legacyCiphertext = [iv.toString("base64"), encrypted.toString("base64"), tag.toString("base64")].join(":");
+
+  // Legacy 3-part must decrypt correctly.
+  const decrypted = decryptCredential(legacyCiphertext, testKey);
+  assert(decrypted === testPlaintext, "Legacy 3-part format must decrypt correctly for backward compatibility.");
+
+  // It must use exactly 3 parts.
+  assert(legacyCiphertext.split(":").length === 3, "Legacy ciphertext must have exactly 3 parts.");
+}
+
+/**
+ * Compatibility: a pre-fix bug produced 4-part ciphertext where the stored
+ * random salt was NOT used for key derivation. The key was derived with the
+ * STATIC_SALT instead. `decryptCredential` must recover these old records
+ * by falling back to STATIC_SALT when AES-GCM auth fails with the stored salt.
+ *
+ * The fallback is ONLY for pre-fix 4-part ciphertext. New ciphertext must not
+ * benefit from it; if the new salt is corrupted, both paths must fail.
+ * No automatic migration occurs; old records upgrade only when re-saved.
+ */
+async function verifyCryptoLegacyBugFourPartFallback(): Promise<void> {
+  const testKey = "a".repeat(32);
+  const testPlaintext = "wangchao-crypto-legacy-bug-plaintext";
+
+  // Construct a pre-fix 4-part ciphertext: random salt stored but key derived
+  // with STATIC_SALT.
+  // Deliberately NOT imported from crypto.ts — hardcoding the legacy salt
+  // freezes the compatibility contract: if the production constant changes,
+  // this test MUST fail, alerting us that old records can no longer be read.
+  const LEGACY_STATIC_SALT = "wangchao-credential-salt-v1";
+  const randomSalt = randomBytes(16);
+  const iv = randomBytes(12);
+  const key = scryptSync(testKey, LEGACY_STATIC_SALT, 32);
+  const cipher = createCipheriv("aes-256-gcm", key, iv);
+  const encrypted = Buffer.concat([cipher.update(testPlaintext, "utf8"), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  const legacyBugCiphertext = [
+    randomSalt.toString("base64"),
+    iv.toString("base64"),
+    encrypted.toString("base64"),
+    tag.toString("base64"),
+  ].join(":");
+
+  assert(
+    legacyBugCiphertext.split(":").length === 4,
+    "Legacy bug ciphertext must have 4 parts.",
+  );
+
+  // Must decrypt successfully via the STATIC_SALT fallback.
+  const decrypted = decryptCredential(legacyBugCiphertext, testKey);
+  assert(
+    decrypted === testPlaintext,
+    "Pre-fix 4-part ciphertext (key derived with STATIC_SALT) must decrypt via fallback.",
+  );
+
+  // Wrong key must still fail even with the fallback.
+  let threwWrongKey = false;
+  try {
+    decryptCredential(legacyBugCiphertext, "b".repeat(32));
+  } catch {
+    threwWrongKey = true;
+  }
+  assert(threwWrongKey, "Wrong key must fail even with the STATIC_SALT fallback.");
+}
+
+/**
+ * Malformed payloads must be rejected with a clear error, not silently succeed.
+ */
+async function verifyCryptoMalformedPayloadRejected(): Promise<void> {
+  const testKey = "a".repeat(32);
+
+  // 2-part format is invalid
+  {
+    const malformed = "aaaa:bbbb";
+    let threw = false;
+    try {
+      decryptCredential(malformed, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "A 2-part payload must be rejected as malformed.");
+  }
+
+  // 5-part format is invalid
+  {
+    const malformed = "a:b:c:d:e";
+    let threw = false;
+    try {
+      decryptCredential(malformed, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "A 5-part payload must be rejected as malformed.");
+  }
+
+  // Empty string is invalid
+  {
+    let threw = false;
+    try {
+      decryptCredential("", testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "An empty payload must be rejected as malformed.");
+  }
+}
+
+/**
+ * Strict component validation: decoded salt, IV, tag must have exact lengths,
+ * ciphertext must not be empty, and non-canonical base64 must be rejected.
+ *
+ * Node's Buffer.from(x, 'base64') is lenient - it silently ignores garbage
+ * characters. We must use a strict base64 helper to reject such input rather
+ * than relying on length checks that might happen to pass.
+ */
+async function verifyCryptoStrictComponentValidation(): Promise<void> {
+  const testKey = "a".repeat(32);
+
+  // Helper: build a valid 4-part ciphertext, then replace one component.
+  const validEncrypted = encryptCredential("test-plaintext", testKey);
+  const validParts = validEncrypted.split(":");
+
+  // Short salt (15 bytes instead of 16)
+  {
+    const shortSalt = randomBytes(15).toString("base64");
+    const malformed = [shortSalt, validParts[1]!, validParts[2]!, validParts[3]!].join(":");
+    let threw = false;
+    try {
+      decryptCredential(malformed, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "A short salt (15 bytes) must be rejected.");
+  }
+
+  // Short IV (11 bytes instead of 12)
+  {
+    const shortIv = randomBytes(11).toString("base64");
+    const malformed = [validParts[0]!, shortIv, validParts[2]!, validParts[3]!].join(":");
+    let threw = false;
+    try {
+      decryptCredential(malformed, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "A short IV (11 bytes) must be rejected.");
+  }
+
+  // Short tag (15 bytes instead of 16)
+  {
+    const shortTag = randomBytes(15).toString("base64");
+    const malformed = [validParts[0]!, validParts[1]!, validParts[2]!, shortTag].join(":");
+    let threw = false;
+    try {
+      decryptCredential(malformed, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "A short tag (15 bytes) must be rejected.");
+  }
+
+  // Invalid base64 in salt (contains '!' which is not valid base64)
+  {
+    const invalidBase64 = "abcd!efghijklmnop==";
+    const malformed = [invalidBase64, validParts[1]!, validParts[2]!, validParts[3]!].join(":");
+    let threw = false;
+    try {
+      decryptCredential(malformed, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "Invalid base64 in salt must be rejected, not silently decoded.");
+  }
+
+  // Empty ciphertext
+  {
+    const malformed = [validParts[0]!, validParts[1]!, "", validParts[3]!].join(":");
+    let threw = false;
+    try {
+      decryptCredential(malformed, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "An empty ciphertext must be rejected.");
+  }
+
+  // Empty salt (0 bytes)
+  {
+    const malformed = ["", validParts[1]!, validParts[2]!, validParts[3]!].join(":");
+    let threw = false;
+    try {
+      decryptCredential(malformed, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "An empty salt must be rejected.");
+  }
+
+  // Invalid base64 in 3-part format IV
+  {
+    const malformed = ["abcd!efghijkl==", validParts[2]!, validParts[3]!].join(":");
+    let threw = false;
+    try {
+      decryptCredential(malformed, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "Invalid base64 in 3-part IV must be rejected.");
+  }
+
+  // Short IV in 3-part format (11 bytes)
+  {
+    const shortIv = randomBytes(11).toString("base64");
+    const malformed = [shortIv, validParts[2]!, validParts[3]!].join(":");
+    let threw = false;
+    try {
+      decryptCredential(malformed, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "A short IV (11 bytes) in 3-part format must be rejected.");
+  }
+
+  // Short tag in 3-part format (15 bytes)
+  {
+    const shortTag = randomBytes(15).toString("base64");
+    const malformed = [validParts[1]!, validParts[2]!, shortTag].join(":");
+    let threw = false;
+    try {
+      decryptCredential(malformed, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "A short tag (15 bytes) in 3-part format must be rejected.");
+  }
+
+  // Empty ciphertext in 3-part format
+  {
+    const malformed = [validParts[1]!, "", validParts[3]!].join(":");
+    let threw = false;
+    try {
+      decryptCredential(malformed, testKey);
+    } catch {
+      threw = true;
+    }
+    assert(threw, "An empty ciphertext in 3-part format must be rejected.");
+  }
+}
+
+/**
+ * I2: Authentication failures must produce a stable, non-leaking error message.
+ *
+ * Wrong key, tampered ciphertext, and legacy bug ciphertext with wrong key must
+ * all throw a fixed "Credential decryption failed" error — never leaking
+ * Node/OpenSSL internal strings like "Unsupported state or unable to
+ * authenticate data". This applies to both 4-part and 3-part formats.
+ */
+async function verifyCryptoAuthFailureProducesStableError(): Promise<void> {
+  const correctKey = "a".repeat(32);
+  const wrongKey = "b".repeat(32);
+  const testPlaintext = "wangchao-crypto-stable-error-plaintext";
+  const encrypted = encryptCredential(testPlaintext, correctKey);
+
+  // Case 1: Wrong key on new 4-part ciphertext (stored salt auth fails,
+  // STATIC_SALT fallback also fails → stable error).
+  {
+    const error = captureError(() => decryptCredential(encrypted, wrongKey));
+    assert(error !== null, "Wrong key on 4-part must throw.");
+    assert(
+      error!.message === "Credential decryption failed",
+      `Wrong key error must be "Credential decryption failed", got: ${error!.message}`,
+    );
+    assert(
+      !error!.message.includes("Unsupported state"),
+      "Error must not leak Node/OpenSSL internal strings.",
+    );
+  }
+
+  // Case 2: Tampered ciphertext on new 4-part (correct key but bad ciphertext).
+  {
+    const parts = encrypted.split(":");
+    const tamperedCt = Buffer.from(parts[2]!, "base64");
+    tamperedCt[0] = (tamperedCt[0]! + 1) & 0xff;
+    const tampered = [parts[0]!, parts[1]!, tamperedCt.toString("base64"), parts[3]!].join(":");
+    const error = captureError(() => decryptCredential(tampered, correctKey));
+    assert(error !== null, "Tampered ciphertext must throw.");
+    assert(
+      error!.message === "Credential decryption failed",
+      `Tampered ciphertext error must be "Credential decryption failed", got: ${error!.message}`,
+    );
+    assert(
+      !error!.message.includes("Unsupported state"),
+      "Tampered ciphertext error must not leak Node/OpenSSL strings.",
+    );
+  }
+
+  // Case 3: Legacy bug 4-part ciphertext with wrong key (stored salt auth
+  // fails, STATIC_SALT auth also fails → stable error).
+  {
+    const LEGACY_STATIC_SALT = "wangchao-credential-salt-v1";
+    const randomSalt = randomBytes(16);
+    const iv = randomBytes(12);
+    const key = scryptSync(correctKey, LEGACY_STATIC_SALT, 32);
+    const cipher = createCipheriv("aes-256-gcm", key, iv);
+    const enc = Buffer.concat([cipher.update("legacy-bug-wrong-key", "utf8"), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    const legacyBugCt = [
+      randomSalt.toString("base64"),
+      iv.toString("base64"),
+      enc.toString("base64"),
+      tag.toString("base64"),
+    ].join(":");
+
+    const error = captureError(() => decryptCredential(legacyBugCt, wrongKey));
+    assert(error !== null, "Legacy bug ciphertext with wrong key must throw.");
+    assert(
+      error!.message === "Credential decryption failed",
+      `Legacy bug wrong key error must be "Credential decryption failed", got: ${error!.message}`,
+    );
+    assert(
+      !error!.message.includes("Unsupported state"),
+      "Legacy bug wrong key error must not leak Node/OpenSSL strings.",
+    );
+  }
+
+  // Case 4: 3-part legacy format with wrong key.
+  {
+    const LEGACY_STATIC_SALT = "wangchao-credential-salt-v1";
+    const iv = randomBytes(12);
+    const key = scryptSync(correctKey, LEGACY_STATIC_SALT, 32);
+    const cipher = createCipheriv("aes-256-gcm", key, iv);
+    const enc = Buffer.concat([cipher.update("three-part-wrong-key", "utf8"), cipher.final()]);
+    const tag = cipher.getAuthTag();
+    const threePartCt = [iv.toString("base64"), enc.toString("base64"), tag.toString("base64")].join(":");
+
+    const error = captureError(() => decryptCredential(threePartCt, wrongKey));
+    assert(error !== null, "3-part format with wrong key must throw.");
+    assert(
+      error!.message === "Credential decryption failed",
+      `3-part wrong key error must be "Credential decryption failed", got: ${error!.message}`,
+    );
+    assert(
+      !error!.message.includes("Unsupported state"),
+      "3-part wrong key error must not leak Node/OpenSSL strings.",
+    );
+  }
+}
+
+/**
+ * I1: Format, length, and base64 errors must NOT be swallowed into
+ * "Credential decryption failed". The narrow authenticated-decrypt helper
+ * must only catch auth failures around `final()`, not deriveKey /
+ * createDecipheriv / setAuthTag / update. Configuration and programming
+ * errors must propagate with their original specific messages.
+ */
+async function verifyCryptoFormatErrorsNotSwallowedByAuthFallback(): Promise<void> {
+  const testKey = "a".repeat(32);
+  const validEncrypted = encryptCredential("test-plaintext", testKey);
+  const validParts = validEncrypted.split(":");
+
+  // Short salt (15 bytes) must still throw "Invalid salt length".
+  {
+    const shortSalt = randomBytes(15).toString("base64");
+    const malformed = [shortSalt, validParts[1]!, validParts[2]!, validParts[3]!].join(":");
+    const error = captureError(() => decryptCredential(malformed, testKey));
+    assert(error !== null, "Short salt must throw.");
+    assert(
+      error!.message.includes("Invalid salt length"),
+      `Short salt must produce "Invalid salt length" error, got: ${error!.message}`,
+    );
+    assert(
+      error!.message !== "Credential decryption failed",
+      "Short salt must NOT be swallowed into auth failure error.",
+    );
+  }
+
+  // Invalid base64 must still throw "not canonical base64".
+  {
+    const invalidBase64 = "abcd!efghijklmnop==";
+    const malformed = [invalidBase64, validParts[1]!, validParts[2]!, validParts[3]!].join(":");
+    const error = captureError(() => decryptCredential(malformed, testKey));
+    assert(error !== null, "Invalid base64 must throw.");
+    assert(
+      error!.message.includes("not canonical base64"),
+      `Invalid base64 must produce canonical base64 error, got: ${error!.message}`,
+    );
+    assert(
+      error!.message !== "Credential decryption failed",
+      "Invalid base64 must NOT be swallowed into auth failure error.",
+    );
+  }
+
+  // Short encryption key must still throw "Encryption key is too short".
+  {
+    const error = captureError(() => decryptCredential(validEncrypted, "short"));
+    assert(error !== null, "Short key must throw.");
+    assert(
+      error!.message === "Encryption key is too short",
+      `Short key must produce "Encryption key is too short", got: ${error!.message}`,
+    );
+    assert(
+      !error!.message.includes("decryption failed"),
+      "Short key must NOT be swallowed into auth failure error.",
+    );
+  }
+}
+
+/**
+ * I3: Oversized encrypted payloads must be rejected immediately with a fixed
+ * format error before any base64 decode or KDF operation.
+ *
+ * Plaintext is capped at 8192 bytes. Base64 expands by 4/3, plus three
+ * metadata segments (salt 16B, iv 12B, tag 16B ≈ 60 bytes base64) and
+ * delimiters. 8192 * 4/3 + 60 ≈ 10984 bytes. 16384 provides a conservative
+ * ceiling well above any legitimate payload.
+ */
+async function verifyCryptoOversizedPayloadRejected(): Promise<void> {
+  const testKey = "a".repeat(32);
+
+  // Construct a valid-structure 4-part payload that exceeds MAX_ENCRYPTED_CREDENTIAL_LENGTH.
+  const oversizedCiphertext = Buffer.alloc(16384).fill(0x41).toString("base64");
+  const malformed = [
+    randomBytes(16).toString("base64"),
+    randomBytes(12).toString("base64"),
+    oversizedCiphertext,
+    randomBytes(16).toString("base64"),
+  ].join(":");
+
+  assert(
+    malformed.length > 16384,
+    "Test fixture must exceed the max encrypted credential length.",
+  );
+
+  const error = captureError(() => decryptCredential(malformed, testKey));
+  assert(error !== null, "Oversized payload must throw.");
+  assert(
+    error!.message.includes("exceeds maximum") || error!.message.includes("too large"),
+    `Oversized payload must produce a length-related error, got: ${error!.message}`,
+  );
+  // Must not fall through to format parsing error.
+  assert(
+    !error!.message.includes("expected salt:iv:ciphertext:tag"),
+    "Oversized payload must be caught before format parsing.",
+  );
+  // Must not leak Node/OpenSSL auth strings (would mean KDF ran).
+  assert(
+    !error!.message.includes("Unsupported state"),
+    "Oversized payload must not reach KDF/decryption.",
+  );
+}
+
+/**
+ * The cryptoSmokeTest() function must be exercised as part of the test suite,
+ * not just left as a standalone utility that could silently stop running.
+ */
+async function verifyCryptoSmokeTestExecutes(): Promise<void> {
+  // Also run the additional crypto verifications.
+  await verifyCryptoProducesDifferentCiphertexts();
+  await verifyCryptoWrongKeyFails();
+  await verifyCryptoTamperDetection();
+  await verifyCryptoLegacyThreePartFormat();
+  await verifyCryptoLegacyBugFourPartFallback();
+  await verifyCryptoMalformedPayloadRejected();
+  await verifyCryptoStrictComponentValidation();
+  await verifyCryptoAuthFailureProducesStableError();
+  await verifyCryptoFormatErrorsNotSwallowedByAuthFallback();
+  await verifyCryptoOversizedPayloadRejected();
+
+  // cryptoSmokeTest must not throw.
+  cryptoSmokeTest();
 }
