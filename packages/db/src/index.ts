@@ -160,6 +160,8 @@ export {
   listUsageSummary,
   listUnreadEvents,
   mergeSemanticEvents,
+  getSourceQualitySummary,
+  applyAutomaticSourceGovernance,
   recordUsageEvent,
   recordCategoryPreferenceFeedback,
   recordSourceQualityObservation,

@@ -75,6 +75,7 @@ export async function runFetchCycleForWorkspace(
     generatedMonthlyBriefings: 0,
     generatedWeeklyBriefings: 0,
     insertedOrUpdatedItems: 0,
+    autoMutedSources: 0,
     recordedSourceObservations: 0,
     updatedPreferenceMemories: 0,
   };
@@ -264,10 +265,12 @@ export async function runFetchCycleForWorkspace(
   if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
 
   try {
-    result.recordedSourceObservations = await runSourceGovernanceObservationCycle(
+    const governanceResult = await runSourceGovernanceObservationCycle(
       prisma,
       workspace.organizationId,
     );
+    result.recordedSourceObservations = governanceResult.observed;
+    result.autoMutedSources = governanceResult.autoMuted;
     if (result.recordedSourceObservations > 0) {
       await recordUsageEvent(prisma, {
         metadata: {

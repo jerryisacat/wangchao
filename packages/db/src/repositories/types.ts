@@ -239,7 +239,15 @@ export interface SourceGovernanceRecord {
   consecutiveFailures: number;
   mutedReason: string | null;
   noiseRate: number;
+  // qualityScore = 展示给用户的当前质量分，优先取 Source 持久化值。
+  // 若持久化值为 0（从未跑过 observation），回退到本轮派生值，保证 UI 不空白。
   qualityScore: number;
+  // 本轮从 hit/noise/duplicate/trust 重算的派生值，用于和持久化值做漂移诊断。
+  derivedQualityScore: number;
+  // persistedQualityScore = Source.qualityScore 原值（未做回退）。
+  persistedQualityScore: number;
+  // stale = 持久化 qualityScore 仍是 schema 默认 0，需要触发 observation 持久化。
+  stale: boolean;
   recommendation: "APPROVE" | "OBSERVE" | "MUTE" | "REJECT";
   recommendationReason: string | null;
   sourceId: string;
@@ -331,6 +339,28 @@ export interface RecordSourceQualityObservationInput extends TopicScope {
   hitRate: number;
   noiseRate: number;
   sourceId: string;
+  // SPEC §5.2/§6.2：trustScore 持久化在 Source 上，是 discovery/relevance 产物，
+  // observation 不修改它，但持久化 qualityScore 时需要它作为公式输入（参见
+  // calculateSourceQualityScore）。调用方从 Source.trustScore 读取传入。
+  trustScore: number;
+}
+
+/**
+ * 统一读取接口的返回形状（SPEC §5.2/§6.2）。
+ * 给事件评分、候选晋升、信源调度提供单一入口，避免每个调用方各自重算。
+ */
+export interface SourceQualitySummary {
+  sourceId: string;
+  qualityScore: number;
+  trustScore: number;
+  status: "ACTIVE" | "CANDIDATE" | "MUTED" | "REJECTED";
+  latestHitRate: number | null;
+  latestNoiseRate: number | null;
+  latestDuplicateRate: number | null;
+  latestObservedAt: Date | null;
+  // stale = Source.qualityScore 还是 schema 默认 0 但有 observation 历史，
+  // 说明持久化还没跑过；调用方可决定是否触发 recordSourceQualityObservation。
+  stale: boolean;
 }
 
 export interface RecordUsageEventInput extends TenantScope {

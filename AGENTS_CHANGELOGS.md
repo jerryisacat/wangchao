@@ -1,5 +1,22 @@
 ## 2026-07-18
 
+### Fix: Issue #176 持久化 Source 质量分并闭合自动降权/静默治理
+
+- Cause: `listSourceGovernanceReport()` 动态计算 qualityScore 不持久化；`recordSourceQualityObservation()` 只写 SourceObservation 不更新 Source.qualityScore；噪声推荐主要展示未进入评分和自动降权。
+- Changed:
+  - `packages/db/src/repositories/util.ts`：新增 `SOURCE_QUALITY_FORMULA_VERSION`、`SOURCE_QUALITY_MIN_SAMPLE`、`decideAutomaticGovernance()`（按阈值自动降权/建议静默，最小样本保护，REJECT 保留人工确认）。
+  - `packages/db/src/repositories/source.ts` `recordSourceQualityObservation()`：改为单一 `$transaction` 内 `Promise.all` 写 SourceObservation 历史 + 更新 Source.qualityScore，evidence 记录 formulaVersion 和 persistedQualityScore；trustScore 不被 observation 自动改。`listSourceGovernanceReport()` 读持久化 qualityScore（为 0 时回退派生值，暴露 persisted/derived/stale 三值）。新增 `getSourceQualitySummary()` 统一读取接口。
+  - `packages/db/src/repositories/types.ts`：新增 `SourceQualitySummary` 类型。
+  - `packages/db/src/index.ts`：导出 `getSourceQualitySummary`。
+  - `apps/worker/src/modules/governance.ts`：governance cycle 消费新接口。
+  - `apps/worker/src/modules/{fetch-cycle,fetch,types}.ts`：集成新类型。
+  - `packages/db/src/repositories.fixtures.ts`：6 个新 fixture（qualityScore 持久化、stale 回退、公式版本、最小样本保护、REJECT 人工确认、统一读接口）。
+- Files: `packages/db/src/repositories/{source,types,util}.ts`, `packages/db/src/{index,repositories.fixtures}.ts`, `apps/worker/src/modules/{governance,fetch-cycle,fetch,types}.ts`, `docs/L3-modules.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification:
+  - DB 6 个新 fixture + worker governance fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓（Node 26 + Prisma generate）。
+  - DeepSeek V4 Pro 只读审计 APPROVED（Critical 0 / Important 1: getSourceQualitySummary 尚无外部调用方 / Minor 3）。
+- Notes / Risk: 无 schema migration（复用现有 Source.qualityScore/trustScore 字段）；真实 PostgreSQL fixture 为已知环境限制，mock 精确模拟 $transaction 并行写。未部署、未关闭 Issue。Stage 2 批量 push。
+
 ### Fix: Issue #164 反馈信号字段完整性、跨 Topic 隔离与时间衰减
 
 - Cause: `listRecentFeedbackSignals` mapper 丢失 `feedbackEventId`/`eventId`/`createdAt`，`generatePreferenceDeltas` dedupKey 退化为 `eventId+kind`（空 eventId 时跨 Topic 吞信号），查询排除 6 种增强反馈类型，30 天半衰期因缺失 createdAt 失效；MORE_LIKE_THIS/LESS_LIKE_THIS 的 preferenceKeysForSignal 重复推送 category key 导致单信号双倍计算。

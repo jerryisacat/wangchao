@@ -71,6 +71,20 @@ export function sourceActionToStatus(
   return "CANDIDATE";
 }
 
+// --- Source quality formula (SPEC §5.2 / §6.2) -------------------------------
+// 公式版本随 evidence JSON 一起写入 SourceObservation，使历史观察可追溯、
+// 旧 observation 重算时有判定基准。SPEC §6.2 只定义 trustScore/qualityScore
+// 两个持久化字段；formulaVersion / 最小样本数 / 阈值都是公式常量，不入 schema。
+export const SOURCE_QUALITY_FORMULA_VERSION = "v1";
+
+// 自动治理（降权/静默）的最小样本门槛。低于此样本数只 OBSERVE，不误杀。
+// SPEC §5.2「自动发现不等于自动信任」+ Issue #176 约束「小样本下不得误杀」。
+export const SOURCE_QUALITY_MIN_SAMPLE = 8;
+
+// 自动治理阈值：达到最小样本后才触发自动 MUTE。REJECT 始终保留人工确认。
+export const SOURCE_GOVERNANCE_AUTO_MUTE_QUALITY = 15;
+export const SOURCE_GOVERNANCE_AUTO_MUTE_NOISE = 0.55;
+
 export function calculateSourceQualityScore(input: {
   duplicateRate: number;
   hitRate: number;
@@ -86,6 +100,13 @@ export function calculateSourceQualityScore(input: {
   return Number(Math.max(0, Math.min(100, score)).toFixed(2));
 }
 
+/**
+ * 信源治理建议。
+ *
+ * 小样本（totalItems < SOURCE_QUALITY_MIN_SAMPLE）一律 OBSERVE，不误杀；
+ * 样本足够时按 quality/noise 阈值给出 APPROVE/MUTE/REJECT 建议。
+ * REJECT 是高风险状态变化，仅作为建议输出，自动治理层不会直接落到 REJECTED。
+ */
 export function recommendSourceStatus(
   status: "ACTIVE" | "CANDIDATE" | "MUTED" | "REJECTED",
   qualityScore: number,
@@ -100,6 +121,11 @@ export function recommendSourceStatus(
     return status === "CANDIDATE" ? "OBSERVE" : "APPROVE";
   }
 
+  // 小样本保护：不足以判断质量，继续观察。
+  if (totalItems < SOURCE_QUALITY_MIN_SAMPLE) {
+    return "OBSERVE";
+  }
+
   if (qualityScore >= 50 && noiseRate < 0.4) {
     return "APPROVE";
   }
@@ -108,11 +134,53 @@ export function recommendSourceStatus(
     return "REJECT";
   }
 
-  if (noiseRate >= 0.55 || qualityScore < 15) {
+  if (noiseRate >= SOURCE_GOVERNANCE_AUTO_MUTE_NOISE || qualityScore < SOURCE_GOVERNANCE_AUTO_MUTE_QUALITY) {
     return "MUTE";
   }
 
   return "OBSERVE";
+}
+
+/**
+ * 自动治理决策：把建议转成可执行的自动状态变更。
+ *
+ * 规则（SPEC §5.2 + Issue #176 约束）：
+ * - 只自动执行 MUTE（降权/静默），且要求达到最小样本。
+ * - REJECT 始终保留人工确认，不自动落到 REJECTED。
+ * - REJECTED 状态受保护，不自动复活。
+ * - 已是 MUTED 的不重复降权。
+ *
+ * 返回 null 表示本次不自动变更（需人工或继续观察）。
+ */
+export function decideAutomaticGovernance(
+  currentStatus: "ACTIVE" | "CANDIDATE" | "MUTED" | "REJECTED",
+  recommendation: "APPROVE" | "OBSERVE" | "MUTE" | "REJECT",
+  totalItems: number,
+): { status: "MUTED"; reason: string } | null {
+  // REJECTED 受保护，不自动变更。
+  if (currentStatus === "REJECTED") {
+    return null;
+  }
+
+  // 已 MUTED 不重复降权。
+  if (currentStatus === "MUTED") {
+    return null;
+  }
+
+  // 小样本不自动降权。
+  if (totalItems < SOURCE_QUALITY_MIN_SAMPLE) {
+    return null;
+  }
+
+  if (recommendation === "MUTE") {
+    return {
+      status: "MUTED",
+      reason: "auto-muted-low-quality",
+    };
+  }
+
+  // REJECT 保留人工确认，不自动执行。
+  return null;
 }
 
 export function ratio(value: number, total: number): number {

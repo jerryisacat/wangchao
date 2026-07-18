@@ -1,5 +1,6 @@
 import {
   getPrismaClient,
+  applyAutomaticSourceGovernance,
   listSourceGovernanceReport,
   recordSourceQualityObservation,
   listCandidateRssSourcesForObservation,
@@ -16,15 +17,17 @@ import { mapFetchedSourceItem } from "./fetch.js";
 export async function runSourceGovernanceObservationCycle(
   prisma: ReturnType<typeof getPrismaClient>,
   organizationId: string,
-): Promise<number> {
+): Promise<{ autoMuted: number; observed: number }> {
   const report = await listSourceGovernanceReport(prisma, { organizationId });
 
+  // 1. 同事务持久化 qualityScore 到 Source + 写 SourceObservation 历史。
+  //    SPEC §5.2/§6.2：trustScore 是 discovery 产物，从 Source 读入传入公式，
+  //    observation 不改 trustScore，只回写 qualityScore。
   await Promise.all(
     report.map((source) =>
       recordSourceQualityObservation(prisma, {
         duplicateRate: source.duplicateRate,
         evidence: {
-          qualityScore: source.qualityScore,
           recommendation: source.recommendation,
           totalItems: source.totalItems,
         },
@@ -33,11 +36,24 @@ export async function runSourceGovernanceObservationCycle(
         organizationId,
         sourceId: source.sourceId,
         topicId: source.topicId,
+        trustScore: source.trustScore,
       }),
     ),
   );
 
-  return report.length;
+  // 2. 自动治理：小样本不误杀，只自动 MUTE，REJECT 保留人工确认。
+  const governance = await applyAutomaticSourceGovernance(prisma, {
+    organizationId,
+    sources: report.map((source) => ({
+      recommendation: source.recommendation,
+      sourceId: source.sourceId,
+      status: source.status,
+      topicId: source.topicId,
+      totalItems: source.totalItems,
+    })),
+  });
+
+  return { autoMuted: governance.autoMuted.length, observed: report.length };
 }
 
 export async function runCandidateObservationCycle(

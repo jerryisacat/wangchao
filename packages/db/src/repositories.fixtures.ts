@@ -4,6 +4,8 @@ import {
   createDailyBriefing,
   createTaskRun,
   failTaskRun,
+  applyAutomaticSourceGovernance,
+  getSourceQualitySummary,
   listBriefingsPage,
   listEventsForDailyBriefing,
   listFetchedItemsForAnalysis,
@@ -12,6 +14,7 @@ import {
   listSourceGovernanceReport,
   mergeSemanticEvents,
   recordCategoryPreferenceFeedback,
+  recordSourceQualityObservation,
   updateDashboardEventState,
   updateTopic,
   upsertIntelligenceEventFromItem,
@@ -41,6 +44,12 @@ export async function runRepositoryFixtures(): Promise<void> {
   await verifyBriefingHistoryPagination();
   await verifyTaskRunLifecycle();
   await verifySourceGovernanceMetricsUseActiveEventLinks();
+  await verifySourceQualityScoreIsPersistedToSource();
+  await verifyAutomaticGovernanceDoesNotMuteSmallSample();
+  await verifyAutomaticGovernanceMutesLowQualityLargeSample();
+  await verifyAutomaticGovernanceDoesNotAutoReject();
+  await verifyGovernanceReportExposesPersistedAndDerivedQualityScore();
+  await verifyGetSourceQualitySummaryReadsPersistedValue();
   await verifyFuzzyEventMatchUpdatesExistingEvent();
   await verifySemanticMergeClearsArchivedMatchKeys();
   await verifyInstantPushSettingsUseTelegramCredential();
@@ -745,6 +754,7 @@ async function verifySourceGovernanceMetricsUseActiveEventLinks(): Promise<void>
           lastErrorAt: null,
           lastFetchedAt: null,
           name: "Source One",
+          qualityScore: 0,
           recommendationReason: null,
           sourceObservations: [],
           status: "ACTIVE",
@@ -771,6 +781,386 @@ async function verifySourceGovernanceMetricsUseActiveEventLinks(): Promise<void>
     `Expected duplicate rate 0.3333, received ${source.duplicateRate}.`,
   );
   assert(source.qualityScore === 36.67, `Expected score 36.67, received ${source.qualityScore}.`);
+}
+
+/**
+ * RED → GREEN: recordSourceQualityObservation 必须把 qualityScore 持久化到
+ * Source 表（不只是写 SourceObservation），且 evidence 含 formulaVersion。
+ */
+async function verifySourceQualityScoreIsPersistedToSource(): Promise<void> {
+  const updates: Array<{ data: { qualityScore: number }; where: { id: string } }> = [];
+  const observations: Array<{ data: { evidence: unknown; sourceId: string } }> = [];
+
+  const prisma = {
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        sourceObservation: {
+          create: async (args: { data: { evidence: unknown; sourceId: string } }) => {
+            observations.push(args);
+            return { id: "obs-1" };
+          },
+        },
+        source: {
+          update: async (args: { data: { qualityScore: number }; where: { id: string } }) => {
+            updates.push(args);
+            return { id: args.where.id, qualityScore: args.data.qualityScore, status: "ACTIVE", trustScore: 0.6 };
+          },
+        },
+      };
+      return fn(tx);
+    },
+  } as unknown as PrismaClient;
+
+  const result = await recordSourceQualityObservation(prisma, {
+    organizationId: "org-1",
+    topicId: "topic-1",
+    sourceId: "source-1",
+    hitRate: 0.5,
+    noiseRate: 0.4,
+    duplicateRate: 0.1,
+    trustScore: 0.6,
+    evidence: { note: "test" },
+  });
+
+  // 持久化值 = 0.5*70 + 0.6*10 - 0.4*30 - 0.1*15 = 35 + 6 - 12 - 1.5 = 27.5
+  assert(
+    result.persistedQualityScore === 27.5,
+    `Expected persistedQualityScore 27.5, received ${result.persistedQualityScore}.`,
+  );
+  assert(updates.length === 1, `Expected 1 source.update, received ${updates.length}.`);
+  assert(
+    updates[0]?.data.qualityScore === 27.5,
+    `Expected Source.qualityScore updated to 27.5, received ${updates[0]?.data.qualityScore}.`,
+  );
+  assert(
+    updates[0]?.where.id === "source-1",
+    `Expected update on source-1, received ${updates[0]?.where.id}.`,
+  );
+  assert(observations.length === 1, `Expected 1 observation, received ${observations.length}.`);
+  const evidence = observations[0]?.data.evidence as Record<string, unknown> | undefined;
+  assert(evidence !== undefined, "Expected evidence on observation.");
+  assert(
+    typeof evidence?.formulaVersion === "string",
+    `Expected evidence.formulaVersion to be string, received ${typeof evidence?.formulaVersion}.`,
+  );
+  assert(
+    evidence?.source === "source-quality-report",
+    `Expected evidence.source 'source-quality-report', received ${evidence?.source}.`,
+  );
+}
+
+/**
+ * 最小样本保护：totalItems < 8 时即使 recommendation=MUTE 也不自动降权。
+ */
+async function verifyAutomaticGovernanceDoesNotMuteSmallSample(): Promise<void> {
+  const updates: Array<{ data: { status: string }; where: { id: string } }> = [];
+  const prisma = {
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        source: {
+          update: async (args: { data: { status: string }; where: { id: string } }) => {
+            updates.push(args);
+            return {};
+          },
+        },
+        sourceObservation: { create: async () => ({}) },
+      };
+      return fn(tx);
+    },
+  } as unknown as PrismaClient;
+
+  const result = await applyAutomaticSourceGovernance(prisma, {
+    organizationId: "org-1",
+    sources: [
+      {
+        sourceId: "source-small",
+        status: "ACTIVE",
+        recommendation: "MUTE",
+        topicId: "topic-1",
+        totalItems: 3,
+      },
+    ],
+  });
+
+  assert(
+    result.autoMuted.length === 0,
+    `Expected 0 auto-muted (small sample), received ${result.autoMuted.length}.`,
+  );
+  assert(updates.length === 0, `Expected 0 source.update (small sample), received ${updates.length}.`);
+}
+
+/**
+ * 足够样本 + 低质 + MUTE 建议 → 自动降到 MUTED，写审计 observation。
+ */
+async function verifyAutomaticGovernanceMutesLowQualityLargeSample(): Promise<void> {
+  const updates: Array<{ data: { status: string }; where: { id: string } }> = [];
+  const observations: Array<{ data: { evidence: unknown; sourceId: string } }> = [];
+  const prisma = {
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        source: {
+          update: async (args: { data: { status: string }; where: { id: string } }) => {
+            updates.push(args);
+            return {};
+          },
+        },
+        sourceObservation: {
+          create: async (args: { data: { evidence: unknown; sourceId: string } }) => {
+            observations.push(args);
+            return {};
+          },
+        },
+      };
+      return fn(tx);
+    },
+  } as unknown as PrismaClient;
+
+  const result = await applyAutomaticSourceGovernance(prisma, {
+    organizationId: "org-1",
+    sources: [
+      {
+        sourceId: "source-noisy",
+        status: "ACTIVE",
+        recommendation: "MUTE",
+        topicId: "topic-1",
+        totalItems: 20,
+      },
+    ],
+  });
+
+  assert(
+    result.autoMuted.length === 1,
+    `Expected 1 auto-muted, received ${result.autoMuted.length}.`,
+  );
+  assert(result.autoMuted[0] === "source-noisy", `Expected source-noisy muted.`);
+  assert(updates.length === 1, `Expected 1 source.update, received ${updates.length}.`);
+  assert(
+    updates[0]?.data.status === "MUTED",
+    `Expected status MUTED, received ${updates[0]?.data.status}.`,
+  );
+  assert(observations.length === 1, `Expected 1 audit observation, received ${observations.length}.`);
+  const evidence = observations[0]?.data.evidence as Record<string, unknown> | undefined;
+  assert(
+    evidence?.source === "source-governance-auto",
+    `Expected audit observation source 'source-governance-auto', received ${evidence?.source}.`,
+  );
+  assert(
+    evidence?.reason === "auto-muted-low-quality",
+    `Expected reason 'auto-muted-low-quality', received ${evidence?.reason}.`,
+  );
+}
+
+/**
+ * REJECT 建议保留人工确认：即使大样本也不自动落到 REJECTED。
+ */
+async function verifyAutomaticGovernanceDoesNotAutoReject(): Promise<void> {
+  const updates: Array<{ data: { status: string }; where: { id: string } }> = [];
+  const prisma = {
+    $transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = {
+        source: {
+          update: async (args: { data: { status: string }; where: { id: string } }) => {
+            updates.push(args);
+            return {};
+          },
+        },
+        sourceObservation: { create: async () => ({}) },
+      };
+      return fn(tx);
+    },
+  } as unknown as PrismaClient;
+
+  const result = await applyAutomaticSourceGovernance(prisma, {
+    organizationId: "org-1",
+    sources: [
+      {
+        sourceId: "source-bad",
+        status: "ACTIVE",
+        recommendation: "REJECT",
+        topicId: "topic-1",
+        totalItems: 50,
+      },
+      // REJECTED 状态受保护，即使 MUTE 也不动。
+      {
+        sourceId: "source-rejected",
+        status: "REJECTED",
+        recommendation: "MUTE",
+        topicId: "topic-1",
+        totalItems: 50,
+      },
+    ],
+  });
+
+  assert(
+    result.autoMuted.length === 0,
+    `Expected 0 auto-muted (REJECT preserves human confirm), received ${result.autoMuted.length}.`,
+  );
+  assert(updates.length === 0, `Expected 0 source.update, received ${updates.length}.`);
+}
+
+/**
+ * 报告同时暴露 persistedQualityScore / derivedQualityScore / stale，
+ * 让 UI 和运维看出持久化值是否落后于真实指标。
+ */
+async function verifyGovernanceReportExposesPersistedAndDerivedQualityScore(): Promise<void> {
+  const prisma = {
+    source: {
+      findMany: async () => [
+        {
+          // 已持久化的源：persisted=40, derived=36.67 → qualityScore=40, stale=false
+          consecutiveFailures: 0,
+          discoveryChannel: null,
+          id: "source-persisted",
+          items: [
+            {
+              eventItems: [{ event: { id: "e1", status: "UNREAD" }, role: "PRIMARY" }],
+              intelligenceEvents: [{ id: "e1", status: "UNREAD" }],
+              status: "ANALYZED",
+            },
+            { eventItems: [], intelligenceEvents: [], status: "FILTERED" },
+            { eventItems: [], intelligenceEvents: [], status: "FILTERED" },
+          ],
+          lastError: null,
+          lastErrorAt: null,
+          lastFetchedAt: null,
+          name: "Persisted",
+          qualityScore: 40,
+          recommendationReason: null,
+          sourceObservations: [],
+          status: "ACTIVE",
+          topic: { name: "T" },
+          topicId: "topic-1",
+          trustScore: 0.5,
+          url: "https://a.example.com/feed.xml",
+        },
+        {
+          // 从未持久化的源：persisted=0 → stale=true, qualityScore 回退到 derived
+          consecutiveFailures: 0,
+          discoveryChannel: null,
+          id: "source-stale",
+          items: [
+            {
+              eventItems: [{ event: { id: "e1", status: "UNREAD" }, role: "PRIMARY" }],
+              intelligenceEvents: [{ id: "e1", status: "UNREAD" }],
+              status: "ANALYZED",
+            },
+            { eventItems: [], intelligenceEvents: [], status: "FILTERED" },
+            { eventItems: [], intelligenceEvents: [], status: "FILTERED" },
+          ],
+          lastError: null,
+          lastErrorAt: null,
+          lastFetchedAt: null,
+          name: "Stale",
+          qualityScore: 0,
+          recommendationReason: null,
+          sourceObservations: [],
+          status: "ACTIVE",
+          topic: { name: "T" },
+          topicId: "topic-1",
+          trustScore: 0.5,
+          url: "https://b.example.com/feed.xml",
+        },
+      ],
+    },
+  } as unknown as PrismaClient;
+
+  const report = await listSourceGovernanceReport(prisma, { organizationId: "org-1" });
+  assert(report.length === 2, `Expected 2 sources, received ${report.length}.`);
+
+  const persisted = report.find((s) => s.sourceId === "source-persisted");
+  const stale = report.find((s) => s.sourceId === "source-stale");
+  assert(persisted, "Expected source-persisted in report.");
+  assert(stale, "Expected source-stale in report.");
+
+  // persisted=40 优先，不被 derived 覆盖。
+  assert(
+    persisted!.persistedQualityScore === 40,
+    `Expected persistedQualityScore 40, received ${persisted!.persistedQualityScore}.`,
+  );
+  assert(
+    persisted!.qualityScore === 40,
+    `Expected qualityScore 40 (persisted), received ${persisted!.qualityScore}.`,
+  );
+  assert(
+    persisted!.stale === false,
+    `Expected stale false for persisted source, received ${persisted!.stale}.`,
+  );
+  assert(
+    typeof persisted!.derivedQualityScore === "number",
+    `Expected derivedQualityScore number, received ${typeof persisted!.derivedQualityScore}.`,
+  );
+
+  // stale 源：persisted=0, qualityScore 回退到 derived。
+  assert(
+    stale!.persistedQualityScore === 0,
+    `Expected persistedQualityScore 0, received ${stale!.persistedQualityScore}.`,
+  );
+  assert(
+    stale!.stale === true,
+    `Expected stale true, received ${stale!.stale}.`,
+  );
+  assert(
+    stale!.qualityScore === stale!.derivedQualityScore,
+    `Expected qualityScore fallback to derived, received qualityScore=${stale!.qualityScore} derived=${stale!.derivedQualityScore}.`,
+  );
+}
+
+/**
+ * 统一读取接口：getSourceQualitySummary 读 Source 持久化值 + 最新 observation。
+ */
+async function verifyGetSourceQualitySummaryReadsPersistedValue(): Promise<void> {
+  const prisma = {
+    source: {
+      findFirst: async () => ({
+        id: "source-1",
+        qualityScore: 42,
+        trustScore: 0.7,
+        status: "ACTIVE",
+      }),
+    },
+    sourceObservation: {
+      findFirst: async () => ({
+        hitRate: 0.6,
+        noiseRate: 0.2,
+        duplicateRate: 0.1,
+        observedAt: new Date("2026-07-18T00:00:00.000Z"),
+      }),
+    },
+  } as unknown as PrismaClient;
+
+  const summary = await getSourceQualitySummary(prisma, {
+    organizationId: "org-1",
+    sourceId: "source-1",
+  });
+
+  assert(summary, "Expected summary not null.");
+  assert(
+    summary!.qualityScore === 42,
+    `Expected qualityScore 42 (persisted), received ${summary!.qualityScore}.`,
+  );
+  assert(
+    summary!.trustScore === 0.7,
+    `Expected trustScore 0.7, received ${summary!.trustScore}.`,
+  );
+  assert(
+    summary!.latestHitRate === 0.6,
+    `Expected latestHitRate 0.6, received ${summary!.latestHitRate}.`,
+  );
+  assert(
+    summary!.stale === false,
+    `Expected stale false (qualityScore=42), received ${summary!.stale}.`,
+  );
+
+  // 不存在的源返回 null。
+  const prismaEmpty = {
+    source: { findFirst: async () => null },
+    sourceObservation: { findFirst: async () => null },
+  } as unknown as PrismaClient;
+  const missing = await getSourceQualitySummary(prismaEmpty, {
+    organizationId: "org-1",
+    sourceId: "nope",
+  });
+  assert(missing === null, `Expected null for missing source, received ${JSON.stringify(missing)}.`);
 }
 
 async function verifyFuzzyEventMatchUpdatesExistingEvent(): Promise<void> {

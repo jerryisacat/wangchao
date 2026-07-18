@@ -14,6 +14,7 @@ export interface WorkspaceScope {
 
 export interface WorkerFetchCycleResult {
   analyzedItems: number;
+  autoMutedSources: number;
   createdOrUpdatedEvents: number;
   failedSources: number;
   failedSubCycles: string[];

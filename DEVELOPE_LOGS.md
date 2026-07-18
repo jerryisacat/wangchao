@@ -4,6 +4,16 @@
 
 ## 2026-07-18
 
+## Stage 2 / Task 2.1: Source 质量持久化与治理（#176）
+
+- Phase: implementation plan Stage 2 Task 2.1。
+- Scope: Source qualityScore 在 observation transaction 中持久化（写 SourceObservation 历史 + 同事务更新 Source.qualityScore）、公式版本化（SOURCE_QUALITY_FORMULA_VERSION）、最小样本保护（SOURCE_QUALITY_MIN_SAMPLE）、自动降权/建议静默阈值（decideAutomaticGovernance）、高风险状态变化保留人工确认、统一读取接口 getSourceQualitySummary。
+- Alignment: SPEC §5.2 trustScore/qualityScore 边界——qualityScore 持久化在 Source，trustScore 不被 observation 自动改（trustScore 是 discovery/relevance 产物）；§6.2 schema 字段复用，无新 migration。
+- Bugs fixed: listSourceGovernanceReport 动态计算 qualityScore 不持久化；recordSourceQualityObservation 只写 SourceObservation 不更新 Source.qualityScore；噪声推荐主要展示未进入评分和自动降权。
+- Verification: DB 6 个新 fixture（qualityScore 持久化、stale 回退、公式版本、最小样本保护、REJECT 人工确认、统一读接口）+ worker governance fixture；全仓 typecheck/lint/test/build/diff-check 通过；DeepSeek V4 Pro 只读审计 APPROVED（Critical 0 / Important 1: getSourceQualitySummary 尚无外部调用方，建议后续 Issue 迁移 / Minor 3）。
+- Completion: 本次 commit 后不 push（Stage 2 批量 push）；未部署、未关闭 Issue。
+- Follow-up: #169 Candidate 观察与 #170 综合评分需消费 getSourceQualitySummary 统一读接口，闭合 Important #1。
+
 ## Stage 1 / Task 1.6: 反馈信号契约修复（#164）
 
 - Phase: implementation plan Stage 1 Task 1.6。

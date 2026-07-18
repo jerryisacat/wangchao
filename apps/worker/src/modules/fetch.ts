@@ -135,6 +135,7 @@ export async function fetchSourceWithRetries(
     generatedWeeklyBriefings: 0,
     insertedOrUpdatedItems: 0,
     lastError,
+    autoMutedSources: 0,
     recordedSourceObservations: 0,
     updatedPreferenceMemories: 0,
   };
@@ -174,6 +175,7 @@ async function fetchSourceAttempt(
       generatedMonthlyBriefings: 0,
       generatedWeeklyBriefings: 0,
       insertedOrUpdatedItems: writtenItems.length,
+      autoMutedSources: 0,
       recordedSourceObservations: 0,
       updatedPreferenceMemories: 0,
     };
@@ -194,6 +196,7 @@ async function fetchSourceAttempt(
       generatedWeeklyBriefings: 0,
       insertedOrUpdatedItems: 0,
       lastError: error,
+      autoMutedSources: 0,
       recordedSourceObservations: 0,
       updatedPreferenceMemories: 0,
     };
