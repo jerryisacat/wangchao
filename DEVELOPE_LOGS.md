@@ -4,6 +4,14 @@
 
 ## 2026-07-18
 
+## Stage 3 / Task 3.4: 增强反馈 UI（#175）
+
+- Phase: implementation plan Stage 3 Task 3.4。
+- Scope: SOURCE_QUALITY_UP/DOWN 与 SCORE_UP/DOWN 可提交、明确绑定 event/source/topic 防双写、成功/错误/撤销语义、键盘可访问。
+- Alignment: SPEC §5.6 增强反馈类型。
+- Verification: web enhanced-feedback-kinds fixture（6 种 kind 绑定+防双写+撤销）+ 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 3 批量 push）；未部署、未关闭 Issue。
+
 ## Stage 3 / Task 3.3: 历史与归档（#174）
 
 - Phase: implementation plan Stage 3 Task 3.3。

@@ -8,7 +8,10 @@ import {
   Download,
   EyeOff,
   ExternalLink,
+  Gauge,
   RotateCcw,
+  ShieldAlert,
+  ShieldCheck,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
@@ -284,6 +287,74 @@ export default async function EventDetailPage({
                 >
                   <TrendingDown aria-hidden="true" size={14} />
                   少看类似
+                </Button>
+              </form>
+            </div>
+
+            {/* Issue #175 / SPEC §5.6: 来源质量反馈，影响当前 Topic 的 source 权重 */}
+            <div className="event-detail-actions">
+              <form action={recordEnhancedFeedbackAction}>
+                <input name="topicId" type="hidden" value={event.topicId} />
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="sourceId" type="hidden" value={event.sourceId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <input name="feedbackKind" type="hidden" value="SOURCE_QUALITY_UP" />
+                <Button
+                  size="sm"
+                  type="submit"
+                  variant="ghost"
+                >
+                  <ShieldCheck aria-hidden="true" size={14} />
+                  来源靠谱
+                </Button>
+              </form>
+              <form action={recordEnhancedFeedbackAction}>
+                <input name="topicId" type="hidden" value={event.topicId} />
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="sourceId" type="hidden" value={event.sourceId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <input name="feedbackKind" type="hidden" value="SOURCE_QUALITY_DOWN" />
+                <Button
+                  size="sm"
+                  type="submit"
+                  variant="ghost"
+                >
+                  <ShieldAlert aria-hidden="true" size={14} />
+                  来源存疑
+                </Button>
+              </form>
+            </div>
+
+            {/* Issue #175 / SPEC §5.6: 评分校准反馈，调整当前事件分数相关 category 权重 */}
+            <div className="event-detail-actions">
+              <form action={recordEnhancedFeedbackAction}>
+                <input name="topicId" type="hidden" value={event.topicId} />
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="sourceId" type="hidden" value={event.sourceId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <input name="feedbackKind" type="hidden" value="SCORE_UP" />
+                <Button
+                  size="sm"
+                  type="submit"
+                  variant="ghost"
+                >
+                  <Gauge aria-hidden="true" size={14} />
+                  评分偏低
+                </Button>
+              </form>
+              <form action={recordEnhancedFeedbackAction}>
+                <input name="topicId" type="hidden" value={event.topicId} />
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="sourceId" type="hidden" value={event.sourceId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <input name="feedbackKind" type="hidden" value="SCORE_DOWN" />
+                <Button
+                  size="sm"
+                  type="submit"
+                  variant="ghost"
+                >
+                  <Gauge aria-hidden="true" size={14} />
+                  评分偏高
                 </Button>
               </form>
             </div>

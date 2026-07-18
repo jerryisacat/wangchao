@@ -1,5 +1,16 @@
 ## 2026-07-18
 
+### Feat: Issue #175 补齐来源质量与评分校准反馈入口
+
+- Cause: events/[eventId] 详情页缺 SOURCE_QUALITY_UP/DOWN 入口；增强反馈未完整绑定。
+- Changed:
+  - `apps/web/src/app/actions/events.ts`：补齐 SOURCE_QUALITY_UP/DOWN action（复用 #164 FeedbackKind），明确绑定 event/source/topic，防双写。
+  - `apps/web/src/app/events/[eventId]/page.tsx` 或组件：反馈按钮（成功/错误/撤销语义，键盘可访问）。
+  - `apps/web/scripts/enhanced-feedback-kinds.fixture.mjs`：6 种 kind 绑定+防双写+撤销 fixture。
+- Files: `apps/web/src/app/actions/events.ts`, `apps/web/src/app/events/[eventId]/*`, `apps/web/scripts/enhanced-feedback-kinds.fixture.mjs`, `apps/web/package.json`。
+- Verification: web enhanced-feedback-kinds fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 无 source 的 event 提交 SOURCE_QUALITY 时 core 静默不产生 delta（既有安全行为）；批量审查 Stage 末尾补。未部署、未关闭 Issue。Stage 3 批量 push。
+
 ### Feat: Issue #174 增加个人阅读历史与归档恢复
 
 - Cause: 无已读/忽略/归档历史视图；个人 ARCHIVED 状态未实现。
