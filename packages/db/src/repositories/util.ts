@@ -38,8 +38,8 @@ export function toRequiredInputJson(value: Record<string, unknown>): Prisma.Inpu
 }
 
 export function actionToEventState(action: DashboardEventAction): {
-  feedbackKind: "READ" | "SAVE" | "DISMISS";
-  status: "READ" | "SAVED" | "DISMISSED";
+  feedbackKind: "READ" | "SAVE" | "DISMISS" | null;
+  status: "READ" | "SAVED" | "DISMISSED" | "ARCHIVED";
   value: number;
 } {
   if (action === "read") {
@@ -50,7 +50,19 @@ export function actionToEventState(action: DashboardEventAction): {
     return { feedbackKind: "SAVE", status: "SAVED", value: 2 };
   }
 
-  return { feedbackKind: "DISMISS", status: "DISMISSED", value: -2 };
+  if (action === "dismiss") {
+    return { feedbackKind: "DISMISS", status: "DISMISSED", value: -2 };
+  }
+
+  if (action === "archive") {
+    // SPEC §5.5: archive 是个人整理动作，无偏好语义，不产生 FeedbackEvent。
+    return { feedbackKind: null, status: "ARCHIVED", value: 0 };
+  }
+
+  // restore：status 由调用方按 readAt/saved 派生（不在此固定），
+  // 这里给出占位 UNREAD 之外的值无意义；调用方在 updateDashboardEventState
+  // 中根据现有 UserItemState 决定真实 nextStatus。此处 status 仅占位。
+  return { feedbackKind: null, status: "ARCHIVED", value: 0 };
 }
 
 export function sourceActionToStatus(

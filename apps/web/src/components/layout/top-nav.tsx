@@ -13,6 +13,7 @@ const mainLinks = [
   { href: "/briefings", label: "今日简报" },
   { href: "/reports", label: "专题报告" },
   { href: "/saved", label: "已保存" },
+  { href: "/history", label: "历史与归档" },
   { href: "/preferences", label: "偏好" },
 ] as const;
 

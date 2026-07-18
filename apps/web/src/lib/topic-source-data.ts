@@ -460,6 +460,75 @@ export async function getSavedEventsPage(
   };
 }
 
+// SPEC §5.5 / Plan Task 3.3 (#174): 个人阅读历史与归档视图。
+// status 筛选 READ/DISMISSED/SAVED/ARCHIVED 四种个人阅读状态，与收藏视图（saved=true）互补。
+// 归档视图可恢复（restore action），恢复不影响其他用户。
+export type HistoryStatus = "READ" | "DISMISSED" | "SAVED" | "ARCHIVED";
+
+export interface HistoryEventsPage {
+  events: DashboardEventSummary[];
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  total: number;
+}
+
+const HISTORY_STATUSES: readonly HistoryStatus[] = [
+  "READ",
+  "DISMISSED",
+  "SAVED",
+  "ARCHIVED",
+] as const;
+
+function parseHistoryStatus(value: string | string[] | undefined): HistoryStatus {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw === "string" && (HISTORY_STATUSES as readonly string[]).includes(raw)) {
+    return raw as HistoryStatus;
+  }
+  return "READ";
+}
+
+export async function getHistoryEventsPage(
+  status: HistoryStatus,
+  requestedPage: number,
+  pageSize = 30,
+): Promise<HistoryEventsPage> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not configured. Set DATABASE_URL to connect to Postgres.",
+    );
+  }
+
+  const { getSessionWorkspace } = await import("@/lib/session");
+  const {
+    getPrismaClient,
+    listUserHistoryEvents,
+  } = await import("@wangchao/db");
+  const prisma = getPrismaClient();
+  const workspace = await getSessionWorkspace();
+  const page = clampPage(requestedPage);
+  const result = await listUserHistoryEvents(
+    prisma,
+    {
+      organizationId: workspace.organizationId,
+      status,
+      userId: workspace.userId,
+    },
+    page,
+    pageSize,
+  );
+
+  return {
+    events: result.events.map((event) => toDashboardEventSummary(event)),
+    page: result.page,
+    pageCount: result.pageCount,
+    pageSize: result.pageSize,
+    total: result.total,
+  };
+}
+
+export { parseHistoryStatus };
+
 export async function getDashboardEventDetail(
   eventId: string,
 ): Promise<DashboardEventSummary | null> {

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Archive,
   Bookmark,
   Check,
   ExternalLink,
@@ -130,6 +131,21 @@ export function IntelligenceCard({
           >
             <ThumbsDown aria-hidden="true" size={14} />
             <span>忽略</span>
+          </button>
+        </form>
+        <form action={eventStateAction}>
+          <input name="eventId" type="hidden" value={event.eventId} />
+          <input name="returnTo" type="hidden" value="/" />
+          <button
+            aria-label="归档此条"
+            className="icon-action"
+            name="action"
+            title="归档此条（可从历史页恢复）"
+            type="submit"
+            value="archive"
+          >
+            <Archive aria-hidden="true" size={14} />
+            <span>归档</span>
           </button>
         </form>
         {itemUrl ? (

@@ -1,5 +1,17 @@
 ## 2026-07-18
 
+### Feat: Issue #174 增加个人阅读历史与归档恢复
+
+- Cause: 无已读/忽略/归档历史视图；个人 ARCHIVED 状态未实现。
+- Changed:
+  - `packages/db/src/repositories/event.ts`：新增 `archiveDashboardEvent`/`restoreDashboardEvent`（archive 不产生 FeedbackEvent；restore 派生 saved→SAVED/readAt→READ/否则 UNREAD）、`listUserHistoryEvents`（分页 + status 单值筛选 + 组织级 ARCHIVED notIn）；`listDashboardEvents` NOT 子句加入个人 ARCHIVED（#172 follow-up）。
+  - `packages/db/src/repositories/util.ts`：新增 `resolveRestoredStatus` 派生函数。
+  - `apps/web/src/lib/topic-source-data.ts`：history 数据映射。
+  - `packages/db/src/repositories.fixtures.ts`：7 个新 fixture。
+- Files: `packages/db/src/repositories/{event,types,util}.ts`, `packages/db/src/{index,repositories.fixtures}.ts`, `apps/web/src/{app/actions/_shared,lib/topic-source-data}.ts`。
+- Verification: db 7 新 fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: archive 不产生 FeedbackEvent（不污染偏好学习）；history CSS 类待补；真实 PG archive/restore fixture 待补。未部署、未关闭 Issue。Stage 3 批量 push。
+
 ### Feat: Issue #173 支持按当日 Briefing 批量标记事件已读
 
 - Cause: 无批量已读功能，用户需逐条标记。

@@ -4,6 +4,15 @@
 
 ## 2026-07-18
 
+## Stage 3 / Task 3.3: 历史与归档（#174）
+
+- Phase: implementation plan Stage 3 Task 3.3。
+- Scope: 已读/忽略/收藏/归档分页筛选、archive/restore 个人状态、组织级 ARCHIVED 与个人明确区分、#172 follow-up（listDashboardEvents 排除个人 ARCHIVED）。
+- Alignment: SPEC §5.5。
+- Verification: db 7 个新 fixture（archive/restore/restore 派生/feed 排除个人 ARCHIVED/history 分页/status 全集/无效 status 安全）+ 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 3 批量 push）；未部署、未关闭 Issue。
+- Follow-up: history 页面 CSS 类待补（mobile-first）；真实 PG 两用户 archive/restore fixture 待补。
+
 ## Stage 3 / Task 3.2: Briefing 批量已读（#173）
 
 - Phase: implementation plan Stage 3 Task 3.2。

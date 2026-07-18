@@ -283,13 +283,32 @@ export interface SourceDiscoveryPageRecord {
 
 export type SourceGovernanceAction = "approve" | "mute" | "reject" | "observe";
 
-export type DashboardEventAction = "read" | "save" | "unsave" | "dismiss";
+export type DashboardEventAction = "read" | "save" | "unsave" | "dismiss" | "archive" | "restore";
 
 export interface UpdateDashboardEventStateInput {
   action: DashboardEventAction;
   eventId: string;
   organizationId: string;
   userId: string;
+}
+
+// SPEC §5.5 / Plan Task 3.3 (#174): 个人阅读历史与归档视图。
+// status 筛选作用于当前用户 UserItemState.status（个人阅读状态），
+// 与 IntelligenceEvent.status（组织级事件生命周期）明确区分。
+// 组织级 ARCHIVED 事件不进入个人历史视图（count/where 双重 fence）。
+export type UserHistoryStatus = "READ" | "DISMISSED" | "SAVED" | "ARCHIVED";
+
+export interface UserHistoryScope extends TenantScope {
+  status: UserHistoryStatus;
+  userId: string;
+}
+
+export interface UserHistoryPage {
+  events: DashboardEventRecord[];
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  total: number;
 }
 
 // SPEC §5.5 / Plan Task 3.2 (#173): 按 briefing snapshot 批量标记当前用户已读。

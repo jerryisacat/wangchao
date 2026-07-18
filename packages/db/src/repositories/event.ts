@@ -26,6 +26,8 @@ import type {
   TopicScope,
   UpdateDashboardEventStateInput,
   UpsertPreferenceMemoryInput,
+  UserHistoryPage,
+  UserHistoryScope,
 } from "./types.js";
 
 export async function upsertIntelligenceEventFromItem(
@@ -220,12 +222,14 @@ export async function listDashboardEvents(
       organizationId: scope.organizationId,
       // 组织级归档（语义合并/组织级 ARCHIVED）仍排除。
       status: { notIn: ["ARCHIVED"] },
-      // 排除当前用户已 READ 或 DISMISSED 的事件。
+      // 排除当前用户已 READ / DISMISSED / 个人 ARCHIVED 的事件。
+      // #172 follow-up (#174)：引入个人 ARCHIVED 后必须一并排除，
+      // 否则归档事件会继续出现在当前用户 feed（回归）。
       NOT: {
         userStates: {
           some: {
             userId: scope.userId,
-            status: { in: ["READ", "DISMISSED"] },
+            status: { in: ["READ", "DISMISSED", "ARCHIVED"] },
           },
         },
       },
@@ -290,6 +294,94 @@ export async function listSavedDashboardEvents(
 
   const events = await prisma.intelligenceEvent.findMany({
     where: savedWhere,
+    include: {
+      topic: {
+        select: {
+          name: true,
+        },
+      },
+      primaryItem: {
+        select: {
+          sourceId: true,
+          url: true,
+          source: {
+            select: {
+              name: true,
+              url: true,
+            },
+          },
+        },
+      },
+      eventItems: {
+        select: { itemId: true, role: true },
+      },
+      userStates: {
+        where: {
+          userId: scope.userId,
+        },
+        take: 1,
+      },
+    },
+    orderBy: [{ updatedAt: "desc" }, { gravityScore: "desc" }],
+    skip: (page - 1) * pageSize,
+    take: pageSize,
+  });
+
+  return {
+    events: events.map(mapDashboardEventRecord),
+    page,
+    pageCount,
+    pageSize,
+    total,
+  };
+}
+
+export async function listUserHistoryEvents(
+  prisma: PrismaClient,
+  scope: UserHistoryScope,
+  requestedPage = 1,
+  requestedPageSize = 30,
+): Promise<UserHistoryPage> {
+  // SPEC §5.5 / Plan Task 3.3 (#174): 个人阅读历史与归档视图。
+  // 按当前用户 UserItemState.status 分页筛选，组织级 ARCHIVED 不混入个人视图。
+  // 与 listSavedDashboardEvents 区别：
+  //   - saved 视图固定 saved=true 筛选；
+  //   - history 视图按 status 参数筛选（READ/DISMISSED/SAVED/ARCHIVED），
+  //     供前端"已读/忽略/收藏/归档"分页切换。
+  // 非法 status 回退到空结果（不抛、不泄漏）。
+  const validStatuses: UserHistoryScope["status"][] = [
+    "READ",
+    "DISMISSED",
+    "SAVED",
+    "ARCHIVED",
+  ];
+  if (!validStatuses.includes(scope.status)) {
+    return { events: [], page: 1, pageCount: 1, pageSize: requestedPageSize, total: 0 };
+  }
+
+  const pageSize = Math.max(1, Math.min(100, Math.trunc(requestedPageSize) || 30));
+  const where: Prisma.IntelligenceEventWhereInput = {
+    organizationId: scope.organizationId,
+    // 组织级 ARCHIVED 排除（语义合并/组织级归档不进入个人历史视图）。
+    status: { notIn: ["ARCHIVED"] },
+    userStates: {
+      some: {
+        saved: scope.status === "SAVED" ? true : undefined,
+        status: scope.status,
+        userId: scope.userId,
+      },
+    },
+  };
+
+  const total = await prisma.intelligenceEvent.count({ where });
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(
+    pageCount,
+    Math.max(1, Math.trunc(requestedPage) || 1),
+  );
+
+  const events = await prisma.intelligenceEvent.findMany({
+    where,
     include: {
       topic: {
         select: {
@@ -924,9 +1016,14 @@ export async function updateDashboardEventState(
   input: UpdateDashboardEventStateInput,
 ) {
   // SPEC §5.5: 个人阅读状态完全由 UserItemState 承载。
-  // read/save/dismiss/unsave 只写 UserItemState + FeedbackEvent，
+  // read/save/dismiss/unsave/archive/restore 只写 UserItemState（+ 对应 FeedbackEvent），
   // 不再写 IntelligenceEvent.status（那是事件生命周期，组织级）。
   // 旧实现同时双写 IntelligenceEvent.status 导致用户 A 的状态泄漏到用户 B。
+  //
+  // archive/restore 语义（Plan Task 3.3 / #174）：
+  //   - archive：UserItemState.status = ARCHIVED，无 FeedbackEvent（整理动作，无偏好语义）。
+  //   - restore：从 ARCHIVED 回退到按 readAt/saved 派生的等价状态（READ/SAVED/UNREAD），
+  //     无 FeedbackEvent（撤销归档不是新的偏好信号）。
   const target = actionToEventState(input.action);
   const event = await prisma.intelligenceEvent.findFirstOrThrow({
     where: {
@@ -951,11 +1048,11 @@ export async function updateDashboardEventState(
   }
 
   const now = new Date();
+  const current = event.userStates[0];
 
   if (input.action === "unsave") {
     // unsave 只清除 saved 标记；个人阅读状态（READ/UNREAD）由是否曾 readAt 决定，
     // 不回退到 UNREAD——已读事件取消收藏后仍保持 READ（SPEC §5.5 双轨：saved 与 status 独立）。
-    const current = event.userStates[0];
     const restoredStatus = current?.status ?? (current?.readAt ? "READ" : "UNREAD");
 
     await prisma.$transaction([
@@ -981,13 +1078,74 @@ export async function updateDashboardEventState(
     return;
   }
 
+  if (input.action === "archive") {
+    // archive 只置 ARCHIVED，保留 saved（双轨：归档不清收藏标记）。
+    // 不产生 FeedbackEvent（整理动作，无偏好语义）。
+    await prisma.$transaction([
+      prisma.userItemState.upsert({
+        where: {
+          userId_eventId: {
+            eventId: event.id,
+            userId: input.userId,
+          },
+        },
+        update: {
+          saved: current?.saved ?? false,
+          status: "ARCHIVED",
+        },
+        create: {
+          eventId: event.id,
+          saved: current?.saved ?? false,
+          status: "ARCHIVED",
+          userId: input.userId,
+        },
+      }),
+    ]);
+    return;
+  }
+
+  if (input.action === "restore") {
+    // restore：按 readAt/saved 派生回退后的状态。
+    //   - saved=true → SAVED（双轨保留收藏）。
+    //   - 否则曾 readAt → READ。
+    //   - 否则 UNREAD。
+    const restoredStatus =
+      current?.saved === true
+        ? "SAVED"
+        : current?.readAt
+          ? "READ"
+          : "UNREAD";
+
+    await prisma.$transaction([
+      prisma.userItemState.upsert({
+        where: {
+          userId_eventId: {
+            eventId: event.id,
+            userId: input.userId,
+          },
+        },
+        update: {
+          saved: current?.saved ?? false,
+          status: restoredStatus,
+        },
+        create: {
+          eventId: event.id,
+          saved: current?.saved ?? false,
+          status: restoredStatus,
+          userId: input.userId,
+        },
+      }),
+    ]);
+    return;
+  }
+
   // read/save/dismiss：保留已收藏标记（SPEC §5.5：对已收藏事件执行 read 保留 saved=true，
   // 只有显式 unsave 才移出收藏）。
   const preserveSaved =
     input.action === "read" && event.userStates[0]?.saved === true;
   const nextStatus = preserveSaved ? "SAVED" : target.status;
 
-  await prisma.$transaction([
+  const operations: Prisma.PrismaPromise<unknown>[] = [
     prisma.userItemState.upsert({
       where: {
         userId_eventId: {
@@ -1008,21 +1166,30 @@ export async function updateDashboardEventState(
         userId: input.userId,
       },
     }),
-    prisma.feedbackEvent.create({
-      data: {
-        organizationId: input.organizationId,
-        topicId: event.topicId,
-        userId: input.userId,
-        eventId: event.id,
-        itemId: event.primaryItemId,
-        kind: target.feedbackKind,
-        value: target.value,
-        metadata: {
-          source: "dashboard-mvp",
+  ];
+
+  // read/save/dismiss 产生对应 FeedbackEvent（偏好信号）。
+  // archive/restore 不产生（已在上面提前 return）。
+  if (target.feedbackKind !== null) {
+    operations.push(
+      prisma.feedbackEvent.create({
+        data: {
+          organizationId: input.organizationId,
+          topicId: event.topicId,
+          userId: input.userId,
+          eventId: event.id,
+          itemId: event.primaryItemId,
+          kind: target.feedbackKind,
+          value: target.value,
+          metadata: {
+            source: "dashboard-mvp",
+          },
         },
-      },
-    }),
-  ]);
+      }),
+    );
+  }
+
+  await prisma.$transaction(operations);
 }
 
 export async function markBriefingEventsRead(

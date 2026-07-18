@@ -1,4 +1,6 @@
 import {
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   Bookmark,
   Check,
@@ -192,6 +194,37 @@ export default async function EventDetailPage({
                   忽略此条
                 </Button>
               </form>
+              {event.status === "ARCHIVED" ? (
+                <form action={updateDashboardEventStateAction}>
+                  <input name="eventId" type="hidden" value={event.eventId} />
+                  <input name="returnTo" type="hidden" value={returnTo} />
+                  <Button
+                    name="action"
+                    size="sm"
+                    type="submit"
+                    value="restore"
+                    variant="secondary"
+                  >
+                    <ArchiveRestore aria-hidden="true" size={14} />
+                    恢复归档
+                  </Button>
+                </form>
+              ) : (
+                <form action={updateDashboardEventStateAction}>
+                  <input name="eventId" type="hidden" value={event.eventId} />
+                  <input name="returnTo" type="hidden" value={returnTo} />
+                  <Button
+                    name="action"
+                    size="sm"
+                    type="submit"
+                    value="archive"
+                    variant="ghost"
+                  >
+                    <Archive aria-hidden="true" size={14} />
+                    归档
+                  </Button>
+                </form>
+              )}
             </div>
 
             <div className="event-detail-actions">

@@ -12,6 +12,7 @@ import {
   listFetchedItemsForAnalysis,
   listRecentFeedbackSignals,
   listSavedDashboardEvents,
+  listUserHistoryEvents,
   listSourceGovernanceReport,
   mergeSemanticEvents,
   recordCategoryPreferenceFeedback,
@@ -51,6 +52,13 @@ export async function runRepositoryFixtures(): Promise<void> {
   await verifyMarkBriefingEventsReadDoesNotLeakAcrossUsers();
   await verifyMarkBriefingEventsReadIsOrganizationScoped();
   await verifyMarkBriefingEventsReadNoNPlusOne();
+  await verifyArchiveWritesOnlyUserItemState();
+  await verifyRestoreWritesOnlyUserItemState();
+  await verifyRestorePreservesSavedState();
+  await verifyDashboardFeedExcludesPersonalArchived();
+  await verifyUserHistoryPaginationScopesByUserAndStatus();
+  await verifyUserHistoryStatusFilterAcceptsAllPersonalStates();
+  await verifyUserHistoryInvalidStatusFallsBackSafely();
   await verifyCategoryFeedbackIsPersistedAndLearned();
   await verifyFeedbackSignalMapperPreservesContractFields();
   await verifyTopicUpdateAndAnalysisContextStayTenantScoped();
@@ -1116,6 +1124,327 @@ async function verifyMarkBriefingEventsReadNoNPlusOne(): Promise<void> {
     Array.isArray(eventId.in) && eventId.in.length === 5,
     `No N+1: findMany must use eventId.in [...] for all briefing events (received ${String(eventId.in)}).`,
   );
+}
+
+// ─── Issue #174 — 历史与归档 (Plan Task 3.3) ───────────────────────────────────
+// 这些 mock 测试锁定契约：
+//   - 个人 ARCHIVED 通过 UserItemState.status 承载（不写 IntelligenceEvent.status）。
+//   - archive/restore 只改当前用户状态，不写 IntelligenceEvent.status。
+//   - archive/restore 不产生 FeedbackEvent（无偏好语义，只是个人整理动作）。
+//   - listDashboardEvents 在引入个人 ARCHIVED 后必须把它移出 feed（#172 follow-up）。
+//   - listUserHistoryEvents 按 status 分页筛选，组织级 ARCHIVED 不混入个人视图。
+//   - 组织级 ARCHIVED 与个人 ARCHIVED 明确区分。
+// 真实 PG 两用户隔离由 user-item-state-pg.fixtures.ts 扩展（后置）。
+
+async function verifyArchiveWritesOnlyUserItemState(): Promise<void> {
+  // SPEC §5.5: archive 是个人阅读状态。只写 UserItemState.status=ARCHIVED，
+  // 不写 IntelligenceEvent.status（隔离要求，对齐 #172 read/dismiss 路径）。
+  // archive 不产生 FeedbackEvent（无偏好语义，与 read/dismiss/save 不同）。
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const prisma = {
+    $transaction: async (operations: Array<Promise<unknown>>) =>
+      Promise.all(operations),
+    feedbackEvent: {
+      create: async (args: unknown) => {
+        calls.push({ args, method: "feedbackEvent.create" });
+        return {};
+      },
+    },
+    intelligenceEvent: {
+      findFirstOrThrow: async () => ({
+        id: "event-1",
+        organizationId: "org-1",
+        primaryItemId: "item-1",
+        topicId: "topic-1",
+        userStates: [{ readAt: null, saved: false, status: "UNREAD" }],
+      }),
+      update: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.update" });
+        return {};
+      },
+    },
+    userItemState: {
+      upsert: async (args: unknown) => {
+        calls.push({ args, method: "userItemState.upsert" });
+        return {};
+      },
+    },
+  } as unknown as PrismaClient;
+
+  await updateDashboardEventState(prisma, {
+    action: "archive",
+    eventId: "event-1",
+    organizationId: "org-1",
+    userId: "user-A",
+  });
+
+  const eventUpdates = calls.filter((c) => c.method === "intelligenceEvent.update");
+  assert(
+    eventUpdates.length === 0,
+    "SPEC §5.5 违规：个人 archive 不应写 IntelligenceEvent.status（会泄漏到其他用户）。" +
+      `观察到 ${eventUpdates.length} 次 intelligenceEvent.update 调用。`,
+  );
+
+  const userUpsert = readArgsByName(calls, "userItemState.upsert");
+  const userUpdate = readRecord(userUpsert.update, "userItemState.upsert.update");
+  assert(
+    userUpdate.status === "ARCHIVED",
+    "UserItemState.status 必须记录个人 ARCHIVED 状态。",
+  );
+
+  // archive 不产生 feedback（与 read/dismiss/save 不同，archive 只是个人整理，无偏好语义）。
+  const feedbackCreates = calls.filter((c) => c.method === "feedbackEvent.create");
+  assert(
+    feedbackCreates.length === 0,
+    "SPEC §5.5：archive 不应产生 FeedbackEvent（无偏好语义，只是个人整理动作）。" +
+      `观察到 ${feedbackCreates.length} 次 feedbackEvent.create 调用。`,
+  );
+}
+
+async function verifyRestoreWritesOnlyUserItemState(): Promise<void> {
+  // SPEC §5.5: restore 把个人状态从 ARCHIVED 回退到之前的等价状态。
+  // 只写 UserItemState，不写 IntelligenceEvent.status；不产生 feedback。
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const prisma = {
+    $transaction: async (operations: Array<Promise<unknown>>) =>
+      Promise.all(operations),
+    feedbackEvent: {
+      create: async (args: unknown) => {
+        calls.push({ args, method: "feedbackEvent.create" });
+        return {};
+      },
+    },
+    intelligenceEvent: {
+      findFirstOrThrow: async () => ({
+        id: "event-1",
+        organizationId: "org-1",
+        primaryItemId: "item-1",
+        topicId: "topic-1",
+        userStates: [{ readAt: new Date("2026-07-10T00:00:00.000Z"), saved: false, status: "ARCHIVED" }],
+      }),
+      update: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.update" });
+        return {};
+      },
+    },
+    userItemState: {
+      upsert: async (args: unknown) => {
+        calls.push({ args, method: "userItemState.upsert" });
+        return {};
+      },
+    },
+  } as unknown as PrismaClient;
+
+  await updateDashboardEventState(prisma, {
+    action: "restore",
+    eventId: "event-1",
+    organizationId: "org-1",
+    userId: "user-A",
+  });
+
+  const eventUpdates = calls.filter((c) => c.method === "intelligenceEvent.update");
+  assert(
+    eventUpdates.length === 0,
+    "SPEC §5.5 违规：个人 restore 不应写 IntelligenceEvent.status。",
+  );
+
+  const userUpsert = readArgsByName(calls, "userItemState.upsert");
+  const userUpdate = readRecord(userUpsert.update, "userItemState.upsert.update");
+  // restore：曾 readAt → READ；否则 UNREAD。本 mock 有 readAt，应回到 READ。
+  assert(
+    userUpdate.status === "READ",
+    "restore 必须按 readAt 派生：曾读过的事件回到 READ（SPEC §5.5 双轨）。",
+  );
+
+  const feedbackCreates = calls.filter((c) => c.method === "feedbackEvent.create");
+  assert(
+    feedbackCreates.length === 0,
+    "SPEC §5.5：restore 不应产生 FeedbackEvent（撤销归档是整理动作，不构成新的偏好信号）。",
+  );
+}
+
+async function verifyRestorePreservesSavedState(): Promise<void> {
+  // SPEC §5.5 双轨：restore 已收藏事件时保留 saved=true。
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const prisma = {
+    $transaction: async (operations: Array<Promise<unknown>>) =>
+      Promise.all(operations),
+    feedbackEvent: {
+      create: async () => ({}),
+    },
+    intelligenceEvent: {
+      findFirstOrThrow: async () => ({
+        id: "event-1",
+        organizationId: "org-1",
+        primaryItemId: "item-1",
+        topicId: "topic-1",
+        userStates: [{ readAt: new Date("2026-07-10T00:00:00.000Z"), saved: true, status: "ARCHIVED" }],
+      }),
+      update: async () => ({}),
+    },
+    userItemState: {
+      upsert: async (args: unknown) => {
+        calls.push({ args, method: "userItemState.upsert" });
+        return {};
+      },
+    },
+  } as unknown as PrismaClient;
+
+  await updateDashboardEventState(prisma, {
+    action: "restore",
+    eventId: "event-1",
+    organizationId: "org-1",
+    userId: "user-A",
+  });
+
+  const userUpsert = readArgsByName(calls, "userItemState.upsert");
+  const userUpdate = readRecord(userUpsert.update, "userItemState.upsert.update");
+  // 已收藏 + 曾读过 → SAVED（双轨，read 不清 saved，restore 同理）。
+  assert(
+    userUpdate.status === "SAVED",
+    "restore 已收藏事件必须回到 SAVED（双轨：saved 与 read 状态共存）。",
+  );
+  assert(
+    userUpdate.saved === true,
+    "restore 不得清除 saved 标记。",
+  );
+}
+
+async function verifyDashboardFeedExcludesPersonalArchived(): Promise<void> {
+  // #172 follow-up：引入个人 ARCHIVED 后，listDashboardEvents 必须把它移出当前用户 feed。
+  // 旧 NOT 只排除 [READ, DISMISSED]；ARCHIVED 个人状态会让事件继续出现在 feed（回归 bug）。
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const prisma = {
+    intelligenceEvent: {
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "findMany" });
+        return [];
+      },
+    },
+  } as unknown as PrismaClient;
+
+  await listDashboardEvents(prisma, { organizationId: "org-1", userId: "user-B" }, 30);
+
+  const args = readArgsByName(calls, "findMany");
+  const where = readRecord(args.where, "findMany.where");
+  const notClause = readRecord(where.NOT, "findMany.where.NOT");
+  const userStatesFilter = readRecord(notClause.userStates, "findMany.where.NOT.userStates");
+  const userStatesSome = readRecord(userStatesFilter.some, "findMany.where.NOT.userStates.some");
+  const statusIn = readRecord(userStatesSome.status, "findMany.where.NOT.userStates.some.status");
+  const statusInArray = (statusIn.in as string[]) ?? [];
+  assert(
+    statusInArray.includes("ARCHIVED"),
+    "SPEC §5.5 follow-up：listDashboardEvents 必须排除当前用户个人 ARCHIVED 状态的事件。" +
+      `观察到 NOT.userStates.some.status.in=${JSON.stringify(statusIn)}。`,
+  );
+  assert(
+    statusInArray.includes("READ") && statusInArray.includes("DISMISSED"),
+    "listDashboardEvents 仍需排除 READ/DISMISSED（回归保护）。",
+  );
+}
+
+async function verifyUserHistoryPaginationScopesByUserAndStatus(): Promise<void> {
+  // listUserHistoryEvents 必须按当前 userId + status 集合分页，且只看个人 UserItemState。
+  const calls: Array<{ args: unknown; method: "count" | "findMany" }> = [];
+  const prisma = {
+    intelligenceEvent: {
+      count: async (args: unknown) => {
+        calls.push({ args, method: "count" });
+        return 42;
+      },
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "findMany" });
+        return [];
+      },
+    },
+  } as unknown as PrismaClient;
+
+  const result = await listUserHistoryEvents(
+    prisma,
+    { organizationId: "org-1", userId: "user-1", status: "READ" },
+    2,
+    20,
+  );
+
+  assert(result.total === 42, `Expected total 42, received ${result.total}.`);
+  assert(result.page === 2, `Expected page 2, received ${result.page}.`);
+  assert(result.pageCount === 3, `Expected 3 pages, received ${result.pageCount}.`);
+  assert(result.pageSize === 20, `Expected pageSize 20, received ${result.pageSize}.`);
+
+  const countArgs = readArgs(calls, "count");
+  const countWhere = readRecord(countArgs.where, "count.where");
+  assert(countWhere.organizationId === "org-1", "history query must stay tenant-scoped.");
+  const userStates = readRecord(countWhere.userStates, "count.where.userStates");
+  const some = readRecord(userStates.some, "count.where.userStates.some");
+  assert(some.userId === "user-1", "history query must stay user-scoped.");
+  // 实现用 status: <string> 单值筛选（每个 history tab 固定一个状态）。
+  assert(
+    some.status === "READ",
+    "history query status filter must equal the requested status.",
+  );
+
+  // 组织级 ARCHIVED 必须排除（不混入个人视图）。
+  const orgStatus = countWhere.status as Record<string, unknown> | undefined;
+  if (orgStatus) {
+    const notIn = Array.isArray(orgStatus.notIn) ? (orgStatus.notIn as string[]) : [];
+    assert(
+      notIn.includes("ARCHIVED"),
+      "history query must exclude organization-level ARCHIVED events (distinct from personal archived).",
+    );
+  }
+}
+
+async function verifyUserHistoryStatusFilterAcceptsAllPersonalStates(): Promise<void> {
+  // status 参数必须支持 READ / DISMISSED / SAVED / ARCHIVED（SPEC §5.5 个人状态全集）。
+  const acceptedStatuses = ["READ", "DISMISSED", "SAVED", "ARCHIVED"] as const;
+  for (const status of acceptedStatuses) {
+    const calls: Array<{ args: unknown; method: "count" | "findMany" }> = [];
+    const prisma = {
+      intelligenceEvent: {
+        count: async (args: unknown) => {
+          calls.push({ args, method: "count" });
+          return 0;
+        },
+        findMany: async () => [],
+      },
+    } as unknown as PrismaClient;
+
+    await listUserHistoryEvents(
+      prisma,
+      { organizationId: "org-1", userId: "user-1", status },
+      1,
+      10,
+    );
+
+    const countArgs = readArgs(calls, "count");
+    const countWhere = readRecord(countArgs.where, "count.where");
+    const userStates = readRecord(countWhere.userStates, "count.where.userStates");
+    const some = readRecord(userStates.some, "count.where.userStates.some");
+    assert(
+      some.status === status,
+      `history query must accept status=${status}.`,
+    );
+  }
+}
+
+async function verifyUserHistoryInvalidStatusFallsBackSafely(): Promise<void> {
+  // 非法 status 不得造成未定义行为：回退到空结果（不抛、不泄漏）。
+  const prisma = {
+    intelligenceEvent: {
+      count: async () => 0,
+      findMany: async () => [],
+    },
+  } as unknown as PrismaClient;
+
+  const result = await listUserHistoryEvents(
+    prisma,
+    { organizationId: "org-1", userId: "user-1", status: "GARBAGE" as never },
+    1,
+    10,
+  );
+
+  assert(result.total === 0, "Invalid status must yield zero results, not throw.");
+  assert(result.events.length === 0, "Invalid status must yield empty events.");
 }
 
 async function verifyDailyBriefingWindowFilter(): Promise<void> {

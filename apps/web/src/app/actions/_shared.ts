@@ -258,19 +258,21 @@ export function readRequiredUrl(formData: FormData, key: string): string {
 export function readDashboardEventAction(
   formData: FormData,
   key: string,
-): "read" | "save" | "unsave" | "dismiss" {
+): "read" | "save" | "unsave" | "dismiss" | "archive" | "restore" {
   const value = readRequiredField(formData, key);
 
   if (
     value === "read" ||
     value === "save" ||
     value === "unsave" ||
-    value === "dismiss"
+    value === "dismiss" ||
+    value === "archive" ||
+    value === "restore"
   ) {
     return value;
   }
 
-  throw new Error(`${key} must be read, save, unsave, or dismiss.`);
+  throw new Error(`${key} must be read, save, unsave, dismiss, archive, or restore.`);
 }
 
 export function readCategoryPreferenceAction(
