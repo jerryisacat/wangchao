@@ -144,7 +144,7 @@ test("first intelligence card opens a stable detail page", async ({ page }) => {
   }
 });
 
-test("new topic only needs name and description", async ({ page }, testInfo) => {
+test("new topic goes through draft preview before creating", async ({ page }, testInfo) => {
   await page.goto("/topics/new");
   await expect(page.getByRole("heading", { name: "新建观察主题" })).toBeVisible();
   await expect(page.getByLabel("RSS URL")).toHaveCount(0);
@@ -156,7 +156,14 @@ test("new topic only needs name and description", async ({ page }, testInfo) => 
   await page
     .getByLabel("主题描述")
     .fill("关注 AI 基础设施、模型供应商、Agent 平台和部署生态。");
-  await page.getByRole("button", { name: "创建主题" }).click();
+  await page.getByRole("button", { name: "生成主题草案" }).click();
+
+  // Draft preview must appear before any Topic/Source row is written.
+  await expect(page).toHaveURL(/\/topics\/new\/preview/);
+  await expect(page.getByRole("heading", { name: "确认主题画像" })).toBeVisible();
+
+  // Confirm is the only step that persists.
+  await page.getByRole("button", { name: "确认创建主题" }).click();
 
   await expect(page).toHaveURL(/\/sources/);
   await expect(page.getByText(/主题已创建/)).toBeVisible();

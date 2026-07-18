@@ -4,6 +4,15 @@
 
 ## 2026-07-18
 
+## Stage 2 / Task 2.4: 自然语言 Topic 草案（#167）
+
+- Phase: implementation plan Stage 2 Task 2.4。
+- Scope: AI 生成结构化 TopicProfileDraft（版本化 schema）+ 规则 fallback、两步流程（生成→预览→逐字段修改→重新生成→确认创建）、未确认不写 Topic/Source、AI 输出全链路 sanitize、cookie 传递草案、Worker 读同一版本化契约。
+- Alignment: SPEC §3.1/§5.1/§8.1。
+- Verification: AI 7 测试 + web 6 fixture + Playwright 契约更新；全仓 typecheck/lint/test/build/diff-check 通过；DeepSeek V4 Pro 审计 REQUEST_CHANGES（1 Critical: 2 个 CSS 类未定义）→ 父 Agent 补 globals.css 定义 → build 通过。
+- Completion: 本次 commit 后不 push（Stage 2 批量 push）；未部署、未关闭 Issue。
+- Follow-up: 响应式断点 + loading 状态 + 英文/空描述测试为 Important，属后续体验改进。
+
 ## Stage 2 / Task 2.3: Candidate 观察与晋升（#169）
 
 - Phase: implementation plan Stage 2 Task 2.3。

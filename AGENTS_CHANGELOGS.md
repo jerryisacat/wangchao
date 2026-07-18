@@ -1,5 +1,19 @@
 ## 2026-07-18
 
+### Feat: Issue #167 自然语言 Topic 草案生成与确认流程
+
+- Cause: `topics/new/page.tsx` 提交后直接创建；`topic-profile.ts` 只是分词和固定模板；没有草案状态、预览、确认/修改步骤。
+- Changed:
+  - `packages/ai/src/index.ts`：新增 `generateTopicProfileDraft()` AI 生成 + `fallbackTopicProfileDraft()` 规则 fallback，版本化 schemaVersion，generationMode 标识。
+  - `apps/web/src/app/actions/topics.ts`：新增 `generateTopicDraftAction`（AI 生成草案 → cookie 传递）和 `confirmCreateTopicAction`（确认 → 创建 Topic + 匹配信源），全链路 sanitize（sanitizeShortText/sanitizeStringList/readDigestStyle），AI 失败 try/catch fallback，cookie httpOnly+sameSite=lax+15min maxAge。
+  - `apps/web/src/app/topics/new/page.tsx`：Step 1 输入页。
+  - `apps/web/src/app/topics/new/preview/{page,topic-draft-preview-form}.tsx`：Step 2 预览确认页（逐字段编辑、重新生成、确认创建、cookie 过期/损坏错误状态）。
+  - `apps/web/src/app/globals.css`：补 `.topic-draft-mode-hint` 和 `.topic-regenerate-form` 定义（DeepSeek 审计 C1 修复）。
+  - `tests/smoke/web.spec.ts`：Playwright 契约从单步改为两步流程。
+- Files: `packages/ai/src/index.ts`, `packages/ai/package.json`, `apps/web/src/app/actions/topics.ts`, `apps/web/src/app/topics/new/{page,preview/page,preview/topic-draft-preview-form}.tsx`, `apps/web/src/app/globals.css`, `apps/web/package.json`, `tests/smoke/web.spec.ts`。
+- Verification: AI 7 测试 + web 6 fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓；DeepSeek V4 Pro 审计 Critical 1（CSS 未定义）已修复。
+- Notes / Risk: 响应式断点/loading 状态/英文空描述测试为 Important 后续改进；Playwright smoke 需 live server+PG，环境未跑。未部署、未关闭 Issue。Stage 2 批量 push。
+
 ### Feat: Issue #169 重建 Candidate 观察与晋升闭环
 
 - Cause: Candidate observation 可抓 Item 但分析查询要求 ACTIVE；到期审核以 IntelligenceEvent 为依据导致正常 Candidate 全部 REJECTED。

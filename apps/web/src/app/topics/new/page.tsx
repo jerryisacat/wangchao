@@ -1,6 +1,6 @@
 import { Sparkles } from "lucide-react";
 import Link from "next/link";
-import { createTopicAction } from "@/app/actions";
+import { generateTopicDraftAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,7 +19,7 @@ export default function NewTopicPage() {
 
       <Card className="topic-lab" variant="kinetic">
         <div style={{ position: "relative", zIndex: 1, padding: "24px 20px 20px" }}>
-          <form action={createTopicAction} className="grid gap-3">
+          <form action={generateTopicDraftAction} className="grid gap-3">
             <div className="grid gap-2 text-muted-foreground text-xs font-bold">
               <Label htmlFor="topicName">主题名称</Label>
               <Input
@@ -40,10 +40,12 @@ export default function NewTopicPage() {
               />
             </div>
             <div className="form-actions">
-              <span>保存后会自动生成主题关键词，并尝试匹配可验证的候选信源。</span>
+              <span>
+                提交后会基于自然语言目标生成主题画像草案，你可以预览并逐字段修改后再确认创建。
+              </span>
               <Button type="submit" variant="primary">
                 <Sparkles aria-hidden="true" size={16} />
-                创建主题
+                生成主题草案
               </Button>
             </div>
           </form>

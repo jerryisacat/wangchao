@@ -487,6 +487,24 @@ a:not([data-slot="button"]):hover {
   line-height: 1.45;
 }
 
+.topic-draft-mode-hint {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--muted);
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.topic-regenerate-form {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
 .event-list {
   display: grid;
   gap: 8px;
