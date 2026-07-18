@@ -86,6 +86,27 @@ export {
   type InstantPushSettingsView,
 } from "./extended-repositories.js";
 export {
+  claimNextTaskRun,
+  classifyTaskRunError,
+  completeClaimedTaskRun,
+  enqueueTaskRun,
+  failClaimedTaskRun,
+  recoverExpiredTaskRuns,
+  renewTaskRunLease,
+  yieldClaimedTaskRun,
+  type ClaimedTaskRun,
+  type CompleteClaimedTaskRunInput,
+  type EnqueueTaskRunInput,
+  type EnqueueTaskRunResult,
+  type FailClaimedTaskRunInput,
+  type FailClaimedTaskRunResult,
+  type RecoverExpiredTaskRunsInput,
+  type RecoverExpiredTaskRunsResult,
+  type RenewTaskRunLeaseInput,
+  type TaskRunErrorClass,
+  type YieldClaimedTaskRunInput,
+} from "./repositories/task-run.js";
+export {
   attachActiveRssSource,
   assertMembershipRole,
   autoMuteFailingSources,

@@ -1,7 +1,9 @@
 import { canUseCapturedContentForLlm, mapFetchedSourceItem, resolveFilteredNoiseReason } from "./index.js";
+import { runTaskRunConsumerFixtures } from "./modules/task-run-consumer.fixtures.js";
 import { TelegramDeliveryError, escapeTelegramHtml, formatEventForInstantPush, sendTelegramMessage, truncateTelegramMessage } from "./telegram.js";
 
 export async function runWorkerFixtures(): Promise<void> {
+  await runTaskRunConsumerFixtures();
   const embedded = mapFetchedSourceItem(
     { id: "source-1", organizationId: "org-1", topicId: "topic-1", name: "Source", url: "https://example.com/feed" },
     {

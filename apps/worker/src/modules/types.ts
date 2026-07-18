@@ -1,4 +1,14 @@
-export type WorkerCycleType = "fetch" | "source-discovery" | "instant-push" | "report-generation" | "health";
+export type WorkerCycleType = "fetch" | "task-runs" | "source-discovery" | "instant-push" | "report-generation" | "health";
+
+/**
+ * Minimal workspace scope required by worker business functions.
+ * Callers that have a full `WorkspaceSeed` can pass it directly; this
+ * interface guarantees only the two fields the pipeline actually reads.
+ */
+export interface WorkspaceScope {
+  organizationId: string;
+  userId: string;
+}
 
 export interface WorkerFetchCycleResult {
   analyzedItems: number;

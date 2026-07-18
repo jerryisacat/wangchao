@@ -25,6 +25,7 @@
     "railway:worker:start": "pnpm --filter @wangchao/worker start",
     "smoke:web": "playwright test",
     "worker:source-discovery": "pnpm --filter @wangchao/worker source-discovery",
+    "worker:task-runs": "pnpm --filter @wangchao/worker task-runs",
     "worker:health": "pnpm --filter @wangchao/worker health",
     "worker:instant-push": "pnpm --filter @wangchao/worker instant-push",
     "worker:report-generation": "pnpm --filter @wangchao/worker report-generation",

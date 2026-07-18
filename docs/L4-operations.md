@@ -23,6 +23,7 @@ CI=true pnpm build
 CI=true pnpm lint
 CI=true pnpm test
 pnpm worker:health
+pnpm worker:task-runs
 pnpm worker:source-discovery
 pnpm worker:report-generation
 pnpm smoke:web
@@ -32,13 +33,13 @@ pnpm smoke:web
 
 Topic profile 或 analysis 输入变更后，应使用临时 Postgres 验证：更新后的 keywords/entities/include/exclude/importance、当前 Source name 与 Topic 当前 name/description 能从 `listFetchedItemsForAnalysis()` 进入 extraction input / `buildTopicProfileContext()`；使用错误 organizationId 调用 `updateTopic()` 必须失败。不要在真实工作区制造验证数据。
 
-`@wangchao/db` 的普通 `pnpm test` 链式运行 `repositories.fixtures`、`workspace-auth.fixtures` 和 `user-lifecycle.fixtures`；schema 契约由后者调用 `user-lifecycle-schema.fixtures`。普通测试即使环境中存在 `DATABASE_URL` 也不会误触发专用 replay。Migration replay 必须显式运行 `DATABASE_URL=... pnpm --filter @wangchao/db test:migration-replay`：在 disposable PostgreSQL 上先应用 0001→0015、插入 `preexisting-replay-user`（name=NULL）、应用 0016，再执行 fixture。详见 `packages/db/src/migration-replay.fixtures.ts`。
+`@wangchao/db` 的普通 `pnpm test` 链式运行 repositories/workspace-auth/user-lifecycle、TaskRun schema 与 TaskRun repository fixtures；普通测试即使环境中存在 `DATABASE_URL` 也不会误触发专用 PostgreSQL suites。Better Auth migration replay 使用 `DATABASE_URL=... pnpm --filter @wangchao/db test:migration-replay`。TaskRun 并发验证必须额外显式设置 `RUN_TASK_RUN_PG_TESTS=1 WANGCHAO_DISPOSABLE_DATABASE=1`，且 DATABASE_URL 只允许 localhost/127.0.0.1、数据库名必须包含 `task_run_pg`，再执行 `pnpm --filter @wangchao/db test:task-run-pg`；该 suite 验证 active-idempotency、SKIP LOCKED claim、stale fencing、yield 与 exact-expiry reaper。
 
 Relevance 变更必须用 core fixture 覆盖：exclude 与正信号同时命中时 exclude 胜出且不生成 draft；仅 entity 或 includeScope 命中也能生成 event；entity match 保留到 event entities；无任何正信号仍被过滤。Worker filtered 分支必须把具体 rule 或 LLM `noiseReason` 写入 Item rawMetadata 和对应 extraction/relevance TaskRun output，而不是覆盖成泛化文案。
 
 多来源或治理指标变更后，应在临时 Postgres 验证：同标题不同 URL 最终只有一个未归档 IntelligenceEvent；最新 Item 为 PRIMARY/ANALYZED，旧 Item 为 SECONDARY/DUPLICATE；source report 的 hit/noise/duplicate 与唯一 active event 数和 fixture 数据一致。
 
-Worker/导出链路变更后，应在临时 Postgres 中至少验证 `TaskRun.type/status/attempt/maxAttempts/startedAt/finishedAt/output/errorMessage`。AI provider 失败但规则 fallback 成功时，应同时看到失败的 `AI_EVENT_EXTRACTION`、成功且 `llmFallback=true` 的 `AI_RELEVANCE`，并确认 `UsageEvent(type='AI_CALL').quantity` 包含最终失败的逻辑 adapter 调用（内部 HTTP retry 不重复计数）。
+Worker/导出链路变更后，应在临时 Postgres 中至少验证 `TaskRun.type/status/attempt/maxAttempts/startedAt/finishedAt/output/errorMessage`。Durable `SOURCE_FETCH/SOURCE_DISCOVERY` 还必须验证 `idempotencyKey/leaseOwner/leaseToken/leaseExpiresAt/heartbeatAt`：两个 claimant 不得获得同一行，旧 token complete/fail 必须影响 0 行，过期 lease 必须按预算恢复或终止。renew 返回 false 表示明确失去 ownership；renew 请求异常不直接判定丢失，后续 complete/fail 的 fencing 结果才是权威。TaskRun 与 fetch 子 cycle 日志不得保存/输出 raw message、URL 或 stack，只使用固定低基数 class。`pnpm worker:task-runs` 只 drain durable queue；默认 `pnpm railway:worker:start` 会先 drain queue，再继续既有 fetch cron。AI provider 失败但规则 fallback 成功时，应同时看到失败的 `AI_EVENT_EXTRACTION`、成功且 `llmFallback=true` 的 `AI_RELEVANCE`，并确认 `UsageEvent(type='AI_CALL').quantity` 包含最终失败的逻辑 adapter 调用（内部 HTTP retry 不重复计数）。
 
 正文采集链路必须额外验证 `CONTENT_FETCH` TaskRun 与 `Item.contentStatus/contentSource/contentFetchedAt/contentErrorCode`；`CONTENT_FETCH_FAILED/CONTENT_INSUFFICIENT/CONTENT_UNSUPPORTED/AI_FAILED` 占位事件应在首页和详情可见、保留原文链接，但不得被 briefing、instant push、report evidence 或 semantic dedup 查询选中。详情页重新采集只重置状态，下一轮 Worker 执行实际网络/AI 工作。
 

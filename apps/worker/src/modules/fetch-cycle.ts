@@ -1,5 +1,6 @@
 import {
   autoMuteFailingSources,
+  classifyTaskRunError,
   ensureDefaultWorkspace,
   getPrismaClient,
   listActiveRssSourcesForFetch,
@@ -18,10 +19,41 @@ import { isCycleShuttingDown, isCycleTimeExhausted, resetCycleStartTime } from "
 import { runPreferenceLearningCycle } from "./preference.js";
 import { runSemanticDedupCycle } from "./dedup.js";
 import { runTelegramDeliveryCycle } from "./telegram-delivery.js";
-import type { WorkerFetchCycleResult } from "./types.js";
+import type { WorkerFetchCycleResult, WorkspaceScope } from "./types.js";
 
 type PrismaClient = ReturnType<typeof getPrismaClient>;
 
+/**
+ * Format a sub-cycle failure log line that never emits raw error.message,
+ * URL, stack, or secret. It reuses @wangchao/db `classifyTaskRunError` to
+ * derive a fixed low-cardinality error class and combines it with the fixed
+ * cycle name. This is the single helper used by all sub-cycle catch blocks
+ * (avoids 9 copies of the same sanitization logic).
+ */
+type FetchSubCycleName =
+  | "analysis"
+  | "semantic-dedup"
+  | "preference-learning"
+  | "daily-briefing"
+  | "weekly-briefing"
+  | "monthly-briefing"
+  | "source-governance"
+  | "expired-candidate-review"
+  | "telegram-delivery";
+
+export function formatSubCycleFailure(cycleName: FetchSubCycleName, error: unknown): string {
+  const errorClass = classifyTaskRunError(error);
+  return `[fetch-cycle] ${cycleName} sub-cycle failed: ${errorClass}`;
+}
+
+/**
+ * Public wrapper: resolves the default workspace and delegates to
+ * `runFetchCycleForWorkspace`. Preserves the legacy standalone entry-point
+ * behavior (DATABASE_URL guard, ensureDefaultWorkspace, resetCycleStartTime).
+ *
+ * Lane 2B durable consumers that have already claimed a TaskRun should call
+ * `runFetchCycleForWorkspace` directly with their resolved workspace scope.
+ */
 export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
   resetCycleStartTime();
   if (!process.env.DATABASE_URL) {
@@ -30,6 +62,25 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
 
   const prisma = getPrismaClient();
   const workspace = await ensureDefaultWorkspace(prisma);
+  return runFetchCycleForWorkspace(prisma, workspace);
+}
+
+/**
+ * Execute the full fetch pipeline strictly scoped to `workspace`.
+ *
+ * All queries, sub-cycles, and usage events use the passed-in
+ * `workspace.organizationId` / `workspace.userId`. This function does NOT
+ * call `ensureDefaultWorkspace` and does NOT create/complete/fail any
+ * TaskRun — it is safe for a durable consumer (Lane 2B) to call after
+ * claiming a TaskRun.
+ *
+ * Caller is responsible for `resetCycleStartTime()` when driving a fresh
+ * standalone cycle (the legacy `runFetchCycle` wrapper does this).
+ */
+export async function runFetchCycleForWorkspace(
+  prisma: PrismaClient,
+  workspace: WorkspaceScope,
+): Promise<WorkerFetchCycleResult> {
   const sources = await listActiveRssSourcesForFetch(prisma, {
     organizationId: workspace.organizationId,
   });
@@ -111,7 +162,7 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     result.filteredItems = analysisResult.filteredItems;
   } catch (error) {
     result.failedSubCycles.push("analysis");
-    process.stderr.write(`[fetch-cycle] analysis sub-cycle failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(formatSubCycleFailure("analysis", error) + "\n");
   }
 
   if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
@@ -138,7 +189,7 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     }
   } catch (error) {
     result.failedSubCycles.push("semantic-dedup");
-    process.stderr.write(`[fetch-cycle] semantic-dedup sub-cycle failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(formatSubCycleFailure("semantic-dedup", error) + "\n");
   }
 
   if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
@@ -151,7 +202,7 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     );
   } catch (error) {
     result.failedSubCycles.push("preference-learning");
-    process.stderr.write(`[fetch-cycle] preference-learning sub-cycle failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(formatSubCycleFailure("preference-learning", error) + "\n");
   }
 
   if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
@@ -177,7 +228,7 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     }
   } catch (error) {
     result.failedSubCycles.push("daily-briefing");
-    process.stderr.write(`[fetch-cycle] daily-briefing sub-cycle failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(formatSubCycleFailure("daily-briefing", error) + "\n");
   }
 
   if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
@@ -202,7 +253,7 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     }
   } catch (error) {
     result.failedSubCycles.push("weekly-briefing");
-    process.stderr.write(`[fetch-cycle] weekly-briefing sub-cycle failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(formatSubCycleFailure("weekly-briefing", error) + "\n");
   }
 
   if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
@@ -227,7 +278,7 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     }
   } catch (error) {
     result.failedSubCycles.push("monthly-briefing");
-    process.stderr.write(`[fetch-cycle] monthly-briefing sub-cycle failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(formatSubCycleFailure("monthly-briefing", error) + "\n");
   }
 
   if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
@@ -252,7 +303,7 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     }
   } catch (error) {
     result.failedSubCycles.push("source-governance");
-    process.stderr.write(`[fetch-cycle] source-governance sub-cycle failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(formatSubCycleFailure("source-governance", error) + "\n");
   }
 
   if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
@@ -280,7 +331,7 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     }
   } catch (error) {
     result.failedSubCycles.push("expired-candidate-review");
-    process.stderr.write(`[fetch-cycle] expired-candidate-review sub-cycle failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(formatSubCycleFailure("expired-candidate-review", error) + "\n");
   }
 
   if (isCycleShuttingDown() || isCycleTimeExhausted()) return result;
@@ -309,7 +360,7 @@ export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
     }
   } catch (error) {
     result.failedSubCycles.push("telegram-delivery");
-    process.stderr.write(`[fetch-cycle] telegram-delivery sub-cycle failed: ${error instanceof Error ? error.message : String(error)}\n`);
+    process.stderr.write(formatSubCycleFailure("telegram-delivery", error) + "\n");
   }
 
   return result;

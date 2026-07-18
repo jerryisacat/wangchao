@@ -17,6 +17,11 @@ import {
 import { emitStructuredLogStart, emitStructuredLogEnd } from "./modules/logging.js";
 import { runWorkerHealthCheck } from "./modules/health.js";
 import { runFetchCycle } from "./modules/fetch-cycle.js";
+import {
+  runTaskRunConsumerCycle,
+  type TaskRunConsumerMetrics,
+  type TaskRunConsumerOptions,
+} from "./modules/task-run-consumer.js";
 import { runReportGeneration, runReportGenerationCycle } from "./modules/report.js";
 
 import type {
@@ -41,6 +46,8 @@ export type {
   ReportGenerationCycleResult,
   ReportGenerationInput,
   DiscoveryChannel,
+  TaskRunConsumerMetrics,
+  TaskRunConsumerOptions,
 };
 
 export {
@@ -62,7 +69,16 @@ export {
 };
 
 export { createAnalysisRuntimeWithPlan, createSourceRecommendationRuntime };
-export { runFetchCycle, runWorkerHealthCheck, runReportGeneration, runReportGenerationCycle };
+export { runFetchCycle, runTaskRunConsumerCycle, runWorkerHealthCheck, runReportGeneration, runReportGenerationCycle };
+
+export async function runMainWorkerCycle(): Promise<{
+  taskRuns: TaskRunConsumerMetrics;
+  fetch: WorkerFetchCycleResult;
+}> {
+  const taskRuns = await runTaskRunConsumerCycle();
+  const fetch = await runFetchCycle();
+  return { taskRuns, fetch };
+}
 
 export function describeWorker(): string {
   return "Wangchao worker";
@@ -72,30 +88,35 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   setupSignalHandlers();
 
   const isHealth = process.argv.includes("--health");
+  const isTaskRuns = process.argv.includes("--task-runs");
   const isSourceDiscovery = process.argv.includes("--source-discovery");
   const isInstantPush = process.argv.includes("--instant-push");
   const isReportGeneration = process.argv.includes("--report-generation");
   const cycleType = isHealth
     ? "health"
-    : isSourceDiscovery
-      ? "source-discovery"
-      : isInstantPush
-        ? "instant-push"
-      : isReportGeneration
-        ? "report-generation"
-      : "fetch";
+    : isTaskRuns
+      ? "task-runs"
+      : isSourceDiscovery
+        ? "source-discovery"
+        : isInstantPush
+          ? "instant-push"
+          : isReportGeneration
+            ? "report-generation"
+            : "fetch";
 
   const startTime = emitStructuredLogStart(cycleType);
 
   const command = isHealth
     ? runWorkerHealthCheck()
-    : isSourceDiscovery
-      ? runSourceDiscoveryCycle({ mode: "worker" })
-      : isInstantPush
-        ? runInstantPushCycle()
-      : isReportGeneration
-        ? runReportGenerationCycle()
-      : runFetchCycle();
+    : isTaskRuns
+      ? runTaskRunConsumerCycle()
+      : isSourceDiscovery
+        ? runSourceDiscoveryCycle({ mode: "worker" })
+        : isInstantPush
+          ? runInstantPushCycle()
+          : isReportGeneration
+            ? runReportGenerationCycle()
+            : runMainWorkerCycle();
 
   command
     .then((result) => {

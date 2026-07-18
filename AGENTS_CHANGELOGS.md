@@ -1,5 +1,22 @@
 ## 2026-07-18
 
+### Feat: Issue #162 TaskRun claim / lease / consume durable queue
+
+- Cause: Web 手动抓取/信源发现此前直接创建 `RUNNING` TaskRun，但主 Worker 不消费这些行；缺少原子 claim、lease fencing、stale recovery 与数据库级 active idempotency，并发 Worker 可能重复执行或让旧执行者覆盖新结果。
+- Changed:
+  - Prisma `TaskRun` 新增 `idempotencyKey`、`leaseOwner`、`leaseToken`、`leaseExpiresAt`、`heartbeatAt`；migration `0017_task_run_lease_queue` 新增 due-scan index 和仅约束 `PENDING/RUNNING` 的 tenant/type/key partial unique index，不改写历史 RUNNING 数据。
+  - 新增 durable repository：active-idempotent enqueue、单 CTE `FOR UPDATE SKIP LOCKED` claim、lease renew、fenced complete/fail/yield、bounded expired-lease reaper。fail/reaper 在同一 SQL statement 内按 attempt budget 选择 PENDING/FAILED；planned yield 原子返还 claim attempt。JSON 按 UTF-8 100KB 上限校验，错误只保存固定低基数 class。
+  - Worker 抽取显式 workspace fetch/discovery execution；新增 exact-type consumer、严格 `{mode,userId}` parser、lease heartbeat、指数退避和 ownership-loss metrics。默认主 cycle 先 drain queue 再保留旧 fetch cron，另提供 `pnpm worker:task-runs`。Durable discovery 不创建嵌套 TaskRun。
+  - Web source actions 改用 `enqueueTaskRun()` 创建 PENDING task；60 秒 UTC 时间桶 idempotency key 抑制双击/请求重试，保留 discovery OWNER/ADMIN 与 fetch OWNER/ADMIN/MEMBER 权限边界。
+- Files: `packages/db/prisma/{schema.prisma,migrations/0017_task_run_lease_queue/migration.sql}`, `packages/db/src/repositories/{task-run,source}.ts`, `packages/db/src/{task-run*.fixtures,repositories.fixtures,index}.ts`, `packages/db/package.json`, `apps/worker/src/{index.ts,index.fixtures.ts,modules/{task-run-consumer,task-run-consumer.fixtures,fetch-cycle,discovery,types}.ts}`, `apps/worker/package.json`, `apps/web/src/{app/actions/sources.ts,lib/task-run-enqueue.ts}`, `apps/web/scripts/task-run-enqueue.fixture.mjs`, `apps/web/package.json`, root `package.json`, `CODEGUIDE.md`, `docs/L2-domain.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`.
+- Verification:
+  - DB/Web/Worker focused typecheck, tests、lint 与 `git diff --check` ✓；Prisma format/generate/validate ✓。
+  - Disposable PostgreSQL 16 完整 replay `0001→0017` ✓；真实并发 suite 覆盖 8 路 enqueue 单 winner、SKIP LOCKED claim 唯一性、stale token、retry/finalize、budget-neutral yield、exact-expiry reaper、终态 key 复用 ✓。
+  - 真实 production API probe：`enqueueTaskRun` → production Worker consumer；合法 SOURCE_DISCOVERY 为 `claimed=1/succeeded=1`，非法 payload 为 `claimed=1/failed=1`，两者 lease 均清理 ✓。
+  - DeepSeek V4 Pro 首轮发现 1 Important / 4 Minor：legacy TaskRun raw error、fetch 子 cycle raw stderr、renew exception 误判 ownership loss、yield stale errorMessage、URL `/config/` classifier 误判；全部修复并补 regression fixtures。第二轮审计 APPROVED（Critical 0 / Important 0 / Minor 1）；唯一 Minor `lease_expired` reserved marker 已按建议加代码注释明确边界。
+  - 最终全仓 `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` / `pnpm db:validate` / `git diff --check` ✓；added-lines 安全扫描 5 类均为 0。
+- Notes / Risk: 默认 Worker 一轮会先消费最多 50 个 durable task，再执行既有 default fetch；完整多组织公平调度属于后续 Task 1.5 / #163。本轮尚未部署、未关闭 Issue。
+
 ### Fix: Issue #166 统一 Better Auth 受保护路由门与安全登录回跳
 
 - Cause: 页面此前只在渲染期间通过 `getSessionWorkspace()` 间接发现无 Session，`proxy.ts` 仅设置 CSP/安全头；未登录访问工作台、受保护 API 和 Session 过期缺少统一边界。登录页还直接信任 `callbackUrl` 并 `router.push()`，存在开放重定向风险。

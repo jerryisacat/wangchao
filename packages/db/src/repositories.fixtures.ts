@@ -482,7 +482,15 @@ async function verifyTaskRunLifecycle(): Promise<void> {
     type: "AI_RELEVANCE",
   });
   await completeTaskRun(prisma, "task-1", { outcome: "event-upserted" });
-  await failTaskRun(prisma, "task-1", new Error("provider unavailable"));
+
+  // Legacy failTaskRun must NEVER persist raw Error.message, credential URLs,
+  // or stack-like traces. Only the fixed low-cardinality class is allowed.
+  const credentialError = new Error(
+    "fetch failed: https://user:secretpass@provider.example.com/v1/chat\n"
+      + "    at fetch (node:internal/process/task:1:1)\n"
+      + "    at Object.<anonymous> (/app/worker/src/modules/fetch-cycle.ts:42:9)",
+  );
+  await failTaskRun(prisma, "task-1", credentialError);
 
   const createData = readRecord(
     readArgsByName(calls, "taskRun.create").data,
@@ -508,7 +516,16 @@ async function verifyTaskRunLifecycle(): Promise<void> {
   assert(completed.status === "SUCCEEDED", "Completion must persist SUCCEEDED.");
   assert(completed.finishedAt instanceof Date, "Completion must record finishedAt.");
   assert(failed.status === "FAILED", "Failure must persist FAILED.");
-  assert(failed.errorMessage === "provider unavailable", "Failure must persist the error reason.");
+  assert(failed.errorMessage === "application_error", "Failure must persist a fixed low-cardinality error class.");
+  // Raw Error.message, credential URLs, and stack-like traces must never leak.
+  assert(typeof failed.errorMessage === "string", "errorMessage must be a string (the fixed class).");
+  assert(!failed.errorMessage.includes("secretpass"), "errorMessage must not leak credential URLs.");
+  assert(!failed.errorMessage.includes("at fetch"), "errorMessage must not leak stack-like traces.");
+  assert(!failed.errorMessage.includes("fetch-cycle"), "errorMessage must not leak file paths.");
+  assert(
+    failed.errorMessage === "application_error" || failed.errorMessage === "timeout" || failed.errorMessage === "upstream" || failed.errorMessage === "configuration" || failed.errorMessage === "cancelled",
+    "errorMessage must be one of the fixed low-cardinality allowlist values.",
+  );
 }
 
 async function verifySourceGovernanceMetricsUseActiveEventLinks(): Promise<void> {

@@ -116,10 +116,13 @@ async function runSourceDiscoveryFromDashboard() {
 
   const {
     assertMembershipRole,
-    createTaskRun,
+    enqueueTaskRun,
     getPrismaClient,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
+  const { buildManualTaskRunIdempotencyKey } = await import(
+    "@/lib/task-run-enqueue"
+  );
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -132,10 +135,15 @@ async function runSourceDiscoveryFromDashboard() {
     ["OWNER", "ADMIN"],
   );
 
-  await createTaskRun(prisma, {
+  await enqueueTaskRun(prisma, {
     organizationId: workspace.organizationId,
     type: "SOURCE_DISCOVERY",
     input: { mode: "manual", userId: workspace.userId },
+    maxAttempts: 3,
+    idempotencyKey: buildManualTaskRunIdempotencyKey({
+      type: "SOURCE_DISCOVERY",
+      userId: workspace.userId,
+    }),
   });
 
   return { candidateSourcesWritten: 0, existingSourcesObserved: 0, enqueued: true };
@@ -165,10 +173,13 @@ async function runFetchCycleFromDashboard() {
 
   const {
     assertMembershipRole,
-    createTaskRun,
+    enqueueTaskRun,
     getPrismaClient,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
+  const { buildManualTaskRunIdempotencyKey } = await import(
+    "@/lib/task-run-enqueue"
+  );
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -181,10 +192,15 @@ async function runFetchCycleFromDashboard() {
     ["OWNER", "ADMIN", "MEMBER"],
   );
 
-  await createTaskRun(prisma, {
+  await enqueueTaskRun(prisma, {
     organizationId: workspace.organizationId,
     type: "SOURCE_FETCH",
     input: { mode: "manual", userId: workspace.userId },
+    maxAttempts: 3,
+    idempotencyKey: buildManualTaskRunIdempotencyKey({
+      type: "SOURCE_FETCH",
+      userId: workspace.userId,
+    }),
   });
 }
 

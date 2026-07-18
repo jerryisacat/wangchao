@@ -4,6 +4,16 @@
 
 ## 2026-07-18
 
+## Stage 1 / Task 1.4: TaskRun claim / lease / consume（#162）
+
+- Phase: implementation plan Stage 1 Task 1.4。
+- Scope: PostgreSQL active-idempotent enqueue、SKIP LOCKED claim、lease owner/token/expiry/heartbeat、fenced terminal transitions、planned yield、stale recovery、Web producer 与主 Worker consumer。
+- Alignment: Web request lifecycle 只 enqueue；Worker exact-type claim 并按 tenant workspace 执行；数据库约束抵抗并发 producer，lease fencing 防止旧 Worker 覆写；原始错误不进入 durable row。
+- Missing: 全组织扫描、公平调度、per-organization backpressure 与 cron 多组织化属于 Task 1.5 / #163；本任务只消费明确 enqueue 的 tenant task，并保留旧 default fetch cron。
+- Bugs fixed: Web 创建 RUNNING 但无人消费；应用层先查后建无法抵抗并发；status-only ownership 无法阻止 stale executor；source discovery durable handler曾嵌套创建 TaskRun；heartbeat settlement 竞态；legacy TaskRun/fetch 日志 raw error 泄漏；renew exception 误判 ownership loss；yield stale errorMessage；classifier URL `/config/` 误判。
+- Verification: schema/repository/consumer/Web fixtures；DB/Web/Worker focused gates；PostgreSQL 16 replay 0001→0017；真实并发 queue suite；production enqueue→consumer success/failure probe；最终全仓 typecheck/lint/test/build/db validate/diff-check。DeepSeek V4 Pro 第二轮 APPROVED（Critical 0 / Important 0；唯一 Minor reserved `lease_expired` marker 已补边界注释）。
+- Follow-up: Task 1.4 独立 commit/push 后自动进入 Task 1.5 / #163，不部署、不关闭 Issue。
+
 ## Stage 1 / Task 1.3: 统一受保护路由认证门（#166）
 
 - Phase: implementation plan Stage 1 Task 1.3。

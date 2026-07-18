@@ -23,8 +23,10 @@ import {
 } from "@wangchao/db";
 import { createSearchProvider, createSourceRecommendationRuntime, getSourceRecommendation } from "./runtime.js";
 import { readPositiveIntegerEnv, readFloatEnv } from "./env.js";
-import type { DiscoveryChannel, SourceDiscoveryCycleOptions, SourceDiscoveryCycleResult } from "./types.js";
+import type { DiscoveryChannel, SourceDiscoveryCycleOptions, SourceDiscoveryCycleResult, WorkspaceScope } from "./types.js";
 import { isCycleShuttingDown, isCycleTimeExhausted } from "./lifecycle.js";
+
+type PrismaClient = ReturnType<typeof getPrismaClient>;
 
 interface DiscoveryCandidate {
   channel: DiscoveryChannel;
@@ -146,11 +148,12 @@ async function discoverFromKeywordSearch(
 }
 
 async function discoverFromHighScoreBacklinks(
+  prisma: PrismaClient,
   organizationId: string,
   topics: SourceDiscoveryTopicRecord[],
 ): Promise<DiscoveryCandidate[]> {
   const topicById = mapTopicsById(topics);
-  const pages = await listHighScoreEventPagesForDiscovery(getPrismaClient(), {
+  const pages = await listHighScoreEventPagesForDiscovery(prisma, {
     days: readPositiveIntegerEnv("WANGCHAO_DISCOVERY_LOOKBACK_DAYS", 14),
     organizationId,
     threshold: readFloatEnv("WANGCHAO_DISCOVERY_HIGHSCORE_THRESHOLD", 0.7),
@@ -184,11 +187,12 @@ async function discoverFromHighScoreBacklinks(
 }
 
 async function discoverFromActiveSourceOutlinks(
+  prisma: PrismaClient,
   organizationId: string,
   topics: SourceDiscoveryTopicRecord[],
 ): Promise<DiscoveryCandidate[]> {
   const topicById = mapTopicsById(topics);
-  const pages = await listRecentActiveSourcePagesForDiscovery(getPrismaClient(), {
+  const pages = await listRecentActiveSourcePagesForDiscovery(prisma, {
     organizationId,
   }, readPositiveIntegerEnv("WANGCHAO_DISCOVERY_ACTIVE_PAGE_LIMIT", 12));
   const candidates: DiscoveryCandidate[] = [];
@@ -235,6 +239,17 @@ async function discoverFromActiveSourceOutlinks(
   return candidates;
 }
 
+/**
+ * Public wrapper: resolves the default workspace, creates a legacy
+ * `SourceDiscovery` TaskRun, delegates to `runSourceDiscoveryForWorkspace`,
+ * then completes/fails the TaskRun. Preserves the standalone entry-point
+ * behavior.
+ *
+ * Lane 2B durable consumers that have already claimed a TaskRun should call
+ * `runSourceDiscoveryForWorkspace` directly with the claimed taskRunId and
+ * the resolved workspace scope — that function never creates, completes, or
+ * fails a TaskRun.
+ */
 export async function runSourceDiscoveryCycle(
   options: SourceDiscoveryCycleOptions = {},
 ): Promise<SourceDiscoveryCycleResult> {
@@ -251,6 +266,43 @@ export async function runSourceDiscoveryCycle(
     organizationId: workspace.organizationId,
     userId: options.userId ?? workspace.userId,
   });
+
+  try {
+    const result = await runSourceDiscoveryForWorkspace(
+      prisma,
+      workspace,
+      taskRun.id,
+      options,
+    );
+    await completeTaskRun(prisma, taskRun.id, { ...result });
+    return result;
+  } catch (error) {
+    await failTaskRun(prisma, taskRun.id, error);
+    throw error;
+  }
+}
+
+/**
+ * Execute the source-discovery business logic strictly scoped to `workspace`
+ * and bound to `taskRunId`. Performs all discovery channels, candidate
+ * writes, AI recommendation, and usage recording — but does NOT create,
+ * complete, or fail any TaskRun. The caller (durable consumer) owns the
+ * TaskRun lifecycle.
+ *
+ * `result.taskRunId` is set to the passed-in `taskRunId`.
+ *
+ * `workspace.userId` is used for usage attribution. `options.userId`, when
+ * present, overrides the usage userId for backward compatibility with the
+ * legacy standalone wrapper, but must never span organizations: the
+ * organizationId is always `workspace.organizationId`.
+ */
+export async function runSourceDiscoveryForWorkspace(
+  prisma: PrismaClient,
+  workspace: WorkspaceScope,
+  taskRunId: string,
+  options: SourceDiscoveryCycleOptions = {},
+): Promise<SourceDiscoveryCycleResult> {
+  const usageUserId = options.userId ?? workspace.userId;
   const result: SourceDiscoveryCycleResult = {
     aiRecommendationAttempts: 0,
     aiRecommendationFallbacks: 0,
@@ -262,113 +314,104 @@ export async function runSourceDiscoveryCycle(
     keywordCandidates: 0,
     outlinkCandidates: 0,
     skippedKeywordSearch: false,
-    taskRunId: taskRun.id,
+    taskRunId,
     topicsScanned: 0,
   };
 
-  try {
-    const topics = await listTopicsForSourceDiscovery(prisma, {
-      organizationId: workspace.organizationId,
-    });
-    result.topicsScanned = topics.length;
-    const searchProvider = await createSearchProvider(prisma, workspace.organizationId);
-    const ai = await createSourceRecommendationRuntime(prisma, workspace.organizationId);
-    const candidates: DiscoveryCandidate[] = [];
+  const topics = await listTopicsForSourceDiscovery(prisma, {
+    organizationId: workspace.organizationId,
+  });
+  result.topicsScanned = topics.length;
+  const searchProvider = await createSearchProvider(prisma, workspace.organizationId);
+  const ai = await createSourceRecommendationRuntime(prisma, workspace.organizationId);
+  const candidates: DiscoveryCandidate[] = [];
 
-    if (searchProvider) {
-      candidates.push(...(await discoverFromKeywordSearch(topics, searchProvider)));
-    } else {
-      result.skippedKeywordSearch = true;
-    }
+  if (searchProvider) {
+    candidates.push(...(await discoverFromKeywordSearch(topics, searchProvider)));
+  } else {
+    result.skippedKeywordSearch = true;
+  }
 
-    candidates.push(
-      ...(await discoverFromHighScoreBacklinks(workspace.organizationId, topics)),
-      ...(await discoverFromActiveSourceOutlinks(workspace.organizationId, topics)),
-    );
+  candidates.push(
+    ...(await discoverFromHighScoreBacklinks(prisma, workspace.organizationId, topics)),
+    ...(await discoverFromActiveSourceOutlinks(prisma, workspace.organizationId, topics)),
+  );
 
-    const limitedCandidates = limitCandidatesPerTopic(
-      dedupeDiscoveryCandidates(candidates),
-      readPositiveIntegerEnv("WANGCHAO_DISCOVERY_WEEKLY_LIMIT", 5),
-    );
+  const limitedCandidates = limitCandidatesPerTopic(
+    dedupeDiscoveryCandidates(candidates),
+    readPositiveIntegerEnv("WANGCHAO_DISCOVERY_WEEKLY_LIMIT", 5),
+  );
 
-    for (const candidate of limitedCandidates) {
-      if (isCycleShuttingDown() || isCycleTimeExhausted()) break;
-      const recommendation = await getSourceRecommendation(candidate, ai);
-      result.aiRecommendationAttempts += recommendation.attemptedAi ? 1 : 0;
-      result.aiRecommendationFallbacks +=
-        recommendation.attemptedAi && !recommendation.usedAi ? 1 : 0;
-      result.aiRecommendations += recommendation.usedAi ? 1 : 0;
+  for (const candidate of limitedCandidates) {
+    if (isCycleShuttingDown() || isCycleTimeExhausted()) break;
+    const recommendation = await getSourceRecommendation(candidate, ai);
+    result.aiRecommendationAttempts += recommendation.attemptedAi ? 1 : 0;
+    result.aiRecommendationFallbacks +=
+      recommendation.attemptedAi && !recommendation.usedAi ? 1 : 0;
+    result.aiRecommendations += recommendation.usedAi ? 1 : 0;
 
-      try {
-        const source = await createCandidateRssSource(prisma, {
-          description: candidate.evidence.snippet
-            ? String(candidate.evidence.snippet).slice(0, 240)
-            : undefined,
-          discoveryChannel: candidate.channel,
-          evidence: {
-            ...candidate.evidence,
-            recommendationMode: recommendation.usedAi ? "llm" : "fallback",
-            source: "source-discovery-cycle",
-          },
-          name: candidate.name,
-          organizationId: candidate.topic.organizationId,
-          recommendationReason: recommendation.value.reason,
-          relevanceScore: recommendation.value.relevanceScore,
-          topicId: candidate.topic.id,
-          url: candidate.feedUrl,
-        });
-
-        if (source.status === "CANDIDATE") {
-          result.candidateSourcesWritten += 1;
-          if (candidate.channel === "keyword-search") result.keywordCandidates += 1;
-          if (candidate.channel === "backlink-from-highscore") {
-            result.backlinkedCandidates += 1;
-          }
-          if (candidate.channel === "outlink-network") result.outlinkCandidates += 1;
-        } else {
-          result.existingSourcesObserved += 1;
-        }
-      } catch {
-        result.failedCandidates += 1;
-      }
-    }
-
-    if (result.aiRecommendationAttempts > 0) {
-      await recordUsageEvent(prisma, {
-        metadata: {
-          fallbackCalls: result.aiRecommendationFallbacks,
-          source: "worker-source-recommendation",
-          successfulCalls: result.aiRecommendations,
-          taskRunId: taskRun.id,
+    try {
+      const source = await createCandidateRssSource(prisma, {
+        description: candidate.evidence.snippet
+          ? String(candidate.evidence.snippet).slice(0, 240)
+          : undefined,
+        discoveryChannel: candidate.channel,
+        evidence: {
+          ...candidate.evidence,
+          recommendationMode: recommendation.usedAi ? "llm" : "fallback",
+          source: "source-discovery-cycle",
         },
-        organizationId: workspace.organizationId,
-        quantity: result.aiRecommendationAttempts,
-        subjectId: taskRun.id,
-        subjectType: "task-run",
-        type: "AI_CALL",
-        unit: "call",
-        userId: options.userId ?? workspace.userId,
+        name: candidate.name,
+        organizationId: candidate.topic.organizationId,
+        recommendationReason: recommendation.value.reason,
+        relevanceScore: recommendation.value.relevanceScore,
+        topicId: candidate.topic.id,
+        url: candidate.feedUrl,
       });
-    }
 
-    await completeTaskRun(prisma, taskRun.id, { ...result });
+      if (source.status === "CANDIDATE") {
+        result.candidateSourcesWritten += 1;
+        if (candidate.channel === "keyword-search") result.keywordCandidates += 1;
+        if (candidate.channel === "backlink-from-highscore") {
+          result.backlinkedCandidates += 1;
+        }
+        if (candidate.channel === "outlink-network") result.outlinkCandidates += 1;
+      } else {
+        result.existingSourcesObserved += 1;
+      }
+    } catch {
+      result.failedCandidates += 1;
+    }
+  }
+
+  if (result.aiRecommendationAttempts > 0) {
     await recordUsageEvent(prisma, {
       metadata: {
-        mode: options.mode ?? "worker",
-        taskRunId: taskRun.id,
+        fallbackCalls: result.aiRecommendationFallbacks,
+        source: "worker-source-recommendation",
+        successfulCalls: result.aiRecommendations,
+        taskRunId,
       },
       organizationId: workspace.organizationId,
-      quantity: result.candidateSourcesWritten,
-      subjectId: taskRun.id,
+      quantity: result.aiRecommendationAttempts,
+      subjectId: taskRunId,
       subjectType: "task-run",
-      type: "SOURCE_DISCOVERY",
-      unit: "candidate",
-      userId: options.userId ?? workspace.userId,
+      type: "AI_CALL",
+      unit: "call",
+      userId: usageUserId,
     });
-
-    return result;
-  } catch (error) {
-    await failTaskRun(prisma, taskRun.id, error);
-    throw error;
   }
+
+  await recordUsageEvent(prisma, {
+    metadata: { mode: options.mode ?? "worker", taskRunId },
+    organizationId: workspace.organizationId,
+    quantity: result.candidateSourcesWritten,
+    subjectId: taskRunId,
+    subjectType: "task-run",
+    type: "SOURCE_DISCOVERY",
+    unit: "candidate",
+    userId: usageUserId,
+  });
+
+  return result;
 }

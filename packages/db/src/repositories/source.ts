@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { classifyTaskRunError } from "./task-run.js";
 import {
   calculateSourceQualityScore,
   canonicalizeUrl,
@@ -732,7 +733,7 @@ export async function failTaskRun(
     data: {
       status: "FAILED",
       finishedAt: new Date(),
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: classifyTaskRunError(error),
     },
   });
 }
