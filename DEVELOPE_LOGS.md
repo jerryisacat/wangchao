@@ -4,6 +4,15 @@
 
 ## 2026-07-18
 
+## Stage 2 / Task 2.5: 分离综合评分维度（#170）
+
+- Phase: implementation plan Stage 2 Task 2.5。
+- Scope: 分离 relevanceScore/importanceScore/sourceQualityFactor/preferenceAdjustment 独立维度、版本化公式、AI JSON schema/prompt/parser 更新、UI 可解释组成、旧事件兼容。
+- Alignment: SPEC §5.4 AI 情报分析 7 阶段评分维度。
+- Verification: core + ai + worker 三包 typecheck + fixtures 全绿；全仓 typecheck/lint/test/build/diff-check 通过（Node 26 + Prisma generate）。
+- Completion: 本次 commit 后不 push（Stage 2 批量 push）；未部署、未关闭 Issue。
+- Follow-up: 批量审查在 Stage 2 末尾补。
+
 ## Stage 2 / Task 2.4: 自然语言 Topic 草案（#167）
 
 - Phase: implementation plan Stage 2 Task 2.4。

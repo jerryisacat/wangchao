@@ -1,11 +1,15 @@
 import {
   buildRuleFallbackSummary,
   buildTopicProfileContext,
+  calculateGravityScore,
   createUtcDayRange,
   createIntelligenceEventDraft,
+  createIntelligenceEventDraftFromExtraction,
   evaluateRelevance,
   generatePreferenceDeltas,
+  resolveScoringBreakdown,
 } from "./index.js";
+import type { AiEventExtraction } from "./index.js";
 import { checkInstantPushQuota, resolveEffectivePlan } from "./quota.js";
 
 export function runCoreFixtures(): void {
@@ -29,6 +33,12 @@ export function runCoreFixtures(): void {
   testMoreLikeThisDoesNotDuplicateCategoryKey();
   testTopicProfileContextUsesTopicIdentityAndSanitizesLists();
   testInstantPushPlanAccess();
+  testGravityScoreSeparatesRelevanceAndImportance();
+  testGravityScoreSeparatesSourceQualityFactor();
+  testGravityScoreAppliesPreferenceAdjustment();
+  testRuleDraftEmitsScoringBreakdown();
+  testExtractionDraftEmitsScoringBreakdown();
+  testLegacyEventResolvesBackwardCompatibleBreakdown();
 }
 
 function testInstantPushPlanAccess(): void {
@@ -528,6 +538,217 @@ function testMoreLikeThisDoesNotDuplicateCategoryKey(): void {
   assert(
     sourceDelta!.value.signalCount === 1,
     "MORE_LIKE_THIS source delta must also count once.",
+  );
+}
+
+// ===== Issue #170 RED: gravityScore 必须分离四个独立维度 =====
+
+function testGravityScoreSeparatesRelevanceAndImportance(): void {
+  // 两个 item 相关性相同（relevanceScore=80）但重要性不同（60 vs 90）。
+  // 当前 calculateGravityScore 只接一个 baseScore，两者 gravityScore 一定相同 —— 这就是 bug。
+  const now = new Date("2026-07-18T00:00:00Z");
+  const occurredAt = new Date("2026-07-18T00:00:00Z");
+  const scoreLowImportance = calculateGravityScore({
+    relevanceScore: 80,
+    importanceScore: 60,
+    sourceQualityFactor: 1,
+    occurredAt,
+    now,
+  });
+  const scoreHighImportance = calculateGravityScore({
+    relevanceScore: 80,
+    importanceScore: 90,
+    sourceQualityFactor: 1,
+    occurredAt,
+    now,
+  });
+  assert(
+    scoreLowImportance !== scoreHighImportance,
+    "Relevance equal but importance different must yield different gravityScore.",
+  );
+  assert(
+    scoreHighImportance > scoreLowImportance,
+    "Higher importance must produce higher gravityScore.",
+  );
+}
+
+function testGravityScoreSeparatesSourceQualityFactor(): void {
+  // 相关性+重要性相同，但来源质量不同（0.5 vs 1.0），gravityScore 应不同。
+  const now = new Date("2026-07-18T00:00:00Z");
+  const occurredAt = new Date("2026-07-18T00:00:00Z");
+  const lowQuality = calculateGravityScore({
+    relevanceScore: 80,
+    importanceScore: 80,
+    sourceQualityFactor: 0.5,
+    occurredAt,
+    now,
+  });
+  const highQuality = calculateGravityScore({
+    relevanceScore: 80,
+    importanceScore: 80,
+    sourceQualityFactor: 1,
+    occurredAt,
+    now,
+  });
+  assert(
+    lowQuality !== highQuality,
+    "Same relevance+importance but different source quality must yield different gravityScore.",
+  );
+  assert(
+    highQuality > lowQuality,
+    "Higher source quality factor must produce higher gravityScore.",
+  );
+}
+
+function testGravityScoreAppliesPreferenceAdjustment(): void {
+  // preferenceAdjustment 是第四个独立维度：正偏好应提升 gravityScore。
+  const now = new Date("2026-07-18T00:00:00Z");
+  const occurredAt = new Date("2026-07-18T00:00:00Z");
+  const baseline = calculateGravityScore({
+    relevanceScore: 80,
+    importanceScore: 80,
+    sourceQualityFactor: 1,
+    occurredAt,
+    now,
+  });
+  const boosted = calculateGravityScore({
+    relevanceScore: 80,
+    importanceScore: 80,
+    sourceQualityFactor: 1,
+    preferenceAdjustment: 1.3,
+    occurredAt,
+    now,
+  });
+  assert(
+    boosted > baseline,
+    "Positive preference adjustment must increase gravityScore.",
+  );
+  const reduced = calculateGravityScore({
+    relevanceScore: 80,
+    importanceScore: 80,
+    sourceQualityFactor: 1,
+    preferenceAdjustment: 0.7,
+    occurredAt,
+    now,
+  });
+  assert(
+    reduced < baseline,
+    "Negative preference adjustment must decrease gravityScore.",
+  );
+}
+
+function testRuleDraftEmitsScoringBreakdown(): void {
+  // 规则路径 createIntelligenceEventDraft 必须在 draft 上暴露四维度明细。
+  const item = {
+    fetchedAt: new Date("2026-07-18"),
+    id: "rule-breakdown-item",
+    summary: "某AI公司发布新模型",
+    title: "某AI公司发布新模型",
+    topicProfile: {
+      keywords: ["AI"],
+      entities: ["某AI公司"],
+    },
+    url: "https://example.com/rule-breakdown",
+  };
+  const draft = createIntelligenceEventDraft(item);
+  assert(draft !== null, "Rule draft must exist for relevant item.");
+  assert(
+    draft!.scoringBreakdown !== undefined,
+    "Rule draft must expose scoringBreakdown.",
+  );
+  assert(
+    typeof draft!.scoringBreakdown!.relevanceScore === "number",
+    "scoringBreakdown.relevanceScore must be a number.",
+  );
+  assert(
+    typeof draft!.scoringBreakdown!.importanceScore === "number",
+    "scoringBreakdown.importanceScore must be a number.",
+  );
+  assert(
+    typeof draft!.scoringBreakdown!.sourceQualityFactor === "number",
+    "scoringBreakdown.sourceQualityFactor must be a number.",
+  );
+  assert(
+    draft!.scoringBreakdown!.preferenceAdjustment === 1,
+    "Rule draft preferenceAdjustment defaults to 1 (no preference applied at write time).",
+  );
+  assert(
+    typeof draft!.scoringBreakdown!.scoringVersion === "number" &&
+      draft!.scoringBreakdown!.scoringVersion >= 2,
+    "scoringBreakdown must carry scoringVersion >= 2.",
+  );
+}
+
+function testExtractionDraftEmitsScoringBreakdown(): void {
+  // AI 路径 createIntelligenceEventDraftFromExtraction 必须从 extraction.importanceScore
+  // 传入 scoringBreakdown，且 sourceQualityFactor 由调用方提供。
+  const extraction: AiEventExtraction = {
+    category: "模型发布",
+    entities: ["某AI公司"],
+    followUpSuggestion: "",
+    importanceExplanation: "新模型在基准测试上领先。",
+    isRelevant: true,
+    matchedKeywords: ["AI"],
+    relevanceScore: 85,
+    importanceScore: 92,
+    summary: "某AI公司发布新模型，基准测试领先。",
+    title: "某AI公司发布新模型",
+  };
+  const draft = createIntelligenceEventDraftFromExtraction(
+    {
+      fetchedAt: new Date("2026-07-18"),
+      id: "extraction-breakdown-item",
+      publishedAt: new Date("2026-07-18"),
+      summary: "",
+      title: "某AI公司发布新模型",
+      topicProfile: { keywords: ["AI"] },
+      url: "https://example.com/extraction-breakdown",
+    },
+    extraction,
+    { sourceQualityFactor: 0.8 },
+  );
+  assert(draft !== null, "Extraction draft must exist for relevant extraction.");
+  assert(
+    draft!.scoringBreakdown!.importanceScore === 92,
+    "scoringBreakdown.importanceScore must come from extraction.importanceScore.",
+  );
+  assert(
+    draft!.scoringBreakdown!.sourceQualityFactor === 0.8,
+    "scoringBreakdown.sourceQualityFactor must come from caller option.",
+  );
+  assert(
+    draft!.scoringBreakdown!.relevanceScore === 85,
+    "scoringBreakdown.relevanceScore must come from extraction.relevanceScore.",
+  );
+}
+
+function testLegacyEventResolvesBackwardCompatibleBreakdown(): void {
+  // 旧事件 rawAiResponse 没有 scoring 块，resolveScoringBreakdown 必须回退到
+  // v1 兼容：importanceScore = relevanceScore（旧 score 字段），sourceQualityFactor = 1。
+  const legacyRaw = { mode: "llm", extraction: { relevanceScore: 70 } } as Record<
+    string,
+    unknown
+  >;
+  const breakdown = resolveScoringBreakdown({
+    rawAiResponse: legacyRaw,
+    score: 70,
+    gravityScore: 40,
+  });
+  assert(
+    breakdown.scoringVersion === 1,
+    "Legacy event without scoring block must resolve to scoringVersion 1.",
+  );
+  assert(
+    breakdown.importanceScore === 70,
+    "Legacy event importanceScore must fall back to relevance/score.",
+  );
+  assert(
+    breakdown.sourceQualityFactor === 1,
+    "Legacy event sourceQualityFactor must default to 1.",
+  );
+  assert(
+    breakdown.preferenceAdjustment === 1,
+    "Legacy event preferenceAdjustment must default to 1.",
   );
 }
 

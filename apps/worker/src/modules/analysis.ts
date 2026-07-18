@@ -16,6 +16,7 @@ import {
   completeTaskRun,
   failTaskRun,
   getPrismaClient,
+  getSourceQualitySummary,
   listFetchedItemsForAnalysis,
   markItemFiltered,
   upsertIntelligenceEventFromItem,
@@ -132,6 +133,7 @@ function extractionToAiEventExtraction(
     entities: extraction.entities ?? [],
     followUpSuggestion: extraction.followUpSuggestion ?? "",
     importanceExplanation: extraction.importanceExplanation,
+    importanceScore: extraction.importanceScore,
     isRelevant: extraction.isRelevant,
     matchedKeywords: extraction.matchedKeywords,
     noiseReason: extraction.noiseReason,
@@ -204,6 +206,12 @@ export async function runAnalysisCycle(
             adapter: ai.adapter,
             model: ai.model,
           });
+          // Issue #170: 接入 #176 的 Source 质量数据作为独立维度。
+          const sourceQualityFactor = await resolveSourceQualityFactor(
+            prisma,
+            item.organizationId,
+            item.sourceId,
+          );
           draft = createIntelligenceEventDraftFromExtraction(
             {
               fetchedAt: item.fetchedAt,
@@ -215,8 +223,13 @@ export async function runAnalysisCycle(
               url: item.url,
             },
             extractionToAiEventExtraction(extraction),
+            { sourceQualityFactor },
           );
-          rawAiResponse = { mode: "llm", extraction };
+          rawAiResponse = {
+            mode: "llm",
+            extraction,
+            scoring: draft?.scoringBreakdown,
+          };
           llmNoiseReason = extraction.noiseReason;
           usedLlm = true;
           summaryStatus = "READY";
@@ -261,6 +274,7 @@ export async function runAnalysisCycle(
           mode: hasReadyContent ? "explainable-rules-ai-failed" : "explainable-rules-content-gate",
           relevance: ruleDecision,
           contentStatus: item.contentStatus,
+          scoring: draft?.scoringBreakdown,
           ...(usedFallback ? { llmFallback: true } : {}),
         };
         summaryStatus = hasReadyContent ? "AI_FAILED" : summaryStatusForContent(item.contentStatus);
@@ -344,4 +358,49 @@ export async function runAnalysisCycle(
   }
 
   return result;
+}
+
+/**
+ * Issue #170: 从 #176 持久化的 Source.qualityScore 派生 sourceQualityFactor。
+ *
+ * qualityScore 是 0-1 区间的命中率/噪声率综合分（见 getSourceQualitySummary）。
+ * 映射策略：
+ *   - qualityScore >= 0.6（高命中）→ factor 1.0（中性偏正，不过度奖励）
+ *   - qualityScore 0.3-0.6 → factor 0.7（轻度降权）
+ *   - qualityScore < 0.3 或 CANDIDATE/MUTED/REJECTED 状态 → factor 0.5（显著降权）
+ *   - 无数据 / 查询失败 → factor 1.0（中性，不惩罚未知来源）
+ *
+ * 计算 fallback 安全：任何异常返回 1.0，不阻塞分析主流程。
+ */
+async function resolveSourceQualityFactor(
+  prisma: ReturnType<typeof getPrismaClient>,
+  organizationId: string,
+  sourceId: string,
+): Promise<number> {
+  try {
+    const summary = await getSourceQualitySummary(prisma, {
+      organizationId,
+      sourceId,
+    });
+    if (!summary) {
+      return 1;
+    }
+    // MUTED/REJECTED 来源的内容理论上不应进入分析，但防御性降权。
+    if (summary.status === "MUTED" || summary.status === "REJECTED") {
+      return 0.5;
+    }
+    const q = summary.qualityScore;
+    if (!Number.isFinite(q) || q === 0) {
+      // qualityScore=0 且 stale=true 表示数据未就绪，按中性处理。
+      return 1;
+    }
+    if (q >= 0.6) return 1;
+    if (q >= 0.3) return 0.7;
+    return 0.5;
+  } catch (error) {
+    process.stderr.write(
+      `[analysis-cycle] getSourceQualitySummary failed for source ${sourceId}: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return 1;
+  }
 }

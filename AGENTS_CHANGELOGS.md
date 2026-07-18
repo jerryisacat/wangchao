@@ -1,5 +1,18 @@
 ## 2026-07-18
 
+### Refactor: Issue #170 分离情报相关性重要性与综合评分
+
+- Cause: gravityScore 是单一混合分数，相关性相同的 item 但重要性/来源质量不同时 gravityScore 仍相同。
+- Changed:
+  - `packages/core/src/relevance.ts`：新增 `relevanceScore`/`importanceScore`/`sourceQualityFactor`/`preferenceAdjustment` 独立维度；版本化 `SCORING_FORMULA_VERSION`；`calculateGravityScore` 组合四维度，旧事件兼容懒重算。
+  - `packages/ai/src/event-extraction.ts`：AI JSON schema 新增独立分数字段，prompt 更新，parser 解析 + fallback。
+  - `packages/ai/src/event-extraction.fixtures.ts`：新增评分维度 fixture。
+  - `packages/core/src/index.fixtures.ts`：新增评分维度测试（相关性相同但重要性/来源质量不同，gravityScore 不同）。
+  - `apps/worker/src/modules/analysis.ts`：分析 cycle 消费新维度，resolveSourceQualityFactor 复用 #176 getSourceQualitySummary。
+- Files: `packages/core/src/{relevance,index.fixtures}.ts`, `packages/ai/src/{event-extraction,event-extraction.fixtures}.ts`, `apps/worker/src/modules/analysis.ts`。
+- Verification: core + ai + worker typecheck + fixtures ✓；全仓 typecheck/lint/test/build/diff-check ✓（Node 26）。
+- Notes / Risk: 无 schema migration（独立维度存 rawAiResponse JSON + gravityScore 组合）；批量审查在 Stage 2 末尾补。未部署、未关闭 Issue。Stage 2 批量 push。
+
 ### Feat: Issue #167 自然语言 Topic 草案生成与确认流程
 
 - Cause: `topics/new/page.tsx` 提交后直接创建；`topic-profile.ts` 只是分词和固定模板；没有草案状态、预览、确认/修改步骤。
