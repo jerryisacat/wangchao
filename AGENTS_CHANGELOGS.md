@@ -1,5 +1,13 @@
 ## 2026-07-18
 
+### Docs: 同步 SPEC 对齐 Stage 1 已完成进度
+
+- Cause: Task 1.1–1.5 已分别完成、验证并推送，但实施计划缺少当前完成检查点，且 `DEVELOPE_LOGS.md` 的 Task 1.5 Follow-up 仍停留在提交前状态。
+- Changed: 在实施计划 Stage 1 顶部新增 Task/Issue/状态/已验证 commit 表；只将已有独立远端提交的 Task 1.1–1.5 标为完成。修正 Task 1.5 最终门禁、commit/push 与远端核验记录；明确 Task 1.6 仅完成需求调研、尚未进入 RED→GREEN，不计为完成。
+- Files: `.hermes/plans/2026-07-17_183453-spec-alignment-implementation-plan.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification: 对照 `git log` 核验五个任务 commit；检查工作树仅包含上述文档；执行 `git diff --check`。
+- Notes / Risk: 本次仅同步事实性开发进度，不修改产品 SPEC、代码、Schema、运行命令或部署配置；推送 feature branch 不部署、不关闭 Issue。
+
 ### Feat: Issue #163 主 Worker 多组织公平调度与 tenant fencing
 
 - Cause: 默认 Worker fetch 仍只执行 default workspace；durable queue drain 与 cron fetch 没有共享总 deadline，也缺少稳定 actor、per-org 审计/错误边界和真实双组织隔离证明。

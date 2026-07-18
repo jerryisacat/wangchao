@@ -10,8 +10,9 @@
 - Scope: eligible Organization/稳定 actor 查询、单一 main deadline、durable drain 后剩余预算、多组织串行公平调度、per-org outer TaskRun/错误边界/安全摘要、tenant destructive fencing 与真实 PostgreSQL integration。
 - Alignment: fresh self-hosted 默认 workspace 继续由 `ensureDefaultWorkspace` 兼容；ACTIVE actor 按 OWNER→ADMIN→MEMBER/createdAt/id 选择；A 失败不阻断 B；总预算耗尽的剩余组织只返回 `SKIPPED_BUDGET`；workspace pipeline 不自行枚举或创建 outer TaskRun。
 - Bugs fixed: `mergeSemanticEvents` 的 merge target/item/archive 路径此前缺少 organization fence；`markItemFiltered` repository 仅按 item id 更新；dedup catch 曾输出 raw error；standalone budget fixture 曾因 per-org reset 产生假阳性。
-- Verification: DB/Worker fixtures 与 focused typecheck/lint；disposable PostgreSQL 16 replay 0001→0017；真实双组织 suite 覆盖 eligibility、repository/destructive isolation、production workspace pipeline、A fail/B success、TaskRun/UsageEvent/DeliveryLog scope。DeepSeek V4 Pro 两次只读审计均因 provider silent 超过 deadline 被终止，未返回 verdict；父 Agent 完成关键不变量审计。
-- Follow-up: 全仓 gates、文档收口、独立 commit/push 后进入 Task 1.6 / #164；不部署、不关闭 Issue。
+- Verification: DB/Worker fixtures 与 focused typecheck/lint；disposable PostgreSQL 16 replay 0001→0017；真实双组织 suite 覆盖 eligibility、repository/destructive isolation、production workspace pipeline、A fail/B success、TaskRun/UsageEvent/DeliveryLog scope；最终全仓 typecheck/lint/test/build/db validate/diff-check 与 added-lines 安全扫描通过。DeepSeek V4 Pro 两次只读审计均因 provider silent 超过 deadline 被终止，未返回 verdict；父 Agent 完成关键不变量审计。
+- Completion: 已以 `4ca9467 feat:实现主Worker多组织公平调度` 独立提交并推送到 `feat/spec-alignment-160`；本地与远端 SHA 已核对一致，未部署、未关闭 Issue。
+- Follow-up: Task 1.6 / #164 反馈信号契约尚未编码；已完成 Issue、SPEC 和现有 DB/Core/Worker 调用链调研，下一步从 RED fixture 开始。
 
 ## Stage 1 / Task 1.4: TaskRun claim / lease / consume（#162）
 
