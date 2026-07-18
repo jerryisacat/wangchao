@@ -4,6 +4,15 @@
 
 ## 2026-07-18
 
+## Stage 2 / Task 2.2: WEB 与公告列表页采集（#168）
+
+- Phase: implementation plan Stage 2 Task 2.2。
+- Scope: 统一 SourceAdapter 契约 fetch(source)->NormalizedSourceItem[]、adapter registry 按 kind 分发、RSS 薄包装零行为变更、WEB adapter 静态 HTML 解析（linkedom）、SSRF/body-size/redirect/encoding/限速防护、typed error + 重试、幂等。
+- Alignment: SPEC §5.3 初期信源支持 RSS/Atom、公开网页与官方公告列表页。
+- Verification: sources/worker/db 三包 typecheck + fixtures 全绿；全仓 typecheck/lint/test/build/diff-check 通过；DeepSeek V4 Pro 只读审计 APPROVED（Critical 0 / Important 2: 选择器配置无 UI 入口+RSS body-size 一致性，均非正确性 bug / Minor 3）。
+- Completion: 本次 commit 后不 push（Stage 2 批量 push）；未部署、未关闭 Issue。
+- Follow-up: WEB adapter 选择器配置 UI 入口属后续增强；候选 WEB 观察属 #169 范围。
+
 ## Stage 2 / Task 2.1: Source 质量持久化与治理（#176）
 
 - Phase: implementation plan Stage 2 Task 2.1。

@@ -9,10 +9,9 @@ import {
   upsertFetchedItems,
   listExpiredCandidateSources,
 } from "@wangchao/db";
-import { fetchRssFeed } from "@wangchao/sources";
-import { getCandidateObservationLimit, sleep, pLimit } from "./env.js";
+import { pLimit, sleep, getCandidateObservationLimit } from "./env.js";
 import { isCycleShuttingDown, isCycleTimeExhausted } from "./lifecycle.js";
-import { mapFetchedSourceItem } from "./fetch.js";
+import { fetchSourceItemsForKind, mapFetchedSourceItem } from "./fetch.js";
 
 export async function runSourceGovernanceObservationCycle(
   prisma: ReturnType<typeof getPrismaClient>,
@@ -75,7 +74,7 @@ export async function runCandidateObservationCycle(
     candidates.map((source) => limit(async () => {
       if (isCycleShuttingDown() || isCycleTimeExhausted()) return;
       try {
-        const items = await fetchRssFeed(source.url);
+        const items = await fetchSourceItemsForKind(source, {});
         const writtenItems = await upsertFetchedItems(prisma, items.map((item) =>
           mapFetchedSourceItem(source, item, {
             ...item.rawMetadata,

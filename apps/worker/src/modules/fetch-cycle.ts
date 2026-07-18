@@ -2,7 +2,7 @@ import {
   autoMuteFailingSources,
   classifyTaskRunError,
   getPrismaClient,
-  listActiveRssSourcesForFetch,
+  listActiveSourcesForFetch,
   recordUsageEvent,
 } from "@wangchao/db";
 import { runAnalysisCycle } from "./analysis.js";
@@ -61,7 +61,7 @@ export async function runFetchCycleForWorkspace(
   prisma: PrismaClient,
   workspace: WorkspaceScope,
 ): Promise<WorkerFetchCycleResult> {
-  const sources = await listActiveRssSourcesForFetch(prisma, {
+  const sources = await listActiveSourcesForFetch(prisma, {
     organizationId: workspace.organizationId,
   });
   const result: WorkerFetchCycleResult = {

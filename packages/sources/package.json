@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node -e \"import('./dist/discovery.fixtures.js').then((m) => m.runSourceDiscoveryFixtures()).then(() => import('./dist/parser.fixtures.js')).then((m) => m.runSourceParserFixtures()).then(() => import('./dist/adapters.fixtures.js')).then((m) => m.runAdaptersFixtures())\"",
+    "test": "tsc -p tsconfig.json && node -e \"import('./dist/discovery.fixtures.js').then((m) => m.runSourceDiscoveryFixtures()).then(() => import('./dist/parser.fixtures.js')).then((m) => m.runSourceParserFixtures()).then(() => import('./dist/adapters.fixtures.js')).then((m) => m.runAdaptersFixtures()).then(() => import('./dist/web-source.fixtures.js')).then((m) => m.runWebSourceFixtures())\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {

@@ -555,6 +555,7 @@ export async function listCandidateRssSourcesForObservation(
       topicId: true,
       name: true,
       url: true,
+      kind: true,
     },
   });
 }
@@ -809,6 +810,38 @@ export async function listActiveRssSourcesForFetch(
       topicId: true,
       name: true,
       url: true,
+      kind: true,
+    },
+  });
+}
+
+/**
+ * Unified fetch-scheduling query for Issue #168: returns ACTIVE sources of
+ * every supported kind (RSS, WEB) whose parent Topic is ACTIVE. The worker
+ * dispatches each record to its adapter by `record.kind`. Replaces the
+ * RSS-only `listActiveRssSourcesForFetch` for the main fetch cycle; the RSS
+ * variant is retained for candidate observation which is still RSS-only.
+ */
+export async function listActiveSourcesForFetch(
+  prisma: PrismaClient,
+  scope: TenantScope,
+): Promise<FetchedSourceRecord[]> {
+  return prisma.source.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      status: "ACTIVE",
+      topic: {
+        status: "ACTIVE",
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      organizationId: true,
+      topicId: true,
+      name: true,
+      url: true,
+      kind: true,
     },
   });
 }

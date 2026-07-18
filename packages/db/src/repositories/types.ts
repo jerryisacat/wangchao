@@ -52,12 +52,19 @@ export interface CreateTopicWithRssSourceInput extends TenantScope {
   source: Omit<AttachRssSourceInput, "organizationId" | "topicId">;
 }
 
+/**
+ * Shape returned by fetch-scheduling queries (listActiveSourcesForFetch and
+ * listCandidateRssSourcesForObservation). `kind` drives adapter dispatch in the
+ * worker (RSS vs WEB). The field is optional only for legacy callers that
+ * never read it; new code must populate it from the `Source.kind` column.
+ */
 export interface FetchedSourceRecord {
   id: string;
   organizationId: string;
   topicId: string;
   name: string;
   url: string;
+  kind?: "RSS" | "WEB";
 }
 
 export interface NormalizedFetchedItemInput extends TopicScope {

@@ -136,6 +136,7 @@ export {
   getTopicById,
   listActiveSources,
   listActiveRssSourcesForFetch,
+  listActiveSourcesForFetch,
   listActiveTopics,
   listAllTopics,
   listAiModels,

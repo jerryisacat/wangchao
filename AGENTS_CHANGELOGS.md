@@ -1,5 +1,18 @@
 ## 2026-07-18
 
+### Feat: Issue #168 接入 WEB 与公告列表页采集
+
+- Cause: `listActiveRssSourcesForFetch()` 仅查 RSS，Worker 统一调 `fetchRssFeed()`，SourceKind.WEB 只有 Schema 预留。
+- Changed:
+  - `packages/sources/src/index.ts`：统一 `SourceAdapter` 契约 `fetch(source, options) -> NormalizedSourceItem[]`，registry 按 kind 分发；RSS adapter 薄包装 `fetchRssFeed`；WEB adapter 用 linkedom 静态解析，支持 itemSelector/titleSelector/linkSelector 配置 + 通用锚点 fallback，`<meta charset>` 复解码兜底。
+  - `packages/sources/package.json`：新增 linkedom 依赖。
+  - `apps/worker/src/modules/fetch.ts`：`fetchSourceItemsForKind` 统一 dispatch，kind 缺省默认 RSS；`FetchWebError`(带 status)/`UnknownSourceKindError`(非重试)，`isFetchRetryable` 覆盖 408/429/5xx/Abort/TypeError。
+  - `packages/db/src/repositories/source.ts`：`listActiveSourcesForFetch` 支持所有 kind（不再仅 RSS）。
+  - `apps/worker/src/{index.fixtures,modules/{fetch-cycle,governance}}.ts`、`packages/db/src/{index,repositories/types}.ts`：集成 + 5 个新 dispatch fixture。
+- Files: `packages/sources/src/index.ts`, `packages/sources/package.json`, `apps/worker/src/{modules/fetch,fetch-cycle,governance,index.fixtures}.ts`, `packages/db/src/repositories/{source,types}.ts`, `packages/db/src/index.ts`。
+- Verification: sources/worker/db typecheck + fixtures ✓；全仓 typecheck/lint/test/build/diff-check ✓；DeepSeek V4 Pro APPROVED（Critical 0 / Important 2 均非正确性 / Minor 3）。
+- Notes / Risk: WEB adapter 选择器配置无 Admin UI 入口（走通用 fallback，功能可用精度低），UI 属后续增强；候选 WEB 观察属 #169。未部署、未关闭 Issue。Stage 2 批量 push。
+
 ### Fix: Issue #176 持久化 Source 质量分并闭合自动降权/静默治理
 
 - Cause: `listSourceGovernanceReport()` 动态计算 qualityScore 不持久化；`recordSourceQualityObservation()` 只写 SourceObservation 不更新 Source.qualityScore；噪声推荐主要展示未进入评分和自动降权。
