@@ -148,6 +148,7 @@ export {
   listHighScoreEventPagesForDiscovery,
   listBriefingsPage,
   listItemsPendingContentCapture,
+  listEligibleWorkerWorkspaces,
   listOrganizationMemberships,
   listPreferenceMemoryForDashboard,
   listRecentActiveSourcePagesForDiscovery,
@@ -233,6 +234,7 @@ export {
   type UpsertPreferenceMemoryInput,
   type UpdateSourceGovernanceStatusInput,
   type WorkspaceSeed,
+  type WorkerWorkspaceActor,
 } from "./repositories.js";
 export {
   getUserLifecycleStatus,

@@ -710,10 +710,12 @@ async function verifySemanticMergeClearsArchivedMatchKeys(): Promise<void> {
       },
     },
     intelligenceEvent: {
-      findMany: async () => [
-        { eventItems: [], id: "event-merge", primaryItemId: "item-merge" },
-      ],
-      findUnique: async () => {
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.findMany" });
+        return [{ eventItems: [], id: "event-merge", primaryItemId: "item-merge" }];
+      },
+      findFirst: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.findFirst" });
         return { eventItems: [], id: "event-keep", primaryItemId: "item-keep" };
       },
       updateMany: async (args: unknown) => {
@@ -734,6 +736,7 @@ async function verifySemanticMergeClearsArchivedMatchKeys(): Promise<void> {
   } as unknown as PrismaClient;
 
   await mergeSemanticEvents(prisma, {
+    organizationId: "org-semantic",
     keepEventId: "event-keep",
     mergeEventIds: ["event-merge"],
     reason: "same real-world event",
@@ -746,6 +749,10 @@ async function verifySemanticMergeClearsArchivedMatchKeys(): Promise<void> {
   assert(relationData[0]?.role === "SECONDARY", "Merged item must become a secondary report.");
   const itemUpdate = readArgsByName(calls, "item.updateMany");
   assert(
+    readRecord(itemUpdate.where, "semantic.item.where").organizationId === "org-semantic",
+    "Semantic duplicate item updates must be organization fenced.",
+  );
+  assert(
     readRecord(itemUpdate.data, "semantic.item.data").status === "DUPLICATE",
     "Merged items must become DUPLICATE.",
   );
@@ -756,6 +763,21 @@ async function verifySemanticMergeClearsArchivedMatchKeys(): Promise<void> {
   assert(archived.status === "ARCHIVED", "Merged event must be archived.");
   assert(archived.eventHash === null, "Archived merged event must release eventHash.");
   assert(archived.titleHash === null, "Archived merged event must stop fuzzy matching.");
+  const keepWhere = readRecord(
+    readArgsByName(calls, "intelligenceEvent.findFirst").where,
+    "semantic.keep.where",
+  );
+  const mergeWhere = readRecord(
+    readArgsByName(calls, "intelligenceEvent.findMany").where,
+    "semantic.merge.where",
+  );
+  const archiveWhere = readRecord(
+    readArgsByName(calls, "intelligenceEvent.updateMany").where,
+    "semantic.archive.where",
+  );
+  assert(keepWhere.organizationId === "org-semantic", "Keep event lookup must be organization fenced.");
+  assert(mergeWhere.organizationId === "org-semantic", "Merge event lookup must be organization fenced.");
+  assert(archiveWhere.organizationId === "org-semantic", "Archive update must be organization fenced.");
 }
 
 function readArgs(

@@ -279,7 +279,7 @@ export async function runAnalysisCycle(
           ruleDecision,
           usedFallback,
         });
-        await markItemFiltered(prisma, item.id, noiseReason);
+        await markItemFiltered(prisma, { organizationId }, item.id, noiseReason);
         result.filteredItems += 1;
         await completeTaskRun(prisma, relevanceTask.id, {
           llmFallback: usedFallback,

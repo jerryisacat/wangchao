@@ -123,3 +123,34 @@ export async function ensureDefaultWorkspace(
     };
   });
 }
+
+export interface WorkerWorkspaceActor {
+  organizationId: string;
+  userId: string;
+}
+
+export async function listEligibleWorkerWorkspaces(
+  prisma: PrismaClient,
+): Promise<WorkerWorkspaceActor[]> {
+  const organizations = await prisma.organization.findMany({
+    where: {
+      memberships: { some: { user: { accountStatus: "ACTIVE" } } },
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      memberships: {
+        where: { user: { accountStatus: "ACTIVE" } },
+        orderBy: [{ role: "asc" }, { createdAt: "asc" }, { id: "asc" }],
+        select: { userId: true },
+        take: 1,
+      },
+    },
+  });
+  return organizations.flatMap((organization) => {
+    const actor = organization.memberships[0];
+    return actor
+      ? [{ organizationId: organization.id, userId: actor.userId }]
+      : [];
+  });
+}

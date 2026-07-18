@@ -17,7 +17,7 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:validate": "prisma validate --schema prisma/schema.prisma",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node -e \"await import('./dist/repositories.fixtures.js').then((m) => m.runRepositoryFixtures()).then(() => import('./dist/workspace-auth.fixtures.js').then((m) => m.runWorkspaceAuthFixtures())).then(() => import('./dist/user-lifecycle.fixtures.js').then((m) => m.runUserLifecycleFixtures())).then(() => import('./dist/task-run-schema.fixtures.js').then((m) => m.runTaskRunSchemaFixtures())).then(() => import('./dist/task-run.fixtures.js').then((m) => m.runTaskRunFixtures()))\"",
+    "test": "tsc -p tsconfig.json && node -e \"await import('./dist/repositories.fixtures.js').then((m) => m.runRepositoryFixtures()).then(() => import('./dist/workspace-auth.fixtures.js').then((m) => m.runWorkspaceAuthFixtures())).then(() => import('./dist/user-lifecycle.fixtures.js').then((m) => m.runUserLifecycleFixtures())).then(() => import('./dist/task-run-schema.fixtures.js').then((m) => m.runTaskRunSchemaFixtures())).then(() => import('./dist/task-run.fixtures.js').then((m) => m.runTaskRunFixtures())).then(() => import('./dist/worker-workspace.fixtures.js').then((m) => m.runWorkerWorkspaceFixtures()))\"",
     "test:migration-replay": "tsc -p tsconfig.json && node -e \"await import('./dist/migration-replay.fixtures.js').then((m) => m.runMigrationReplayFixtures())\"",
     "test:task-run-pg": "tsc -p tsconfig.json && node -e \"await import('./dist/task-run-pg.fixtures.js').then((m) => m.runTaskRunPgFixtures())\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"

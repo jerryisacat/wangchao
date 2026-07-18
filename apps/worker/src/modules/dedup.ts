@@ -1,5 +1,5 @@
 import { dedupEvent, type SemanticDedupCandidate, type SemanticDedupInput, type SemanticDedupResult } from "@wangchao/ai";
-import { getPrismaClient, mergeSemanticEvents } from "@wangchao/db";
+import { classifyTaskRunError, getPrismaClient, mergeSemanticEvents } from "@wangchao/db";
 import { createAnalysisRuntimeWithPlan } from "./runtime.js";
 import { readFloatEnv, readPositiveIntegerEnv } from "./env.js";
 import { isCycleShuttingDown, isCycleTimeExhausted } from "./lifecycle.js";
@@ -115,6 +115,7 @@ export async function runSemanticDedupCycle(
         );
         if (dedupResult.duplicateEventId && dedupResult.confidence >= DEDUP_THRESHOLD) {
           await mergeSemanticEvents(prisma, {
+            organizationId,
             keepEventId: dedupResult.duplicateEventId,
             mergeEventIds: [currentEvent.id],
             reason: `LLM语义聚类 (置信度 ${dedupResult.confidence.toFixed(2)}): ${dedupResult.reason}`,
@@ -122,7 +123,7 @@ export async function runSemanticDedupCycle(
           result.merged += 1;
         }
       } catch (error) {
-        console.warn(`[dedup] LLM dedup failed for event ${currentEvent.id}: ${error instanceof Error ? error.message : String(error)}`);
+        console.warn(`[dedup] LLM dedup failed for event ${currentEvent.id}: ${classifyTaskRunError(error)}`);
         result.skipped += 1;
       }
     }

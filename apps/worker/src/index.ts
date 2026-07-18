@@ -1,6 +1,11 @@
 import { disconnectPrismaClient } from "@wangchao/db";
 import { formatSafeError } from "./lib/safe-log.js";
-import { setupSignalHandlers } from "./modules/lifecycle.js";
+import {
+  getCycleRemainingMs,
+  resetCycleTimeBudget,
+  setupSignalHandlers,
+} from "./modules/lifecycle.js";
+import { getSoftTimeoutMs } from "./modules/env.js";
 import { runInstantPushCycle } from "./modules/instant-push.js";
 import { runSourceDiscoveryCycle } from "./modules/discovery.js";
 import { canUseCapturedContentForLlm, runAnalysisCycle, resolveFilteredNoiseReason } from "./modules/analysis.js";
@@ -16,7 +21,10 @@ import {
 } from "./modules/governance.js";
 import { emitStructuredLogStart, emitStructuredLogEnd } from "./modules/logging.js";
 import { runWorkerHealthCheck } from "./modules/health.js";
-import { runFetchCycle } from "./modules/fetch-cycle.js";
+import {
+  runFetchCycle,
+  runOrganizationFetchCycles,
+} from "./modules/organization-cycle.js";
 import {
   runTaskRunConsumerCycle,
   type TaskRunConsumerMetrics,
@@ -34,6 +42,8 @@ import type {
   ReportGenerationCycleResult,
   ReportGenerationInput,
   DiscoveryChannel,
+  OrganizationCycleResult,
+  RunOrganizationFetchCyclesOptions,
 } from "./modules/types.js";
 
 export type {
@@ -46,6 +56,8 @@ export type {
   ReportGenerationCycleResult,
   ReportGenerationInput,
   DiscoveryChannel,
+  OrganizationCycleResult,
+  RunOrganizationFetchCyclesOptions,
   TaskRunConsumerMetrics,
   TaskRunConsumerOptions,
 };
@@ -71,13 +83,45 @@ export {
 export { createAnalysisRuntimeWithPlan, createSourceRecommendationRuntime };
 export { runFetchCycle, runTaskRunConsumerCycle, runWorkerHealthCheck, runReportGeneration, runReportGenerationCycle };
 
+export interface MainCycleDeps {
+  resetCycleTimeBudget: (timeoutMs?: number) => void;
+  getCycleRemainingMs: () => number;
+  getSoftTimeoutMs: () => number;
+  runTaskRunConsumerCycle: () => Promise<TaskRunConsumerMetrics>;
+  runOrganizationFetchCycles: (
+    options?: RunOrganizationFetchCyclesOptions,
+  ) => Promise<OrganizationCycleResult>;
+}
+
+export async function runMainCycleOrchestrator(
+  deps: MainCycleDeps = createMainCycleDeps(),
+): Promise<{ taskRuns: TaskRunConsumerMetrics; fetch: OrganizationCycleResult }> {
+  deps.resetCycleTimeBudget(deps.getSoftTimeoutMs());
+  const taskRuns = await deps.runTaskRunConsumerCycle();
+  const remainingMs = deps.getCycleRemainingMs();
+  const fetch = await deps.runOrganizationFetchCycles(
+    remainingMs > 0
+      ? { overallBudgetMs: remainingMs }
+      : { budgetExhausted: true },
+  );
+  return { taskRuns, fetch };
+}
+
 export async function runMainWorkerCycle(): Promise<{
   taskRuns: TaskRunConsumerMetrics;
-  fetch: WorkerFetchCycleResult;
+  fetch: OrganizationCycleResult;
 }> {
-  const taskRuns = await runTaskRunConsumerCycle();
-  const fetch = await runFetchCycle();
-  return { taskRuns, fetch };
+  return runMainCycleOrchestrator();
+}
+
+function createMainCycleDeps(): MainCycleDeps {
+  return {
+    resetCycleTimeBudget,
+    getCycleRemainingMs,
+    getSoftTimeoutMs,
+    runTaskRunConsumerCycle: () => runTaskRunConsumerCycle(),
+    runOrganizationFetchCycles: (options) => runOrganizationFetchCycles(options),
+  };
 }
 
 export function describeWorker(): string {

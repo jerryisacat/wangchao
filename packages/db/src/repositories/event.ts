@@ -997,20 +997,27 @@ export async function listUnreadEvents(prisma: PrismaClient, scope: TopicScope) 
 export async function mergeSemanticEvents(
   prisma: PrismaClient,
   input: {
+    organizationId: string;
     keepEventId: string;
     mergeEventIds: string[];
     reason: string;
-    expectedOrganizationId?: string;
   },
 ) {
+  const mergeEventIds = [...new Set(input.mergeEventIds)];
+  if (mergeEventIds.includes(input.keepEventId)) {
+    throw new Error("Semantic merge target must not include the keep event.");
+  }
   return prisma.$transaction(async (tx) => {
     const [keepEvent, mergeEvents] = await Promise.all([
-      tx.intelligenceEvent.findUnique({
-        where: { id: input.keepEventId },
+      tx.intelligenceEvent.findFirst({
+        where: { id: input.keepEventId, organizationId: input.organizationId },
         include: { eventItems: true },
       }),
       tx.intelligenceEvent.findMany({
-        where: { id: { in: input.mergeEventIds } },
+        where: {
+          id: { in: mergeEventIds },
+          organizationId: input.organizationId,
+        },
         include: { eventItems: true },
       }),
     ]);
@@ -1019,8 +1026,8 @@ export async function mergeSemanticEvents(
       throw new Error(`Keep event ${input.keepEventId} not found.`);
     }
 
-    if (input.expectedOrganizationId && keepEvent.organizationId !== input.expectedOrganizationId) {
-      throw new Error(`Keep event ${input.keepEventId} does not belong to organization ${input.expectedOrganizationId}`);
+    if (mergeEvents.length !== mergeEventIds.length) {
+      throw new Error("One or more semantic merge targets are outside the organization scope.");
     }
 
     const mergeEventMap = new Map(mergeEvents.map((event) => [event.id, event]));
@@ -1032,7 +1039,7 @@ export async function mergeSemanticEvents(
     }> = [];
     const allDuplicateItemIds: string[] = [];
 
-    for (const mergeEventId of input.mergeEventIds) {
+    for (const mergeEventId of mergeEventIds) {
       const mergeEvent = mergeEventMap.get(mergeEventId);
       if (!mergeEvent) continue;
 
@@ -1062,14 +1069,20 @@ export async function mergeSemanticEvents(
 
     if (allDuplicateItemIds.length > 0) {
       await tx.item.updateMany({
-        where: { id: { in: allDuplicateItemIds } },
+        where: {
+          id: { in: allDuplicateItemIds },
+          organizationId: input.organizationId,
+        },
         data: { status: "DUPLICATE" },
       });
     }
 
-    if (input.mergeEventIds.length > 0) {
+    if (mergeEventIds.length > 0) {
       await tx.intelligenceEvent.updateMany({
-        where: { id: { in: input.mergeEventIds } },
+        where: {
+          id: { in: mergeEventIds },
+          organizationId: input.organizationId,
+        },
         data: {
           eventHash: null,
           status: "ARCHIVED",

@@ -20,6 +20,7 @@
     "task-runs": "node dist/index.js --task-runs",
     "start": "node dist/index.js",
     "test": "tsc -p tsconfig.json && node -e \"await import('./dist/index.fixtures.js').then((m) => m.runWorkerFixtures())\"",
+    "test:organization-pg": "tsc -p tsconfig.json && node -e \"await import('./dist/modules/organization-cycle-pg.fixtures.js').then((m) => m.runOrganizationCyclePgFixtures())\"",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

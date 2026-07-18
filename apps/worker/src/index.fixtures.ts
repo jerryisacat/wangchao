@@ -1,9 +1,13 @@
 import { canUseCapturedContentForLlm, mapFetchedSourceItem, resolveFilteredNoiseReason } from "./index.js";
+import { runOrganizationCycleFixtures } from "./modules/organization-cycle.fixtures.js";
 import { runTaskRunConsumerFixtures } from "./modules/task-run-consumer.fixtures.js";
+import { runMainCycleOrchestratorFixtures } from "./modules/main-cycle.fixtures.js";
 import { TelegramDeliveryError, escapeTelegramHtml, formatEventForInstantPush, sendTelegramMessage, truncateTelegramMessage } from "./telegram.js";
 
 export async function runWorkerFixtures(): Promise<void> {
   await runTaskRunConsumerFixtures();
+  await runOrganizationCycleFixtures();
+  await runMainCycleOrchestratorFixtures();
   const embedded = mapFetchedSourceItem(
     { id: "source-1", organizationId: "org-1", topicId: "topic-1", name: "Source", url: "https://example.com/feed" },
     {

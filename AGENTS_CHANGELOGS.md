@@ -1,5 +1,21 @@
 ## 2026-07-18
 
+### Feat: Issue #163 主 Worker 多组织公平调度与 tenant fencing
+
+- Cause: 默认 Worker fetch 仍只执行 default workspace；durable queue drain 与 cron fetch 没有共享总 deadline，也缺少稳定 actor、per-org 审计/错误边界和真实双组织隔离证明。
+- Changed:
+  - `listEligibleWorkerWorkspaces()` 只枚举含 ACTIVE 用户的 Organization，按 Organization createdAt/id 稳定排序，并按 OWNER→ADMIN→MEMBER、Membership createdAt/id 选一个 actor。
+  - 默认 main cycle 只初始化一次总预算，先 drain durable queue，再将剩余预算传给多组织 orchestrator；每组织获得动态公平预算和独立 SOURCE_FETCH outer TaskRun。总预算耗尽时剩余组织仅返回 `SKIPPED_BUDGET`，不创建 TaskRun；摘要只含 organizationId/status/fixed errorClass。
+  - `runFetchCycleForWorkspace()` 保持 exact workspace 业务函数；standalone `runFetchCycle()` 移至 organization orchestrator 并初始化独立预算。新增 deterministic main/organization fixtures 与 fail-closed PostgreSQL integration。
+  - tenant 审计修复 `mergeSemanticEvents()` 全读写路径和 `markItemFiltered()` 的 organization fencing；dedup 日志改为固定低基数 error class。
+- Files: `packages/db/src/{index,repositories.fixtures,worker-workspace.fixtures}.ts`, `packages/db/src/repositories/{workspace,event,source}.ts`, `packages/db/package.json`, `apps/worker/src/{index,index.fixtures}.ts`, `apps/worker/src/modules/{organization-cycle,organization-cycle.fixtures,organization-cycle-pg.fixtures,main-cycle.fixtures,lifecycle,types,fetch-cycle,analysis,dedup}.ts`, `apps/worker/package.json`, `CODEGUIDE.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification:
+  - DB/Worker focused typecheck、fixtures、lint、`git diff --check` ✓。
+  - Disposable PostgreSQL 16 完整 replay 0001→0017 ✓；真实双组织 integration 覆盖 ACTIVE actor、repository/destructive mutation fencing、production workspace pipeline、A fail/B success、TaskRun/UsageEvent/DeliveryLog isolation ✓。
+  - 最终全仓 `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` / `pnpm db:validate` / `git diff --check` ✓。
+  - DeepSeek V4 Pro 两次只读审计因 provider silent 超过 15/10 分钟 deadline 被终止，均无 verdict；未伪称 APPROVED。父 Agent 复核 main deadline、actor enum ordering、consumer 无二次 reset、TaskRun settlement、循环依赖与 PG fail-closed guard。
+- Notes / Risk: disposable DB 未配置外部 AI credential，analysis/dedup 子 cycle 按设计以固定 `configuration` class graceful isolation；真实外部 provider 质量不属于本任务。未部署、未关闭 Issue。
+
 ### Feat: Issue #162 TaskRun claim / lease / consume durable queue
 
 - Cause: Web 手动抓取/信源发现此前直接创建 `RUNNING` TaskRun，但主 Worker 不消费这些行；缺少原子 claim、lease fencing、stale recovery 与数据库级 active idempotency，并发 Worker 可能重复执行或让旧执行者覆盖新结果。

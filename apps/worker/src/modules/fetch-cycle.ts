@@ -1,7 +1,6 @@
 import {
   autoMuteFailingSources,
   classifyTaskRunError,
-  ensureDefaultWorkspace,
   getPrismaClient,
   listActiveRssSourcesForFetch,
   recordUsageEvent,
@@ -15,7 +14,7 @@ import {
   runSourceGovernanceObservationCycle,
 } from "./governance.js";
 import { getFetchConcurrency, pLimit, getTotalConcurrency, readPositiveIntegerEnv } from "./env.js";
-import { isCycleShuttingDown, isCycleTimeExhausted, resetCycleStartTime } from "./lifecycle.js";
+import { isCycleShuttingDown, isCycleTimeExhausted } from "./lifecycle.js";
 import { runPreferenceLearningCycle } from "./preference.js";
 import { runSemanticDedupCycle } from "./dedup.js";
 import { runTelegramDeliveryCycle } from "./telegram-delivery.js";
@@ -44,25 +43,6 @@ type FetchSubCycleName =
 export function formatSubCycleFailure(cycleName: FetchSubCycleName, error: unknown): string {
   const errorClass = classifyTaskRunError(error);
   return `[fetch-cycle] ${cycleName} sub-cycle failed: ${errorClass}`;
-}
-
-/**
- * Public wrapper: resolves the default workspace and delegates to
- * `runFetchCycleForWorkspace`. Preserves the legacy standalone entry-point
- * behavior (DATABASE_URL guard, ensureDefaultWorkspace, resetCycleStartTime).
- *
- * Lane 2B durable consumers that have already claimed a TaskRun should call
- * `runFetchCycleForWorkspace` directly with their resolved workspace scope.
- */
-export async function runFetchCycle(): Promise<WorkerFetchCycleResult> {
-  resetCycleStartTime();
-  if (!process.env.DATABASE_URL) {
-    throw new Error("Database connection is required to run the worker fetch pipeline.");
-  }
-
-  const prisma = getPrismaClient();
-  const workspace = await ensureDefaultWorkspace(prisma);
-  return runFetchCycleForWorkspace(prisma, workspace);
 }
 
 /**

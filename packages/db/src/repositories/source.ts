@@ -1014,17 +1014,18 @@ export async function listRecentActiveSourcePagesForDiscovery(
 
 export async function markItemFiltered(
   prisma: PrismaClient,
+  scope: TenantScope,
   itemId: string,
   reason: string,
 ) {
-  const item = await prisma.item.findUnique({
-    where: { id: itemId },
+  const item = await prisma.item.findFirst({
+    where: { id: itemId, organizationId: scope.organizationId },
     select: { rawMetadata: true },
   });
   const rawMetadata = isRecord(item?.rawMetadata) ? item.rawMetadata : {};
 
   return prisma.item.update({
-    where: { id: itemId },
+    where: { id: itemId, organizationId: scope.organizationId },
     data: {
       rawMetadata: toInputJson({
         ...rawMetadata,
