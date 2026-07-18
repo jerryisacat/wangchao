@@ -10,3 +10,4 @@ export * from "./relevance.js";
 export * from "./preference.js";
 export * from "./render-event.js";
 export * from "./render-briefing.js";
+export * from "./dedup.js";

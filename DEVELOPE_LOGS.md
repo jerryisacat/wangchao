@@ -4,6 +4,15 @@
 
 ## 2026-07-18
 
+## Stage 2 / Task 2.6: 扩大语义去重覆盖（#171）
+
+- Phase: implementation plan Stage 2 Task 2.6。
+- Scope: canonicalizeTitle 归一化、canonicalizeEntity 别名表、recallDedupCandidates 脱离阅读状态、bounded lookback 基于 createdAt（48h 可配置）、无 AI 时 deterministic fallback 不按 URL 隔绝。
+- Alignment: SPEC §5.4 Deduplication 阶段。
+- Verification: core/ai/db/worker 4 包 typecheck + fixtures 全绿；全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后 Stage 2 全部完成，批量 push。
+- Follow-up: 批量审查在 Stage 2 末尾补；写入期 fuzzy 匹配统一用 canonicalizeTitle 属后续。
+
 ## Stage 2 / Task 2.5: 分离综合评分维度（#170）
 
 - Phase: implementation plan Stage 2 Task 2.5。

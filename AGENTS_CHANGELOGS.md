@@ -1,5 +1,15 @@
 ## 2026-07-18
 
+### Fix: Issue #171 扩大跨源语义去重覆盖
+
+- Cause: 不同 URL/标题同一事件无法合并；已读旧事件无法与新报道合并；别名实体无法匹配；晚到报道漏入窗口；无 AI 时按 URL 隔绝跨源候选。
+- Changed:
+  - `packages/core/src/{index,index.fixtures}.ts`：新增 `canonicalizeTitle`（去前缀噪声/标点/全角半角归一化）、`canonicalizeEntity`（内置 12 常见科技公司中英别名 + 去法人后缀）、`shareCanonicalEntity`。
+  - `apps/worker/src/modules/dedup.ts`：`recallDedupCandidates` 去掉 `status: "UNREAD"` 过滤（脱离阅读状态）；bounded lookback 基于 `createdAt`（默认 48h，可配置 `WANGCHAO_DEDUP_LOOKBACK_HOURS`）；无 AI 时 `deterministicDedupDecision` 安全 fallback（canonical title 0.9 + alias+时间窗 0.75）；新增可选 `deps` 参数支持 fixture 注入。
+- Files: `packages/core/src/{index,index.fixtures}.ts`, `apps/worker/src/modules/dedup.ts`。
+- Verification: core/ai/db/worker typecheck + fixtures ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 内置别名表仅 12 条（长尾需后续补充）；写入期 fuzzy 匹配未同步升级（属后续）；真实 PG 端到端缺失（mock 精确模拟）。未部署、未关闭 Issue。Stage 2 批量 push。
+
 ### Refactor: Issue #170 分离情报相关性重要性与综合评分
 
 - Cause: gravityScore 是单一混合分数，相关性相同的 item 但重要性/来源质量不同时 gravityScore 仍相同。

@@ -9,6 +9,7 @@ import {
   generatePreferenceDeltas,
   resolveScoringBreakdown,
 } from "./index.js";
+import { runDedupFixtures } from "./dedup.fixtures.js";
 import type { AiEventExtraction } from "./index.js";
 import { checkInstantPushQuota, resolveEffectivePlan } from "./quota.js";
 
@@ -39,6 +40,7 @@ export function runCoreFixtures(): void {
   testRuleDraftEmitsScoringBreakdown();
   testExtractionDraftEmitsScoringBreakdown();
   testLegacyEventResolvesBackwardCompatibleBreakdown();
+  runDedupFixtures();
 }
 
 function testInstantPushPlanAccess(): void {
