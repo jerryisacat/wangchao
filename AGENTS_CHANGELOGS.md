@@ -1,5 +1,17 @@
 ## 2026-07-18
 
+### Fix: Issue #177 专题报告正确记录证据不足状态
+
+- Cause: 报告证据不足时未正确落库 INSUFFICIENT_DATA，可能错误标记 COMPLETED。
+- Changed:
+  - `packages/db/src/repositories/report.ts`：新增 `completeInsufficientReport()`（显式终态参数，状态转换校验，幂等）。
+  - `apps/worker/src/modules/report.ts`：证据不足时调 completeInsufficientReport 而非 completeReport，写 coverageNote。
+  - `apps/worker/src/modules/report.fixtures.ts`：4 断言 fixture。
+  - `apps/web/src/app/reports/[reportId]/page.tsx`：UI 显示 INSUFFICIENT_DATA + coverageNote + 下一步。
+- Files: `packages/db/src/repositories/report.ts`, `packages/db/src/index.ts`, `apps/worker/src/modules/{report,report.fixtures}.ts`, `apps/worker/src/index.fixtures.ts`, `apps/web/src/app/reports/[reportId]/page.tsx`。
+- Verification: worker report fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 无 schema migration；批量审查 Stage 末尾补。未部署、未关闭 Issue。Stage 4 批量 push。
+
 ### Feat: Issue #165 闭合反馈到采集分析简报的偏好学习
 
 - Cause: SPEC §5.6 明确"待闭合"：偏好未回灌到 relevance filter、AI event extraction prompt、source scheduling。§7.4 "抓取+筛选"两环未闭合。

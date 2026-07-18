@@ -26,6 +26,7 @@ export {
   createDeliveryLog,
   createPaymentInvoice,
   createReport,
+  completeInsufficientReport,
   deleteByokCredential,
   deleteCcpaymentCredential,
   deletePreferenceMemory,

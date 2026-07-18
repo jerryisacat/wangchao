@@ -1,6 +1,7 @@
 import { type EventExtractionAdapter } from "@wangchao/ai";
 import {
   completeReport,
+  completeInsufficientReport,
   completeTaskRun,
   createTaskRun,
   failReport,
@@ -17,20 +18,111 @@ import type { ReportGenerationCycleResult, ReportGenerationInput } from "./types
 
 type PrismaClient = ReturnType<typeof getPrismaClient>;
 
+/**
+ * Minimal structural shape of a Report row as read by runReportGeneration.
+ * Kept loose (no Prisma-generated types) so fakes in report.fixtures.ts can
+ * satisfy it without spinning up the full Prisma client.
+ */
+interface ReportRow {
+  id: string;
+  organizationId: string;
+  question: string;
+  status: "PENDING" | "GENERATING" | "COMPLETED" | "FAILED" | "INSUFFICIENT_DATA";
+}
+
+/**
+ * Minimal structural shape of an evidence event as consumed by the report
+ * generator (see ReportEvidenceEvent in packages/db). Only the fields the
+ * orchestration actually reads are required.
+ */
+interface ReportEvidenceEventLike {
+  eventId: string;
+  title: string;
+  summary: string;
+  category: string | null;
+  score: number;
+  occurredAt: Date | null;
+  topicId: string;
+  sourceId: string | null;
+  sourceName: string | null;
+  topicName: string;
+}
+
+interface CompletedTaskRunLike {
+  id: string;
+}
+
+/**
+ * Injectable dependencies for runReportGeneration. Production callers omit
+ * `deps` and rely on module-level imports; tests pass a fake prisma + stubbed
+ * db ops + a `resolveAiRuntime` hook so the orchestration can be exercised
+ * without a real database or LLM adapter.
+ *
+ * Function signatures are intentionally structural (loose) rather than
+ * `typeof <db export>`: the real db functions return rich Prisma row objects,
+ * but the orchestration only reads a handful of fields. Keeping the dep
+ * signatures minimal lets fakes stay small and readable.
+ */
+export interface ReportGenerationDeps {
+  prisma: PrismaClient;
+  updateReportStatus: (prisma: PrismaClient, reportId: string, status: "GENERATING" | "COMPLETED" | "FAILED" | "INSUFFICIENT_DATA") => Promise<void>;
+  completeReport: (prisma: PrismaClient, reportId: string, input: {
+    markdown: string;
+    summary: string;
+    eventCount: number;
+    itemCount: number;
+    topicIds: string[];
+    sourceIds: string[];
+    coverageNote: string;
+    metadata?: unknown;
+  }) => Promise<void>;
+  completeInsufficientReport: (prisma: PrismaClient, reportId: string, input: {
+    markdown: string;
+    summary: string;
+    eventCount: number;
+    itemCount: number;
+    topicIds: string[];
+    sourceIds: string[];
+    coverageNote: string;
+    metadata?: unknown;
+  }) => Promise<void>;
+  failReport: (prisma: PrismaClient, reportId: string, errorMessage: string) => Promise<void>;
+  createTaskRun: (prisma: PrismaClient, input: { input: unknown; organizationId: string; type: string }) => Promise<CompletedTaskRunLike>;
+  completeTaskRun: (prisma: PrismaClient, taskRunId: string, output: Record<string, unknown>) => Promise<void>;
+  failTaskRun: (prisma: PrismaClient, taskRunId: string, error: unknown) => Promise<void>;
+  searchReportEvidenceEvents: (prisma: PrismaClient, scope: { organizationId: string }, query: { keywords: string[]; limit?: number }) => Promise<ReportEvidenceEventLike[]>;
+  recordUsageEvent: (prisma: PrismaClient, input: Record<string, unknown>) => Promise<void>;
+  resolveAiRuntime: (
+    prisma: PrismaClient,
+    organizationId: string,
+  ) => Promise<{ adapter: EventExtractionAdapter; model: string } | null>;
+}
+
 export async function runReportGeneration(
   input: ReportGenerationInput,
+  deps?: ReportGenerationDeps,
 ): Promise<void> {
-  if (!process.env.DATABASE_URL) {
+  const prisma = deps?.prisma ?? (process.env.DATABASE_URL ? getPrismaClient() : null);
+  if (!prisma) {
     throw new Error("Database connection is required to generate reports.");
   }
+  const updateStatus = deps?.updateReportStatus ?? updateReportStatus;
+  const complete = deps?.completeReport ?? completeReport;
+  const completeInsufficient = deps?.completeInsufficientReport ?? completeInsufficientReport;
+  const fail = deps?.failReport ?? failReport;
+  const createRun = deps?.createTaskRun ?? createTaskRun;
+  const completeRun = deps?.completeTaskRun ?? completeTaskRun;
+  const failRun = deps?.failTaskRun ?? failTaskRun;
+  const searchEvents = deps?.searchReportEvidenceEvents ?? searchReportEvidenceEvents;
+  const recordUsage = deps?.recordUsageEvent ?? recordUsageEvent;
+  const resolveAiRuntime = deps?.resolveAiRuntime ?? createAnalysisRuntimeWithPlan;
 
-  const prisma = getPrismaClient();
-  const report = await prisma.report.findFirst({
+  const report = (await prisma.report.findFirst({
     where: {
       id: input.reportId,
       organizationId: input.organizationId,
     },
-  });
+  })) as ReportRow | null;
 
   if (!report) {
     throw new Error("Report not found.");
@@ -39,9 +131,9 @@ export async function runReportGeneration(
     return;
   }
 
-  await updateReportStatus(prisma, report.id, "GENERATING");
+  await updateStatus(prisma, report.id, "GENERATING");
 
-  const taskRun = await createTaskRun(prisma, {
+  const taskRun = await createRun(prisma, {
     input: { reportId: report.id, question: report.question },
     organizationId: input.organizationId,
     type: "REPORT_GENERATION",
@@ -49,14 +141,14 @@ export async function runReportGeneration(
 
   try {
     const keywords = extractReportKeywords(report.question);
-    const events = await searchReportEvidenceEvents(
+    const events = await searchEvents(
       prisma,
       { organizationId: input.organizationId },
       { keywords, limit: 30 },
     );
 
     if (events.length < 3) {
-      await completeReport(prisma, report.id, {
+      await completeInsufficient(prisma, report.id, {
         markdown: buildInsufficientDataReport(report.question, events),
         summary: "情报库中没有足够的相关信息来生成专题报告。",
         eventCount: events.length,
@@ -66,17 +158,14 @@ export async function runReportGeneration(
         coverageNote: `情报库中仅找到 ${events.length} 条相关事件（建议阈值 ≥ 3）。建议创建相关主题或补充信源。`,
         metadata: { keywords, threshold: 3 },
       });
-      await completeTaskRun(prisma, taskRun.id, {
+      await completeRun(prisma, taskRun.id, {
         outcome: "insufficient-data",
         eventCount: events.length,
       });
       return;
     }
 
-    const aiRuntime = await createAnalysisRuntimeWithPlan(
-      prisma,
-      input.organizationId,
-    );
+    const aiRuntime = await resolveAiRuntime(prisma, input.organizationId);
     const ai = aiRuntime
       ? { adapter: aiRuntime.adapter, model: aiRuntime.model }
       : null;
@@ -93,7 +182,7 @@ export async function runReportGeneration(
       new Set(events.map((e) => e.sourceId).filter((id): id is string => Boolean(id))),
     );
 
-    await completeReport(prisma, report.id, {
+    await complete(prisma, report.id, {
       markdown,
       summary,
       eventCount: events.length,
@@ -108,12 +197,12 @@ export async function runReportGeneration(
         usedAi: Boolean(ai),
       },
     });
-    await completeTaskRun(prisma, taskRun.id, {
+    await completeRun(prisma, taskRun.id, {
       outcome: "completed",
       eventCount: events.length,
     });
 
-    await recordUsageEvent(prisma, {
+    await recordUsage(prisma, {
       metadata: {
         keywords,
         reportId: report.id,
@@ -130,8 +219,8 @@ export async function runReportGeneration(
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    await failReport(prisma, report.id, errorMessage);
-    await failTaskRun(prisma, taskRun.id, error);
+    await fail(prisma, report.id, errorMessage);
+    await failRun(prisma, taskRun.id, error);
     throw error;
   }
 }

@@ -4,6 +4,14 @@
 
 ## 2026-07-18
 
+## Stage 4 / Task 4.1: ReportStatus INSUFFICIENT_DATA（#177）
+
+- Phase: implementation plan Stage 4 Task 4.1。
+- Scope: 证据不足时显式落库 INSUFFICIENT_DATA（非 COMPLETED）、completeInsufficientReport()、状态转换校验、重复执行幂等、UI 显示 coverageNote。
+- Alignment: SPEC §5.8 ReportStatus 状态机。
+- Verification: worker report fixture（4 断言：不足证据落 INSUFFICIENT_DATA、幂等、coverageNote、状态转换）+ 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 4 批量 push）；未部署、未关闭 Issue。
+
 ## Stage 3 / Task 3.5: PreferenceMemory 全链路消费（#165）
 
 - Phase: implementation plan Stage 3 Task 3.5。

@@ -122,6 +122,48 @@ export async function completeReport(
   });
 }
 
+/**
+ * Mark a report as INSUFFICIENT_DATA when the evidence base does not meet the
+ * generation threshold (see SPEC §5.8 / Issue #177). Writes the same payload
+ * shape as `completeReport` but records the terminal `INSUFFICIENT_DATA`
+ * status so UI can surface coverageNote + next-step guidance instead of
+ * presenting a half-empty "completed" report.
+ */
+export async function completeInsufficientReport(
+  prisma: PrismaClient,
+  reportId: string,
+  input: {
+    markdown: string;
+    summary: string;
+    rangeStart?: Date | null;
+    rangeEnd?: Date | null;
+    eventCount: number;
+    itemCount: number;
+    topicIds: string[];
+    sourceIds: string[];
+    coverageNote: string;
+    metadata?: unknown;
+  },
+): Promise<void> {
+  await prisma.report.update({
+    where: { id: reportId },
+    data: {
+      status: "INSUFFICIENT_DATA",
+      markdown: input.markdown,
+      summary: input.summary,
+      rangeStart: input.rangeStart ?? null,
+      rangeEnd: input.rangeEnd ?? null,
+      eventCount: input.eventCount,
+      itemCount: input.itemCount,
+      topicIds: input.topicIds,
+      sourceIds: input.sourceIds,
+      coverageNote: input.coverageNote,
+      generatedAt: new Date(),
+      metadata: input.metadata as Prisma.InputJsonValue,
+    },
+  });
+}
+
 export async function failReport(
   prisma: PrismaClient,
   reportId: string,
