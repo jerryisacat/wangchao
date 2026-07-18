@@ -10,6 +10,7 @@ import { runDailyBriefingCycle, runPeriodBriefingCycle } from "./briefing.js";
 import { fetchSourceWithRetries, runArticleFetchCycle } from "./fetch.js";
 import {
   runCandidateObservationCycle,
+  runCandidateQualityObservationCycle,
   runExpiredCandidateReviewCycle,
   runSourceGovernanceObservationCycle,
 } from "./governance.js";
@@ -127,6 +128,15 @@ export async function runFetchCycleForWorkspace(
   }
 
   await runCandidateObservationCycle(prisma, workspace.organizationId);
+
+  // Issue #169：Candidate Item 抓取后立即跑隔离质量评估，持久化 hit/noise/duplicate
+  // 指标到 SourceObservation + Source.qualityScore，供到期晋升决策复用。
+  try {
+    await runCandidateQualityObservationCycle(prisma, workspace.organizationId);
+  } catch (error) {
+    result.failedSubCycles.push("candidate-quality-observation");
+    process.stderr.write(formatSubCycleFailure("source-governance", error) + "\n");
+  }
 
   await runArticleFetchCycle(prisma, workspace.organizationId);
 
@@ -300,7 +310,10 @@ export async function runFetchCycleForWorkspace(
       await recordUsageEvent(prisma, {
         metadata: {
           autoApproved: expiryResult.autoApproved,
+          autoMuted: expiryResult.autoMuted,
           autoRejected: expiryResult.autoRejected,
+          extended: expiryResult.extended,
+          pendingManual: expiryResult.pendingManual,
           reviewed: expiryResult.reviewed,
           source: "worker-expired-candidate-review",
         },

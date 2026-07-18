@@ -1,5 +1,18 @@
 ## 2026-07-18
 
+### Feat: Issue #169 重建 Candidate 观察与晋升闭环
+
+- Cause: Candidate observation 可抓 Item 但分析查询要求 ACTIVE；到期审核以 IntelligenceEvent 为依据导致正常 Candidate 全部 REJECTED。
+- Changed:
+  - `packages/db/src/repositories/util.ts`：新增 `recommendCandidatePromotion()` 纯函数（APPROVE/OBSERVE/MUTE/REJECT/INSUFFICIENT_SAMPLE），样本不足/抓取失败保护，阈值基于 hitRate/noiseRate/qualityScore。
+  - `packages/db/src/repositories/source.ts`：新增 `computeCandidateQualityMetrics()` 按 source 聚合 relevance 结果为 hit/noise/duplicate 指标。
+  - `apps/worker/src/modules/governance.ts`：Candidate 隔离 observation cycle，不进正式 Event/Briefing；到期审核走 recommendCandidatePromotion 而非 IntelligenceEvent 判据；样本不足延长观察期。
+  - `apps/worker/src/{index.fixtures,modules/fetch-cycle}.ts`：集成 + fixture。
+  - `packages/db/src/{index,repositories.fixtures}.ts`：导出 + 2 个新 fixture（8 分支纯函数 + 聚合）。
+- Files: `packages/db/src/repositories/{util,source}.ts`, `packages/db/src/{index,repositories.fixtures}.ts`, `apps/worker/src/modules/{governance,fetch-cycle}.ts`, `apps/worker/src/index.fixtures.ts`。
+- Verification: db 8 分支纯函数 + 聚合 fixture；worker governance fixture；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: Candidate Item 隔离由 listFetchedItemsForAnalysis 的 source.status=ACTIVE 过滤保证；批量审查在 Stage 2 末尾补。未部署、未关闭 Issue。Stage 2 批量 push。
+
 ### Feat: Issue #168 接入 WEB 与公告列表页采集
 
 - Cause: `listActiveRssSourcesForFetch()` 仅查 RSS，Worker 统一调 `fetchRssFeed()`，SourceKind.WEB 只有 Schema 预留。

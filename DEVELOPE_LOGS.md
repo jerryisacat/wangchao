@@ -4,6 +4,15 @@
 
 ## 2026-07-18
 
+## Stage 2 / Task 2.3: Candidate 观察与晋升（#169）
+
+- Phase: implementation plan Stage 2 Task 2.3。
+- Scope: Candidate 隔离 relevance/quality observation 不进正式 pipeline、复用 #176 getSourceQualitySummary + decideAutomaticGovernance、recommendCandidatePromotion 纯函数（APPROVE/OBSERVE/MUTE/REJECT/INSUFFICIENT_SAMPLE）、computeCandidateQualityMetrics 按 source 聚合、14 天默认窗口样本不足继续观察、抓取失败不误拒绝、Candidate Item 不进正式简报。
+- Alignment: SPEC §5.2/§5.3 Candidate Source、§8.1/§8.2 信源发现治理。
+- Verification: db typecheck + 8 分支纯函数测试 + candidate quality 聚合测试；worker governance fixture；全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 2 批量 push）；未部署、未关闭 Issue。
+- Follow-up: 批量审查在 Stage 2 末尾补。
+
 ## Stage 2 / Task 2.2: WEB 与公告列表页采集（#168）
 
 - Phase: implementation plan Stage 2 Task 2.2。

@@ -183,6 +183,85 @@ export function decideAutomaticGovernance(
   return null;
 }
 
+/**
+ * Candidate 观察期晋升建议（SPEC §5.2 / Issue #169）。
+ *
+ * 与 {@link recommendSourceStatus} 的区别：前者面向已 ACTIVE 源的降权建议，
+ * 本函数面向 Candidate 14 天观察期结束的晋升决策，并显式区分
+ * INSUFFICIENT_SAMPLE —— 样本不足时不得 APPROVE 也不得 REJECT，必须继续观察。
+ *
+ * 输入来自 {@link getSourceQualitySummary}（持久化 qualityScore + 最新 observation
+ * 的 hit/noise/duplicate 指标）+ Candidate 期间抓取到的 Item 总数。
+ *
+ * 返回值语义：
+ * - `APPROVE`：质量达标，建议晋升为 ACTIVE（自动执行）。
+ * - `OBSERVE`：指标模糊或刚达标，继续观察一轮（不自动变更状态，可延长窗口）。
+ * - `MUTE`：噪声/重复率高，建议静默（自动执行，受 decideAutomaticGovernance 保护）。
+ * - `REJECT`：明确低质，建议拒绝（**仅建议**，不自动执行，保留人工确认）。
+ * - `INSUFFICIENT_SAMPLE`：样本不足（抓取失败、Item 过少、无 observation），
+ *   **不得拒绝**，必须延长观察期。
+ *
+ * trustScore 反映 discovery 阶段的相关性；若 discovery 给出的 trustScore 本身
+ * 极低（<0.2），即使样本不足也不再无限观察，但走 OBSERVE 而非 REJECT，
+ * 避免误杀 discovery 误判。
+ */
+export function recommendCandidatePromotion(input: {
+  status: "ACTIVE" | "CANDIDATE" | "MUTED" | "REJECTED";
+  qualityScore: number;
+  trustScore: number;
+  totalItems: number;
+  hitRate: number | null;
+  noiseRate: number | null;
+  duplicateRate: number | null;
+  stale: boolean;
+  hasRecentFetchFailure?: boolean;
+}): "APPROVE" | "OBSERVE" | "MUTE" | "REJECT" | "INSUFFICIENT_SAMPLE" {
+  // 非 CANDIDATE 状态不走晋升路径；调用方不应把 ACTIVE/MUTED/REJECTED 源喂进来。
+  // 防御性返回 OBSERVE，交由 applyAutomaticSourceGovernance / 人工处理。
+  if (input.status !== "CANDIDATE") {
+    return "OBSERVE";
+  }
+
+  // 抓取失败保护：近期抓取失败时不得仅凭空样本拒绝。
+  if (input.hasRecentFetchFailure && input.totalItems === 0) {
+    return "INSUFFICIENT_SAMPLE";
+  }
+
+  // 样本不足保护（SPEC §5.2「自动发现不等于自动信任」+ Issue #169 约束）。
+  if (input.totalItems < SOURCE_QUALITY_MIN_SAMPLE) {
+    return "INSUFFICIENT_SAMPLE";
+  }
+
+  // 无 observation 指标时无法判断质量，继续观察。
+  if (input.hitRate === null || input.noiseRate === null) {
+    return "INSUFFICIENT_SAMPLE";
+  }
+
+  // 晋升阈值：hitRate 达标、噪声和重复率可控、qualityScore 达标。
+  if (
+    input.hitRate >= 0.25 &&
+    input.noiseRate < 0.4 &&
+    input.qualityScore >= 50
+  ) {
+    return "APPROVE";
+  }
+
+  // 明确低质：噪声极高 + 命中极低 → 建议 REJECT（仅建议，不自动执行）。
+  if (input.noiseRate >= 0.75 && input.hitRate < 0.1) {
+    return "REJECT";
+  }
+
+  // 中间地带：噪声偏高或质量偏低 → 建议 MUTE（可自动执行）。
+  if (
+    input.noiseRate >= SOURCE_GOVERNANCE_AUTO_MUTE_NOISE ||
+    input.qualityScore < SOURCE_GOVERNANCE_AUTO_MUTE_QUALITY
+  ) {
+    return "MUTE";
+  }
+
+  return "OBSERVE";
+}
+
 export function ratio(value: number, total: number): number {
   if (total === 0) {
     return 0;

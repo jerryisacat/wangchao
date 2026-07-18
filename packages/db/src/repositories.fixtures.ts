@@ -18,6 +18,9 @@ import {
   updateDashboardEventState,
   updateTopic,
   upsertIntelligenceEventFromItem,
+  recommendCandidatePromotion,
+  computeCandidateQualityMetrics,
+  SOURCE_QUALITY_MIN_SAMPLE,
 } from "./repositories.js";
 import {
   getInstantPushSettings,
@@ -50,6 +53,8 @@ export async function runRepositoryFixtures(): Promise<void> {
   await verifyAutomaticGovernanceDoesNotAutoReject();
   await verifyGovernanceReportExposesPersistedAndDerivedQualityScore();
   await verifyGetSourceQualitySummaryReadsPersistedValue();
+  await verifyRecommendCandidatePromotionContract();
+  await verifyComputeCandidateQualityMetricsAggregatesBySource();
   await verifyFuzzyEventMatchUpdatesExistingEvent();
   await verifySemanticMergeClearsArchivedMatchKeys();
   await verifyInstantPushSettingsUseTelegramCredential();
@@ -1996,4 +2001,121 @@ async function verifyCryptoSmokeTestExecutes(): Promise<void> {
 
   // cryptoSmokeTest must not throw.
   cryptoSmokeTest();
+}
+
+async function verifyRecommendCandidatePromotionContract(): Promise<void> {
+  // 非 CANDIDATE 防御性返回 OBSERVE。
+  assert(
+    recommendCandidatePromotion({
+      status: "ACTIVE",
+      qualityScore: 80,
+      trustScore: 0.9,
+      totalItems: 50,
+      hitRate: 0.5,
+      noiseRate: 0.1,
+      duplicateRate: 0.05,
+      stale: false,
+    }) === "OBSERVE",
+    "Non-CANDIDATE sources must defensively return OBSERVE.",
+  );
+
+  // 抓取失败 + 零样本 → INSUFFICIENT_SAMPLE（不得误拒绝）。
+  assert(
+    recommendCandidatePromotion({
+      status: "CANDIDATE",
+      qualityScore: 0,
+      trustScore: 0.5,
+      totalItems: 0,
+      hitRate: null,
+      noiseRate: null,
+      duplicateRate: null,
+      stale: true,
+      hasRecentFetchFailure: true,
+    }) === "INSUFFICIENT_SAMPLE",
+    "Fetch failure with zero samples must return INSUFFICIENT_SAMPLE, not REJECT.",
+  );
+
+  // 样本不足 → INSUFFICIENT_SAMPLE。
+  assert(
+    recommendCandidatePromotion({
+      status: "CANDIDATE",
+      qualityScore: 60,
+      trustScore: 0.7,
+      totalItems: SOURCE_QUALITY_MIN_SAMPLE - 1,
+      hitRate: 0.3,
+      noiseRate: 0.2,
+      duplicateRate: 0.05,
+      stale: false,
+    }) === "INSUFFICIENT_SAMPLE",
+    "Below-min-sample candidates must continue observation.",
+  );
+
+  // 高质量晋升。
+  assert(
+    recommendCandidatePromotion({
+      status: "CANDIDATE",
+      qualityScore: 55,
+      trustScore: 0.8,
+      totalItems: 30,
+      hitRate: 0.3,
+      noiseRate: 0.3,
+      duplicateRate: 0.1,
+      stale: false,
+    }) === "APPROVE",
+    "High-quality candidate with sufficient sample must be APPROVE.",
+  );
+
+  // 明确低质 → REJECT（仅建议，不自动执行）。
+  assert(
+    recommendCandidatePromotion({
+      status: "CANDIDATE",
+      qualityScore: 10,
+      trustScore: 0.2,
+      totalItems: 50,
+      hitRate: 0.05,
+      noiseRate: 0.8,
+      duplicateRate: 0.1,
+      stale: false,
+    }) === "REJECT",
+    "Extreme noise + low hit must suggest REJECT (recommendation only).",
+  );
+
+  // 中间地带 → MUTE。
+  assert(
+    recommendCandidatePromotion({
+      status: "CANDIDATE",
+      qualityScore: 20,
+      trustScore: 0.5,
+      totalItems: 40,
+      hitRate: 0.15,
+      noiseRate: 0.6,
+      duplicateRate: 0.1,
+      stale: false,
+    }) === "MUTE",
+    "Borderline noise/quality must suggest MUTE.",
+  );
+}
+
+async function verifyComputeCandidateQualityMetricsAggregatesBySource(): Promise<void> {
+  const metrics = computeCandidateQualityMetrics([
+    { sourceId: "src-1", topicId: "topic-1", isRelevant: true, isNoise: false, isDuplicate: false },
+    { sourceId: "src-1", topicId: "topic-1", isRelevant: false, isNoise: true, isDuplicate: false },
+    { sourceId: "src-2", topicId: "topic-1", isRelevant: true, isNoise: false, isDuplicate: true },
+  ]);
+
+  const src1 = metrics.get("src-1");
+  assert(src1 !== undefined, "src-1 must have metrics.");
+  assert(src1!.totalItems === 2, `src-1 totalItems must be 2, got ${src1!.totalItems}.`);
+  assert(src1!.hitItems === 1, `src-1 hitItems must be 1, got ${src1!.hitItems}.`);
+  assert(src1!.filteredItems === 1, `src-1 filteredItems must be 1, got ${src1!.filteredItems}.`);
+  assert(src1!.hitRate === 0.5, `src-1 hitRate must be 0.5, got ${src1!.hitRate}.`);
+  assert(src1!.noiseRate === 0.5, `src-1 noiseRate must be 0.5, got ${src1!.noiseRate}.`);
+  assert(src1!.duplicateRate === 0, `src-1 duplicateRate must be 0, got ${src1!.duplicateRate}.`);
+
+  const src2 = metrics.get("src-2");
+  assert(src2 !== undefined, "src-2 must have metrics.");
+  assert(src2!.totalItems === 1, "src-2 totalItems must be 1.");
+  assert(src2!.hitItems === 0, "src-2 relevant+duplicate must not count as hit.");
+  assert(src2!.duplicateItems === 1, "src-2 duplicateItems must be 1.");
+  assert(src2!.duplicateRate === 1, "src-2 duplicateRate must be 1.");
 }

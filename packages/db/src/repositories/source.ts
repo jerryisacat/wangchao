@@ -560,6 +560,159 @@ export async function listCandidateRssSourcesForObservation(
   });
 }
 
+/**
+ * 列出 Candidate 源下用于隔离观察评估的 Item（Issue #169）。
+ *
+ * 与 {@link listFetchedItemsForAnalysis} 的关键区别：本查询**不**要求
+ * `source.status === "ACTIVE"`，因此 Candidate 源的 Item 能被读到。
+ * 这些 Item 只用于隔离的相关性/质量评估，**不会**进入正式 analysis pipeline
+ * （后者仍受 ACTIVE 过滤约束），也不会进入 briefing/dashboard/instant-push
+ * （这些查询都强制 `primaryItem.source.status === "ACTIVE"`）。
+ *
+ * 返回字段刻意精简：只包含规则 relevance 评估需要的输入，避免泄漏
+ * topic profile 之外的信息到观察路径。
+ */
+export async function listCandidateItemsForObservation(
+  prisma: PrismaClient,
+  scope: TenantScope,
+  limit = 200,
+): Promise<
+  Array<{
+    id: string;
+    sourceId: string;
+    topicId: string;
+    title: string;
+    summary: string | null;
+    url: string;
+    contentStatus: "PENDING" | "READY" | "INSUFFICIENT" | "FETCH_FAILED" | "UNSUPPORTED";
+    status: "FETCHED" | "FILTERED" | "ANALYZED" | "DUPLICATE" | "ERROR";
+    publishedAt: Date | null;
+    fetchedAt: Date;
+    topicProfile: unknown;
+  }>
+> {
+  const items = await prisma.item.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      source: {
+        status: "CANDIDATE",
+        topic: { status: "ACTIVE" },
+      },
+    },
+    select: {
+      id: true,
+      sourceId: true,
+      topicId: true,
+      title: true,
+      summary: true,
+      url: true,
+      contentStatus: true,
+      status: true,
+      publishedAt: true,
+      fetchedAt: true,
+      topic: { select: { profile: true } },
+    },
+    orderBy: [{ fetchedAt: "desc" }],
+    take: limit,
+  });
+
+  return items.map((item) => ({
+    contentStatus: item.contentStatus,
+    fetchedAt: item.fetchedAt,
+    id: item.id,
+    publishedAt: item.publishedAt,
+    sourceId: item.sourceId,
+    status: item.status,
+    summary: item.summary,
+    title: item.title,
+    topicId: item.topicId,
+    topicProfile: item.topic.profile,
+    url: item.url,
+  }));
+}
+
+export interface CandidateQualityMetrics {
+  topicId: string;
+  sourceId: string;
+  totalItems: number;
+  hitItems: number;
+  filteredItems: number;
+  duplicateItems: number;
+  hitRate: number;
+  noiseRate: number;
+  duplicateRate: number;
+}
+
+/**
+ * 为 Candidate 源计算隔离的质量指标（Issue #169）。
+ *
+ * 复用 {@link getSourceQualitySummary} 已经持久化的 qualityScore/trustScore，
+ * 但 hit/noise/duplicate 在这里**独立重算**：Candidate 的 Item 永远不会关联
+ * IntelligenceEvent（analysis pipeline 受 ACTIVE 过滤约束），所以不能用正式
+ * hitRate 定义（"关联未归档事件的比例"）。这里用隔离的规则 relevance 决策
+ * 作为 hit 判据——@wangchao/core 的 evaluateRelevance 是确定性规则 fallback，
+ * 与正式 analysis 的 LLM 决策分离，不污染正式事件链。
+ *
+ * 返回按 sourceId 分组的指标聚合，供 recordSourceQualityObservation 持久化。
+ */
+export function computeCandidateQualityMetrics(
+  relevanceResults: Array<{
+    sourceId: string;
+    topicId: string;
+    isRelevant: boolean;
+    isNoise: boolean;
+    isDuplicate: boolean;
+  }>,
+): Map<string, CandidateQualityMetrics> {
+  const bySource = new Map<string, {
+    topicId: string;
+    totalItems: number;
+    hitItems: number;
+    filteredItems: number;
+    duplicateItems: number;
+  }>();
+
+  for (const result of relevanceResults) {
+    let bucket = bySource.get(result.sourceId);
+    if (!bucket) {
+      bucket = {
+        topicId: result.topicId,
+        totalItems: 0,
+        hitItems: 0,
+        filteredItems: 0,
+        duplicateItems: 0,
+      };
+      bySource.set(result.sourceId, bucket);
+    }
+    bucket.totalItems += 1;
+    if (result.isDuplicate) {
+      bucket.duplicateItems += 1;
+    }
+    if (result.isNoise) {
+      bucket.filteredItems += 1;
+    }
+    if (result.isRelevant && !result.isDuplicate) {
+      bucket.hitItems += 1;
+    }
+  }
+
+  const out = new Map<string, CandidateQualityMetrics>();
+  for (const [sourceId, bucket] of bySource) {
+    out.set(sourceId, {
+      topicId: bucket.topicId,
+      sourceId,
+      totalItems: bucket.totalItems,
+      hitItems: bucket.hitItems,
+      filteredItems: bucket.filteredItems,
+      duplicateItems: bucket.duplicateItems,
+      hitRate: ratio(bucket.hitItems, bucket.totalItems),
+      noiseRate: ratio(bucket.filteredItems, bucket.totalItems),
+      duplicateRate: ratio(bucket.duplicateItems, bucket.totalItems),
+    });
+  }
+  return out;
+}
+
 export async function recordSourceFetchFailure(
   prisma: PrismaClient,
   sourceId: string,
