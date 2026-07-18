@@ -68,6 +68,8 @@ export interface TelegramDeliveryResult {
   delivered: number;
   failed: number;
   skipped: number;
+  /** Deliveries that succeeded on attempt > 1 (recovered after a prior failure). */
+  retried: number;
 }
 
 export interface ReportGenerationCycleResult {

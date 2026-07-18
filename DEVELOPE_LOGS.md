@@ -4,6 +4,15 @@
 
 ## 2026-07-18
 
+## Stage 4 / Task 4.3: Telegram 重试补投（#179）
+
+- Phase: implementation plan Stage 4 Task 4.3。
+- Scope: 查询 FAILED/PENDING/stale 区分 retryable、attempt 上限+退避（基于 updatedAt）、手动补投、SENT 幂等不重复。
+- Alignment: SPEC §5.8 DeliveryLog。
+- Verification: worker telegram-delivery fixture（重试/幂等/退避/attempt 上限）+ 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 4 批量 push）；未部署、未关闭 Issue。
+- Follow-up: 无 schema migration（退避基于 updatedAt）；如需精确 nextAttemptAt 需独立 schema Issue。
+
 ## Stage 4 / Task 4.2: 报告正文证据集（#178）
 
 - Phase: implementation plan Stage 4 Task 4.2。

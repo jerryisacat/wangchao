@@ -1,5 +1,16 @@
 ## 2026-07-18
 
+### Fix: Issue #179 完善 Telegram 简报重试与补投
+
+- Cause: 第一次 500 后第二轮永不重试，FAILED 永久漏投。
+- Changed:
+  - `packages/db/src/repositories/delivery-log.ts`：新增 `claimDeliveryLog`（原子 claim，SENT/SKIPPED 返回 null，并发靠唯一约束）、`markDeliveryFailed`（attempt+1，退避基于 updatedAt，attempt 上限后 SKIPPED）。
+  - `apps/worker/src/modules/telegram-delivery.ts`：cycle 查询 FAILED/PENDING/stale 区分 retryable，claim→send→markSent/markFailed，SENT 幂等。
+  - `apps/worker/src/{index.fixtures,modules/types}.ts`：fixture + 类型。
+- Files: `packages/db/src/repositories/delivery-log.ts`, `packages/db/src/index.ts`, `apps/worker/src/modules/{telegram-delivery,types}.ts`, `apps/worker/src/index.fixtures.ts`。
+- Verification: worker telegram-delivery fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 无 schema migration（退避基于 updatedAt）；如需精确 nextAttemptAt 需独立 Issue。未部署、未关闭 Issue。Stage 4 批量 push。
+
 ### Feat: Issue #178 专题报告接入可追溯正文证据集
 
 - Cause: 报告 itemCount 硬编码 events.length；无 briefingCount/evidenceIds；AI prompt 无 provenance；未禁止联网补全。
