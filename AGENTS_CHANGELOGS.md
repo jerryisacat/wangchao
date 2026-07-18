@@ -1,5 +1,18 @@
 ## 2026-07-18
 
+### Feat: Issue #165 闭合反馈到采集分析简报的偏好学习
+
+- Cause: SPEC §5.6 明确"待闭合"：偏好未回灌到 relevance filter、AI event extraction prompt、source scheduling。§7.4 "抓取+筛选"两环未闭合。
+- Changed:
+  - `packages/core/src/preference.ts`：新增 `loadPreferenceSnapshotsByTopic`/`loadPreferenceSnapshotsForScheduling`（版本化 preference snapshot，可解释）。
+  - `packages/core/src/relevance.ts`：relevance filter 从 PreferenceMemory 动态合并 excludeScope/keywords（探索率硬下限防 filter bubble）。
+  - `packages/ai/src/event-extraction.ts`：system prompt 注入当前偏好上下文。
+  - `apps/worker/src/modules/{analysis,fetch-cycle}.ts`：source scheduling 偏好影响抓取频率/范围；用户编辑/删除偏好后下一轮生效。
+  - `packages/core/src/index.fixtures.ts`：10 个新 #165 fixture（偏好影响筛选/AI/调度/探索率/删除恢复）。
+- Files: `packages/core/src/{preference,relevance,index.fixtures}.ts`, `packages/ai/src/event-extraction.ts`, `apps/worker/src/modules/{analysis,fetch-cycle}.ts`。
+- Verification: core 10 新 fixture + ai event-extraction + worker fixtures ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 探索率硬下限防 filter bubble；真实 PG worker 端到端周期测试待补；批量审查 Stage 末尾补。未部署、未关闭 Issue。Stage 3 批量 push。
+
 ### Feat: Issue #175 补齐来源质量与评分校准反馈入口
 
 - Cause: events/[eventId] 详情页缺 SOURCE_QUALITY_UP/DOWN 入口；增强反馈未完整绑定。

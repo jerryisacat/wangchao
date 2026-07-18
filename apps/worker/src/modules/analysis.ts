@@ -4,11 +4,15 @@ import {
   type EventExtractionResult,
 } from "@wangchao/ai";
 import {
+  buildPreferenceSnapshot,
   buildTopicProfileContext,
   evaluateRelevance,
   createIntelligenceEventDraft,
   createIntelligenceEventDraftFromExtraction,
+  renderPreferenceGuidance,
   type AiEventExtraction,
+  type PreferenceMemoryEntry,
+  type PreferenceSnapshot,
   type RelevanceDecision,
 } from "@wangchao/core";
 import {
@@ -18,6 +22,7 @@ import {
   getPrismaClient,
   getSourceQualitySummary,
   listFetchedItemsForAnalysis,
+  listPreferenceMemoryForDashboard,
   markItemFiltered,
   upsertIntelligenceEventFromItem,
   recordUsageEvent,
@@ -55,6 +60,7 @@ function buildExtractionInput(
     topicName: string;
   },
   topicProfile: unknown,
+  preferenceGuidance?: string,
 ): {
   item: {
     id: string;
@@ -77,6 +83,7 @@ function buildExtractionInput(
       outputLanguage: string;
       terminologyRules?: string[];
     };
+    preferenceGuidance?: string;
   };
 } {
   const context = buildTopicProfileContext(topicProfile, {
@@ -97,6 +104,7 @@ function buildExtractionInput(
     topic: {
       ...context,
       languagePreferences: context.languagePreferences,
+      preferenceGuidance,
     },
   };
 }
@@ -157,6 +165,16 @@ export async function runAnalysisCycle(
     ? { adapter: aiRuntime.adapter as EventExtractionAdapter, model: aiRuntime.model }
     : null;
   const aiSource = aiRuntime?.source ?? "official";
+
+  // Issue #165: 加载该 workspace 全量 preference memory，按 topicId 构建 snapshot。
+  // snapshot 每轮每 topic 共享一次 RNG（explorationRollout 一致），
+  // 规则路径与 AI 路径使用同一 snapshot，保证 filter 与 prompt 偏好一致。
+  const preferenceSnapshotByTopic = await loadPreferenceSnapshotsByTopic(
+    prisma,
+    organizationId,
+    userId,
+  );
+
   const result = {
     analyzedItems: 0,
     createdOrUpdatedEvents: 0,
@@ -201,7 +219,14 @@ export async function runAnalysisCycle(
         });
 
         try {
-          const extractionInput = buildExtractionInput(item, item.topicProfile);
+          // Issue #165: 注入偏好指引到 AI extraction system prompt。
+          const snapshot = preferenceSnapshotByTopic.get(item.topicId) ?? null;
+          const preferenceGuidance = snapshot ? renderPreferenceGuidance(snapshot) : undefined;
+          const extractionInput = buildExtractionInput(
+            item,
+            item.topicProfile,
+            preferenceGuidance,
+          );
           const extraction = await extractEvent(extractionInput, {
             adapter: ai.adapter,
             model: ai.model,
@@ -249,15 +274,20 @@ export async function runAnalysisCycle(
       }
 
       if (!usedLlm) {
-        ruleDecision = evaluateRelevance({
-          fetchedAt: item.fetchedAt,
-          id: item.id,
-          publishedAt: item.publishedAt,
-          summary: item.summary,
-          title: item.title,
-          topicProfile: item.topicProfile,
-          url: item.url,
-        });
+        // Issue #165: 规则路径同样注入偏好 snapshot（mute/boost 影响筛选门槛）。
+        const snapshot = preferenceSnapshotByTopic.get(item.topicId) ?? null;
+        ruleDecision = evaluateRelevance(
+          {
+            fetchedAt: item.fetchedAt,
+            id: item.id,
+            publishedAt: item.publishedAt,
+            summary: item.summary,
+            title: item.title,
+            topicProfile: item.topicProfile,
+            url: item.url,
+          },
+          { preferenceSnapshot: snapshot },
+        );
         draft = createIntelligenceEventDraft(
           {
             fetchedAt: item.fetchedAt,
@@ -402,5 +432,52 @@ async function resolveSourceQualityFactor(
       `[analysis-cycle] getSourceQualitySummary failed for source ${sourceId}: ${error instanceof Error ? error.message : String(error)}\n`,
     );
     return 1;
+  }
+}
+
+/**
+ * Issue #165: 加载 workspace 全量 preference memory 并按 topicId 构建 snapshot。
+ *
+ * 每轮分析周期调用一次。每个 topic 共享一次 RNG（explorationRollout 在本轮
+ * 对该 topic 的所有 item 一致），确保 filter 与 prompt 偏好一致。
+ *
+ * 失败安全：任何异常返回空 Map（不注入偏好，退化到旧行为），不阻塞分析主流程。
+ * 上限 1000 条 preference memory 覆盖典型 workspace；超出按 updatedAt 排序取最新。
+ */
+async function loadPreferenceSnapshotsByTopic(
+  prisma: ReturnType<typeof getPrismaClient>,
+  organizationId: string,
+  userId: string,
+): Promise<Map<string, PreferenceSnapshot>> {
+  try {
+    const memories = await listPreferenceMemoryForDashboard(
+      prisma,
+      { organizationId, userId },
+      1000,
+    );
+    const entriesByTopic = new Map<string, PreferenceMemoryEntry[]>();
+    for (const memory of memories) {
+      const list = entriesByTopic.get(memory.topicId) ?? [];
+      list.push({
+        explanation: memory.explanation,
+        key: memory.key,
+        topicId: memory.topicId,
+        weight: memory.weight,
+      });
+      entriesByTopic.set(memory.topicId, list);
+    }
+    const snapshots = new Map<string, PreferenceSnapshot>();
+    for (const [topicId, entries] of entriesByTopic) {
+      snapshots.set(
+        topicId,
+        buildPreferenceSnapshot(entries, { topicId }),
+      );
+    }
+    return snapshots;
+  } catch (error) {
+    process.stderr.write(
+      `[analysis-cycle] loadPreferenceSnapshotsByTopic failed for org ${organizationId}: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return new Map();
   }
 }

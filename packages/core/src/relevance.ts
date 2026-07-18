@@ -3,6 +3,7 @@ import {
   readProfileRecord,
   readProfileStringList,
 } from "./topic-profile.js";
+import type { PreferenceSnapshot } from "./preference.js";
 
 const RELEVANCE_MAX_SCORE = 98;
 const RELEVANCE_BASE_POSITIVE = 72;
@@ -88,12 +89,70 @@ export interface AiEventExtraction {
   title: string;
 }
 
-export function evaluateRelevance(item: IntelligenceInputItem): RelevanceDecision {
+export interface EvaluateRelevanceOptions {
+  /**
+   * Issue #165: 偏好快照。传入后，evaluateRelevance 会：
+   *   - 把 snapshot.mutedKeywords + mutedScopes 合并进 excludeScope 匹配集
+   *     （仅当 explorationRollout.muteKeywords/muteScopes 为 true 时生效，
+   *      即探索窗口关闭时；探索窗口打开时不应用 mute，放过该类内容）。
+   *   - 把 snapshot.boostedKeywords 合并进 keywords 匹配集（只加不减）。
+   * 不传或传 null/undefined 时行为与改动前完全一致（向后兼容）。
+   */
+  preferenceSnapshot?: PreferenceSnapshot | null;
+}
+
+export function evaluateRelevance(
+  item: IntelligenceInputItem,
+  options?: EvaluateRelevanceOptions,
+): RelevanceDecision {
   const profile = readProfileRecord(item.topicProfile);
-  const keywords = readProfileStringList(profile.keywords);
-  const entities = readProfileStringList(profile.entities);
-  const includeScopes = readProfileStringList(profile.includeScope);
-  const excludeScopes = readProfileStringList(profile.excludeScope);
+  const profileKeywords = readProfileStringList(profile.keywords);
+  const profileEntities = readProfileStringList(profile.entities);
+  const profileIncludeScopes = readProfileStringList(profile.includeScope);
+  const profileExcludeScopes = readProfileStringList(profile.excludeScope);
+  const snapshot = options?.preferenceSnapshot ?? null;
+
+  // Issue #165: 合并偏好快照。
+  // - boostedKeywords 只加不减（正向偏好补充 profile keywords）。
+  // - mutedKeywords / mutedScopes 受 explorationRollout 门控：
+  //   探索窗口关闭时并入 excludeScope，打开时不应用（放过新内容）。
+  const boostedKeywords =
+    snapshot && snapshot.boostedKeywords.length > 0
+      ? Array.from(new Set([...profileKeywords, ...snapshot.boostedKeywords]))
+      : profileKeywords;
+  const extraExcludeScopes: string[] = [];
+  if (snapshot) {
+    if (
+      snapshot.mutedScopes.length > 0 &&
+      snapshot.explorationRollout.muteScopes
+    ) {
+      for (const scope of snapshot.mutedScopes) {
+        if (!profileExcludeScopes.includes(scope)) {
+          extraExcludeScopes.push(scope);
+        }
+      }
+    }
+    // mutedKeywords 与 mutedScopes 同源（都来自 category mute）。
+    // 这里用 muteScopes 门控同一组 mute（语义一致：探索窗口决定该类 mute 是否生效）。
+    if (
+      snapshot.mutedKeywords.length > 0 &&
+      snapshot.explorationRollout.muteKeywords
+    ) {
+      for (const keyword of snapshot.mutedKeywords) {
+        if (!extraExcludeScopes.includes(keyword)) {
+          extraExcludeScopes.push(keyword);
+        }
+      }
+    }
+  }
+  const excludeScopes =
+    extraExcludeScopes.length > 0
+      ? Array.from(new Set([...profileExcludeScopes, ...extraExcludeScopes]))
+      : profileExcludeScopes;
+
+  const keywords = boostedKeywords;
+  const entities = profileEntities;
+  const includeScopes = profileIncludeScopes;
   const haystack = `${item.title}\n${item.summary ?? ""}`.toLowerCase();
   const matches = (values: string[]) =>
     values.filter((value) => haystack.includes(value.toLowerCase()));

@@ -4,6 +4,15 @@
 
 ## 2026-07-18
 
+## Stage 3 / Task 3.5: PreferenceMemory 全链路消费（#165）
+
+- Phase: implementation plan Stage 3 Task 3.5。
+- Scope: 偏好回灌 relevance filter（excludeScope/keywords 从 PreferenceMemory 动态合并）、AI event extraction system prompt 注入偏好上下文、source scheduling 偏好影响抓取频率/范围、用户编辑/删除后下一轮生效、探索率硬下限防 filter bubble。闭合 SPEC §7.4 "抓取+筛选"两环。
+- Alignment: SPEC §5.6/§7.4。
+- Verification: core 10 个新 #165 fixture + ai event-extraction + worker fixtures；全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后 Stage 3 全部完成，批量 push。
+- Follow-up: 批量审查在 Stage 3 末尾补；真实 PG worker 端到端周期测试待补。
+
 ## Stage 3 / Task 3.4: 增强反馈 UI（#175）
 
 - Phase: implementation plan Stage 3 Task 3.4。

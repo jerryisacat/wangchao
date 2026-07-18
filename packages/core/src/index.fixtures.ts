@@ -1,13 +1,20 @@
 import {
   buildRuleFallbackSummary,
   buildTopicProfileContext,
+  buildPreferenceSnapshot,
   calculateGravityScore,
   createUtcDayRange,
   createIntelligenceEventDraft,
   createIntelligenceEventDraftFromExtraction,
   evaluateRelevance,
+  EXPLORATION_FLOOR,
   generatePreferenceDeltas,
+  PREFERENCE_SNAPSHOT_VERSION,
+  renderPreferenceGuidance,
   resolveScoringBreakdown,
+  shouldFetchSource,
+  type PreferenceMemoryEntry,
+  type PreferenceSnapshot,
 } from "./index.js";
 import { runDedupFixtures } from "./dedup.fixtures.js";
 import type { AiEventExtraction } from "./index.js";
@@ -40,6 +47,18 @@ export function runCoreFixtures(): void {
   testRuleDraftEmitsScoringBreakdown();
   testExtractionDraftEmitsScoringBreakdown();
   testLegacyEventResolvesBackwardCompatibleBreakdown();
+  // ===== Issue #165: PreferenceMemory 闭环消费 =====
+  testPreferenceSnapshotDerivesBoostedAndMutedLists();
+  testPreferenceSnapshotKeepsTopicsIsolated();
+  testPreferenceSnapshotRespectsExplorationFloor();
+  testPreferenceSnapshotExplorationRolloutGatesMutes();
+  testRenderPreferenceGuidanceProducesExplainableText();
+  testShouldFetchSourceGatesMutedSources();
+  testShouldFetchSourceAlwaysFetchesPreferredAndNeutral();
+  // RED（待 GREEN）：偏好 snapshot 必须影响 relevance filter
+  testRelevanceFilterAppliesMutedKeywordsWhenExplorationClosed();
+  testRelevanceFilterAppliesBoostedKeywords();
+  testRelevanceFilterWithoutSnapshotKeepsLegacyBehavior();
   runDedupFixtures();
 }
 
@@ -751,6 +770,334 @@ function testLegacyEventResolvesBackwardCompatibleBreakdown(): void {
   assert(
     breakdown.preferenceAdjustment === 1,
     "Legacy event preferenceAdjustment must default to 1.",
+  );
+}
+
+// ===== Issue #165: PreferenceMemory 闭环消费 fixtures =====
+
+function makeSnapshotEntries(): PreferenceMemoryEntry[] {
+  return [
+    {
+      explanation: "3 signals increased category:AI.",
+      key: "category:AI",
+      topicId: "topic-1",
+      weight: 3,
+    },
+    {
+      explanation: "3 signals decreased category:广告.",
+      key: "category:广告",
+      topicId: "topic-1",
+      weight: -3,
+    },
+    {
+      explanation: "2 signals increased source:src-good.",
+      key: "source:src-good",
+      topicId: "topic-1",
+      weight: 2,
+    },
+    {
+      explanation: "3 signals decreased source:src-bad.",
+      key: "source:src-bad",
+      topicId: "topic-1",
+      weight: -3,
+    },
+    {
+      explanation: "noise from other topic.",
+      key: "category:AI",
+      topicId: "topic-2",
+      weight: 4,
+    },
+    {
+      explanation: "weak signal below hard threshold.",
+      key: "category:weak",
+      topicId: "topic-1",
+      weight: 1,
+    },
+  ];
+}
+
+function testPreferenceSnapshotDerivesBoostedAndMutedLists(): void {
+  const snapshot = buildPreferenceSnapshot(makeSnapshotEntries(), {
+    topicId: "topic-1",
+    random: () => 0.99, // 探索窗口关闭（random >= allowance）
+  });
+  assert(
+    snapshot.snapshotVersion === PREFERENCE_SNAPSHOT_VERSION,
+    "Snapshot must carry current version.",
+  );
+  assert(
+    snapshot.topicId === "topic-1",
+    "Snapshot topicId must match requested topic.",
+  );
+  assert(
+    snapshot.boostedKeywords.includes("AI"),
+    "Boosted keywords must include weight>=+2 category.",
+  );
+  assert(
+    snapshot.mutedKeywords.includes("广告"),
+    "Muted keywords must include weight<=-2 category.",
+  );
+  assert(
+    snapshot.mutedScopes.includes("广告"),
+    "Muted scopes must mirror muted keywords for category mute.",
+  );
+  assert(
+    snapshot.preferredSources.includes("src-good"),
+    "Preferred sources must include weight>=+2 source.",
+  );
+  assert(
+    snapshot.mutedSources.includes("src-bad"),
+    "Muted sources must include weight<=-2 source.",
+  );
+  assert(
+    !snapshot.boostedKeywords.includes("weak"),
+    "Weak signal (weight=1) must NOT enter hard intervention lists.",
+  );
+  assert(
+    snapshot.explanations.length === 4,
+    `Explanations must carry 4 hard-intervention entries, got ${snapshot.explanations.length}.`,
+  );
+}
+
+function testPreferenceSnapshotKeepsTopicsIsolated(): void {
+  const snapshot = buildPreferenceSnapshot(makeSnapshotEntries(), {
+    topicId: "topic-1",
+    random: () => 0.99,
+  });
+  assert(
+    snapshot.boostedKeywords.length === 1,
+    "topic-1 must only see its own boosted keywords (topic-2 AI must be excluded).",
+  );
+  assert(
+    snapshot.boostedKeywords[0] === "AI",
+    "topic-1 boosted keyword must be AI (from topic-1 entry).",
+  );
+}
+
+function testPreferenceSnapshotRespectsExplorationFloor(): void {
+  // 显式传低于 floor 的探索率 -> 必须被 floor 抬升
+  const snapshot = buildPreferenceSnapshot([], {
+    topicId: "topic-1",
+    explorationAllowance: 0.05,
+    random: () => 0.99,
+  });
+  assert(
+    snapshot.explorationAllowance >= EXPLORATION_FLOOR,
+    `Exploration allowance must be clamped to floor (${EXPLORATION_FLOOR}), got ${snapshot.explorationAllowance}.`,
+  );
+}
+
+function testPreferenceSnapshotExplorationRolloutGatesMutes(): void {
+  // random < allowance -> 探索窗口打开 -> mute 不生效（rollout=false）
+  const openSnapshot = buildPreferenceSnapshot(makeSnapshotEntries(), {
+    topicId: "topic-1",
+    explorationAllowance: 0.5,
+    random: () => 0.1, // 0.1 < 0.5 -> 探索窗口打开
+  });
+  assert(
+    openSnapshot.explorationRollout.muteKeywords === false,
+    "When exploration window opens, muteKeywords rollout must be false (mute disabled).",
+  );
+  assert(
+    openSnapshot.explorationRollout.muteSources === false,
+    "When exploration window opens, muteSources rollout must be false (mute disabled).",
+  );
+
+  // random >= allowance -> 探索窗口关闭 -> mute 生效（rollout=true）
+  const closedSnapshot = buildPreferenceSnapshot(makeSnapshotEntries(), {
+    topicId: "topic-1",
+    explorationAllowance: 0.5,
+    random: () => 0.9, // 0.9 >= 0.5 -> 探索窗口关闭
+  });
+  assert(
+    closedSnapshot.explorationRollout.muteKeywords === true,
+    "When exploration window closes, muteKeywords rollout must be true (mute active).",
+  );
+  assert(
+    closedSnapshot.explorationRollout.muteSources === true,
+    "When exploration window closes, muteSources rollout must be true (mute active).",
+  );
+}
+
+function testRenderPreferenceGuidanceProducesExplainableText(): void {
+  const snapshot = buildPreferenceSnapshot(makeSnapshotEntries(), {
+    topicId: "topic-1",
+    random: () => 0.99, // mute 生效
+  });
+  const guidance = renderPreferenceGuidance(snapshot);
+  assert(
+    guidance.includes("更关注"),
+    "Guidance must mention boosted categories in user-facing language.",
+  );
+  assert(
+    guidance.includes("不感兴趣"),
+    "Guidance must mention muted categories when mute is active.",
+  );
+  assert(
+    guidance.includes("偏好"),
+    "Guidance must mention preferred sources.",
+  );
+
+  // 空快照 -> 空指引（向后兼容）
+  const emptySnapshot = buildPreferenceSnapshot([], {
+    topicId: "topic-x",
+    random: () => 0.99,
+  });
+  assert(
+    renderPreferenceGuidance(emptySnapshot) === "",
+    "Empty snapshot must render empty guidance.",
+  );
+}
+
+function testShouldFetchSourceGatesMutedSources(): void {
+  const snapshot: PreferenceSnapshot = {
+    explanations: [],
+    boostedKeywords: [],
+    explorationAllowance: 0.5,
+    explorationRollout: {
+      muteKeywords: false,
+      muteScopes: false,
+      muteSources: true, // mute 生效
+    },
+    mutedKeywords: [],
+    mutedScopes: [],
+    mutedSources: ["src-bad"],
+    preferredSources: ["src-good"],
+    snapshotVersion: PREFERENCE_SNAPSHOT_VERSION,
+    topicId: "topic-1",
+  };
+  assert(
+    shouldFetchSource(snapshot, "src-bad") === false,
+    "Muted source must NOT be fetched when muteSources rollout is active.",
+  );
+  assert(
+    shouldFetchSource(snapshot, "src-good") === true,
+    "Preferred source must always be fetched.",
+  );
+  assert(
+    shouldFetchSource(snapshot, "src-neutral") === true,
+    "Neutral source must be fetched (default behavior).",
+  );
+}
+
+function testShouldFetchSourceAlwaysFetchesPreferredAndNeutral(): void {
+  // 探索窗口打开时，muted source 也应被抓取（探索）
+  const snapshot: PreferenceSnapshot = {
+    explanations: [],
+    boostedKeywords: [],
+    explorationAllowance: 0.5,
+    explorationRollout: {
+      muteKeywords: false,
+      muteScopes: false,
+      muteSources: false, // 探索窗口打开
+    },
+    mutedKeywords: [],
+    mutedScopes: [],
+    mutedSources: ["src-bad"],
+    preferredSources: [],
+    snapshotVersion: PREFERENCE_SNAPSHOT_VERSION,
+    topicId: "topic-1",
+  };
+  assert(
+    shouldFetchSource(snapshot, "src-bad") === true,
+    "Muted source must be fetched when exploration window opens.",
+  );
+  assert(
+    shouldFetchSource(null, "any") === true,
+    "Null snapshot must default to fetch (legacy behavior).",
+  );
+}
+
+// ===== RED（待 GREEN）：relevance filter 必须消费 preference snapshot =====
+
+function testRelevanceFilterAppliesMutedKeywordsWhenExplorationClosed(): void {
+  // 用户强烈 mute "广告" 类别（weight=-3），profile 本身不含 excludeScope=广告。
+  // 探索窗口关闭时，包含"广告"的内容必须被 filter 判为不相关。
+  const snapshot = buildPreferenceSnapshot(makeSnapshotEntries(), {
+    topicId: "topic-1",
+    random: () => 0.99, // 探索窗口关闭 -> mute 生效
+  });
+  const item = {
+    fetchedAt: new Date("2026-01-01"),
+    id: "pref-muted-item",
+    summary: "某公司投放广告推广产品",
+    title: "某公司投放广告推广产品",
+    topicProfile: {
+      keywords: ["某公司"],
+    },
+    url: "https://example.com/ad",
+  };
+  // 传入 snapshot：广告 muted keyword 应让该 item 被排除
+  const decision = evaluateRelevance(item, { preferenceSnapshot: snapshot });
+  assert(
+    decision.isRelevant === false,
+    "Muted keyword (广告) must exclude the item when exploration window is closed.",
+  );
+  assert(
+    decision.matchedExcludeScopes.includes("广告"),
+    "Muted keyword must appear in matchedExcludeScopes for explainability.",
+  );
+}
+
+function testRelevanceFilterAppliesBoostedKeywords(): void {
+  // 用户 boost "AI" 类别，profile keywords 不含 AI 但 summary 提到 AI。
+  // Boosted keywords 应补充进 relevance 匹配，让 item 通过门槛。
+  const snapshot = buildPreferenceSnapshot(makeSnapshotEntries(), {
+    topicId: "topic-1",
+    random: () => 0.99,
+  });
+  const item = {
+    fetchedAt: new Date("2026-01-01"),
+    id: "pref-boosted-item",
+    summary: "AI infra 进展",
+    title: "AI infra 进展",
+    topicProfile: {
+      keywords: ["not-present"],
+    },
+    url: "https://example.com/ai",
+  };
+  // 不传 snapshot：profile keywords 不命中 -> 不相关
+  const legacyDecision = evaluateRelevance(item);
+  assert(
+    legacyDecision.isRelevant === false,
+    "Without snapshot, item must be irrelevant (profile keywords don't match).",
+  );
+  // 传 snapshot：boosted AI 补充 -> 相关
+  const decision = evaluateRelevance(item, { preferenceSnapshot: snapshot });
+  assert(
+    decision.isRelevant === true,
+    "Boosted keyword (AI) must raise item relevance when snapshot is applied.",
+  );
+  assert(
+    decision.matchedKeywords.includes("AI"),
+    "Boosted keyword must appear in matchedKeywords.",
+  );
+}
+
+function testRelevanceFilterWithoutSnapshotKeepsLegacyBehavior(): void {
+  // 不传 snapshot 时，evaluateRelevance 行为必须与改动前完全一致。
+  const item = {
+    fetchedAt: new Date("2026-01-01"),
+    id: "legacy-item",
+    summary: "AI 进展",
+    title: "AI 进展",
+    topicProfile: {
+      keywords: ["AI"],
+      excludeScope: ["广告"],
+    },
+    url: "https://example.com/legacy",
+  };
+  const decision = evaluateRelevance(item);
+  assert(
+    decision.isRelevant === true,
+    "Legacy path (no snapshot) must keep relevant behavior for keyword match.",
+  );
+  // 广告内容仍被 profile excludeScope 排除（不依赖 snapshot）
+  const adItem = { ...item, summary: "广告内容", title: "广告内容" };
+  const adDecision = evaluateRelevance(adItem);
+  assert(
+    adDecision.isRelevant === false,
+    "Legacy path must still exclude via profile excludeScope without snapshot.",
   );
 }
 

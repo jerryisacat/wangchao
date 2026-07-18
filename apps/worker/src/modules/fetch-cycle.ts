@@ -3,8 +3,15 @@ import {
   classifyTaskRunError,
   getPrismaClient,
   listActiveSourcesForFetch,
+  listPreferenceMemoryForDashboard,
   recordUsageEvent,
 } from "@wangchao/db";
+import {
+  buildPreferenceSnapshot,
+  shouldFetchSource,
+  type PreferenceMemoryEntry,
+  type PreferenceSnapshot,
+} from "@wangchao/core";
 import { runAnalysisCycle } from "./analysis.js";
 import { runDailyBriefingCycle, runPeriodBriefingCycle } from "./briefing.js";
 import { fetchSourceWithRetries, runArticleFetchCycle } from "./fetch.js";
@@ -22,6 +29,48 @@ import { runTelegramDeliveryCycle } from "./telegram-delivery.js";
 import type { WorkerFetchCycleResult, WorkspaceScope } from "./types.js";
 
 type PrismaClient = ReturnType<typeof getPrismaClient>;
+
+/**
+ * Issue #165: 加载 workspace preference memory 并按 topicId 构建 snapshot，
+ * 供信源抓取调度门控使用。
+ *
+ * 与 analysis 的 snapshot 独立（不同周期阶段、各自 RNG），但推导逻辑一致。
+ * 失败安全：异常时返回空 Map，shouldFetchSource 见 null snapshot 默认放行。
+ */
+async function loadPreferenceSnapshotsForScheduling(
+  prisma: PrismaClient,
+  organizationId: string,
+  userId: string,
+): Promise<Map<string, PreferenceSnapshot>> {
+  try {
+    const memories = await listPreferenceMemoryForDashboard(
+      prisma,
+      { organizationId, userId },
+      1000,
+    );
+    const entriesByTopic = new Map<string, PreferenceMemoryEntry[]>();
+    for (const memory of memories) {
+      const list = entriesByTopic.get(memory.topicId) ?? [];
+      list.push({
+        explanation: memory.explanation,
+        key: memory.key,
+        topicId: memory.topicId,
+        weight: memory.weight,
+      });
+      entriesByTopic.set(memory.topicId, list);
+    }
+    const snapshots = new Map<string, PreferenceSnapshot>();
+    for (const [topicId, entries] of entriesByTopic) {
+      snapshots.set(topicId, buildPreferenceSnapshot(entries, { topicId }));
+    }
+    return snapshots;
+  } catch (error) {
+    process.stderr.write(
+      `[fetch-cycle] loadPreferenceSnapshotsForScheduling failed for org ${organizationId}: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return new Map();
+  }
+}
 
 /**
  * Format a sub-cycle failure log line that never emits raw error.message,
@@ -65,6 +114,20 @@ export async function runFetchCycleForWorkspace(
   const sources = await listActiveSourcesForFetch(prisma, {
     organizationId: workspace.organizationId,
   });
+
+  // Issue #165: 偏好影响信源抓取调度。按 topicId 构建 preference snapshot，
+  // 用 shouldFetchSource 门控 mutedSources（探索窗口打开时仍抓取）。
+  // 失败安全：snapshot 加载异常时跳过门控，退化到旧行为（全量抓取）。
+  const preferenceSnapshots = await loadPreferenceSnapshotsForScheduling(
+    prisma,
+    workspace.organizationId,
+    workspace.userId,
+  );
+  const schedulableSources = sources.filter((source) => {
+    const snapshot = preferenceSnapshots.get(source.topicId) ?? null;
+    return shouldFetchSource(snapshot, source.id);
+  });
+
   const result: WorkerFetchCycleResult = {
     analyzedItems: 0,
     createdOrUpdatedEvents: 0,
@@ -83,7 +146,7 @@ export async function runFetchCycleForWorkspace(
 
   const limit = pLimit(getTotalConcurrency());
   const sourceResults = await Promise.all(
-    sources.map((source) => limit(() => fetchSourceWithRetries(prisma, source))),
+    schedulableSources.map((source) => limit(() => fetchSourceWithRetries(prisma, source))),
   );
   for (const sourceResult of sourceResults) {
     result.fetchedSources += sourceResult.fetchedSources;

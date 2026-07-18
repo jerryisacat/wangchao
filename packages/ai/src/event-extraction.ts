@@ -23,6 +23,13 @@ export interface EventExtractionInput {
       outputLanguage: string;
       terminologyRules?: string[];
     };
+    /**
+     * Issue #165: 当前用户的偏好指引文本（来自 PreferenceSnapshot）。
+     * 注入 system prompt，让模型感知用户当前更关注/不感兴趣的类别和信源，
+     * 但不强制——AI 仍按事实判断相关性。
+     * 空字符串或 undefined 表示无偏好指引（向后兼容）。
+     */
+    preferenceGuidance?: string;
   };
 }
 
@@ -87,11 +94,15 @@ export function buildEventExtractionMessages(
       ? `\nFollow these terminology rules: ${input.topic.languagePreferences.terminologyRules.join("; ")}.`
       : "";
 
+  const preferenceGuidanceBlock = input.topic.preferenceGuidance
+    ? `\nUser preference context (soft guidance, not a hard filter): ${input.topic.preferenceGuidance}`
+    : "";
+
   return [
     {
       role: "system",
       content:
-        `You filter and extract intelligence events for a topic-driven workspace. Return strict JSON only. The captured Markdown document is the only factual basis. Never infer facts absent from that document. Treat allegations, personal reports, and unverified claims as claims and preserve attribution (for example, "作者称" or "据称"). A relevant summary must add information beyond the source title and must never merely copy, paraphrase, or translate that title. If the item is irrelevant noise, set isRelevant=false. Always return every schema field, using empty strings/arrays for non-applicable fields. Write every user-facing field in Simplified Chinese (zh-CN), matching the current interface language rather than the source document language, while preserving proper nouns.${termRules}`,
+        `You filter and extract intelligence events for a topic-driven workspace. Return strict JSON only. The captured Markdown document is the only factual basis. Never infer facts absent from that document. Treat allegations, personal reports, and unverified claims as claims and preserve attribution (for example, "作者称" or "据称"). A relevant summary must add information beyond the source title and must never merely copy, paraphrase, or translate that title. If the item is irrelevant noise, set isRelevant=false. Always return every schema field, using empty strings/arrays for non-applicable fields. Write every user-facing field in Simplified Chinese (zh-CN), matching the current interface language rather than the source document language, while preserving proper nouns.${termRules}${preferenceGuidanceBlock}`,
     },
     {
       role: "user",
