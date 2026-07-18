@@ -17,6 +17,7 @@ import {
   recordCategoryPreferenceFeedback,
   recordSourceQualityObservation,
   updateDashboardEventState,
+  markBriefingEventsRead,
   updateTopic,
   upsertIntelligenceEventFromItem,
   recommendCandidatePromotion,
@@ -44,6 +45,12 @@ export async function runRepositoryFixtures(): Promise<void> {
   await verifyDashboardFeedDerivesUnreadFromCurrentUserState();
   await verifyDashboardRecordDerivesUserStateNotGlobalStatus();
   await verifyReadPreservesSavedState();
+  await verifyMarkBriefingEventsReadBatchesUserItemState();
+  await verifyMarkBriefingEventsReadIsIdempotentAndReportsSkipped();
+  await verifyMarkBriefingEventsReadPreservesSavedEvents();
+  await verifyMarkBriefingEventsReadDoesNotLeakAcrossUsers();
+  await verifyMarkBriefingEventsReadIsOrganizationScoped();
+  await verifyMarkBriefingEventsReadNoNPlusOne();
   await verifyCategoryFeedbackIsPersistedAndLearned();
   await verifyFeedbackSignalMapperPreservesContractFields();
   await verifyTopicUpdateAndAnalysisContextStayTenantScoped();
@@ -768,6 +775,347 @@ async function verifyReadPreservesSavedState(): Promise<void> {
   assert(userUpdate.saved === true, "Reading a saved event must not clear the saved flag.");
   assert(userUpdate.readAt instanceof Date, "Reading a saved event must still record readAt.");
   assert(feedbackData.kind === "READ", "Reading a saved event must still record READ feedback.");
+}
+
+// ─── Issue #173 — Briefing 批量已读 (Plan Task 3.2) ─────────────────────────────
+// 这些 mock 测试锁定契约：
+//   - 复用 #172 UserItemState 隔离，只写 UserItemState + FeedbackEvent(READ)，
+//     不写 IntelligenceEvent.status。
+//   - 批量 upsert（不是 N 次 findFirst + 单写循环）。
+//   - 保留 saved（双轨，对齐 updateDashboardEventState）。
+//   - 幂等：已是 READ/SAVED 的 skip，返回 changed/skipped。
+//   - 用户/组织隔离。
+// 真实 PG 两用户隔离由 user-item-state-pg.fixtures.ts 风格的 disposable fixture 承载（后置）。
+
+type BriefingReadCall = { args: unknown; method: string };
+
+function makeBriefingReadMockPrisma(opts: {
+  events: Array<{ id: string; topicId: string; organizationId: string; primaryItemId: string | null }>;
+  userStates: Array<{
+    userId: string;
+    eventId: string;
+    status: "UNREAD" | "READ" | "SAVED" | "DISMISSED" | "ARCHIVED";
+    saved: boolean;
+    readAt: Date | null;
+  }>;
+  briefingOrganizationId?: string;
+}): {
+  prisma: unknown;
+  calls: BriefingReadCall[];
+} {
+  const calls: BriefingReadCall[] = [];
+  const eventsById = new Map(opts.events.map((e) => [e.id, e]));
+  const statesByKey = new Map(
+    opts.userStates.map((s) => [`${s.userId}:${s.eventId}`, s]),
+  );
+
+  const prisma = {
+    $transaction: async (operations: Array<Promise<unknown>>) =>
+      Promise.all(operations),
+    briefing: {
+      findFirst: async (args: unknown) => {
+        calls.push({ args, method: "briefing.findFirst" });
+        const a = args as { where?: { id?: string; organizationId?: string } };
+        const id = a.where?.id;
+        const orgId = a.where?.organizationId;
+        const matchesOrg =
+          orgId === undefined || orgId === (opts.briefingOrganizationId ?? "org-1");
+        // mock: briefing snapshot.events 固定为 opts.events 的 ids 集合。
+        return id === "briefing-1" && matchesOrg
+          ? {
+              id: "briefing-1",
+              organizationId: opts.briefingOrganizationId ?? "org-1",
+              events: opts.events.map((e) => ({ id: e.id })),
+            }
+          : null;
+      },
+    },
+    userItemState: {
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "userItemState.findMany" });
+        const a = args as {
+          where?: { userId?: string; eventId?: { in?: string[] } };
+        };
+        const userId = a.where?.userId;
+        const eventIds = a.where?.eventId?.in ?? [];
+        return [...statesByKey.values()].filter(
+          (s) => s.userId === userId && eventIds.includes(s.eventId),
+        );
+      },
+      upsert: async (args: unknown) => {
+        calls.push({ args, method: "userItemState.upsert" });
+        return {};
+      },
+      createMany: async (args: unknown) => {
+        calls.push({ args, method: "userItemState.createMany" });
+        return { count: 0 };
+      },
+      updateMany: async (args: unknown) => {
+        calls.push({ args, method: "userItemState.updateMany" });
+        return { count: 0 };
+      },
+    },
+    feedbackEvent: {
+      create: async (args: unknown) => {
+        calls.push({ args, method: "feedbackEvent.create" });
+        return {};
+      },
+      createMany: async (args: unknown) => {
+        calls.push({ args, method: "feedbackEvent.createMany" });
+        return { count: 0 };
+      },
+    },
+    intelligenceEvent: {
+      update: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.update" });
+        return {};
+      },
+      findFirst: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.findFirst" });
+        const a = args as { where?: { id?: string } };
+        return eventsById.get(a.where?.id ?? "") ?? null;
+      },
+    },
+  };
+  return { prisma, calls };
+}
+
+async function verifyMarkBriefingEventsReadBatchesUserItemState(): Promise<void> {
+  // 基本契约：briefing 含 3 个事件，用户无任何 UserItemState。
+  // 期望：changed=3, skipped=0，对每个事件 upsert UserItemState(status=READ)。
+  const { prisma, calls } = makeBriefingReadMockPrisma({
+    events: [
+      { id: "event-a", organizationId: "org-1", primaryItemId: "item-a", topicId: "topic-1" },
+      { id: "event-b", organizationId: "org-1", primaryItemId: "item-b", topicId: "topic-1" },
+      { id: "event-c", organizationId: "org-1", primaryItemId: "item-c", topicId: "topic-1" },
+    ],
+    userStates: [],
+  });
+
+  const result = await markBriefingEventsRead(prisma as PrismaClient, {
+    briefingId: "briefing-1",
+    organizationId: "org-1",
+    userId: "user-1",
+  });
+
+  assert(result.changed === 3, `Expected changed=3, received changed=${result.changed}.`);
+  assert(result.skipped === 0, `Expected skipped=0, received skipped=${result.skipped}.`);
+
+  const upserts = calls.filter((c) => c.method === "userItemState.upsert");
+  assert(
+    upserts.length === 3,
+    `Expected 3 userItemState.upsert calls, received ${upserts.length}.`,
+  );
+  for (const call of upserts) {
+    const args = readRecord(call.args, "userItemState.upsert.args");
+    const update = readRecord(args.update, "userItemState.upsert.args.update");
+    assert(
+      update.status === "READ",
+      `Each upsert must set status=READ, received ${String(update.status)}.`,
+    );
+    assert(
+      update.readAt instanceof Date,
+      "Each upsert must record a readAt timestamp.",
+    );
+    assert(
+      update.saved === false,
+      `Default (unsaved) events must keep saved=false, received ${String(update.saved)}.`,
+    );
+  }
+
+  // 必须 create FeedbackEvent(READ) for each changed event（轻量正反馈，对齐单条 read 路径）。
+  const feedbackCreates = calls.filter((c) => c.method === "feedbackEvent.create");
+  assert(
+    feedbackCreates.length === 3,
+    `Expected 3 feedbackEvent.create (READ) calls, received ${feedbackCreates.length}.`,
+  );
+
+  // 不得写 IntelligenceEvent.status（隔离要求，对齐 #172）。
+  const eventUpdates = calls.filter((c) => c.method === "intelligenceEvent.update");
+  assert(
+    eventUpdates.length === 0,
+    "SPEC §5.5 违规：批量已读不得写 IntelligenceEvent.status（个人状态隔离）。",
+  );
+}
+
+async function verifyMarkBriefingEventsReadIsIdempotentAndReportsSkipped(): Promise<void> {
+  // 3 个事件，其中 2 个已是 READ/SAVED（应 skip），1 个 UNREAD（应 changed）。
+  const alreadyReadAt = new Date("2026-07-18T08:00:00.000Z");
+  const { prisma, calls } = makeBriefingReadMockPrisma({
+    events: [
+      { id: "event-a", organizationId: "org-1", primaryItemId: "item-a", topicId: "topic-1" },
+      { id: "event-b", organizationId: "org-1", primaryItemId: "item-b", topicId: "topic-1" },
+      { id: "event-c", organizationId: "org-1", primaryItemId: "item-c", topicId: "topic-1" },
+    ],
+    userStates: [
+      { userId: "user-1", eventId: "event-a", status: "READ", saved: false, readAt: alreadyReadAt },
+      { userId: "user-1", eventId: "event-b", status: "SAVED", saved: true, readAt: alreadyReadAt },
+    ],
+  });
+
+  const result = await markBriefingEventsRead(prisma as PrismaClient, {
+    briefingId: "briefing-1",
+    organizationId: "org-1",
+    userId: "user-1",
+  });
+
+  assert(result.changed === 1, `Expected changed=1, received changed=${result.changed}.`);
+  assert(result.skipped === 2, `Expected skipped=2, received skipped=${result.skipped}.`);
+
+  const upserts = calls.filter((c) => c.method === "userItemState.upsert");
+  assert(
+    upserts.length === 1,
+    `Idempotent run must only upsert the changed event, received ${upserts.length} upserts.`,
+  );
+  // 只为 changed 事件 create feedback（避免对已读事件重复产生 READ 反馈信号，污染偏好学习）。
+  const feedbackCreates = calls.filter((c) => c.method === "feedbackEvent.create");
+  assert(
+    feedbackCreates.length === 1,
+    `Idempotent run must only create 1 READ feedback, received ${feedbackCreates.length}.`,
+  );
+}
+
+async function verifyMarkBriefingEventsReadPreservesSavedEvents(): Promise<void> {
+  // SPEC §5.5 双轨：对已收藏事件执行 READ 保留 saved=true，status 保持 SAVED。
+  const { prisma, calls } = makeBriefingReadMockPrisma({
+    events: [
+      { id: "event-saved", organizationId: "org-1", primaryItemId: "item-s", topicId: "topic-1" },
+      { id: "event-fresh", organizationId: "org-1", primaryItemId: "item-f", topicId: "topic-1" },
+    ],
+    userStates: [
+      { userId: "user-1", eventId: "event-saved", status: "SAVED", saved: true, readAt: null },
+    ],
+  });
+
+  const result = await markBriefingEventsRead(prisma as PrismaClient, {
+    briefingId: "briefing-1",
+    organizationId: "org-1",
+    userId: "user-1",
+  });
+
+  // event-saved 已是 SAVED（属于"已读状态"的等价终态，对齐 updateDashboardEventState 双轨）→ skip。
+  // event-fresh 是 UNREAD → changed。
+  assert(result.changed === 1, `Expected changed=1, received changed=${result.changed}.`);
+  assert(result.skipped === 1, `Expected skipped=1, received skipped=${result.skipped}.`);
+
+  const upsert = calls.find((c) => c.method === "userItemState.upsert");
+  assert(upsert, "Expected at least one userItemState.upsert call.");
+  const args = readRecord(upsert!.args, "userItemState.upsert.args");
+  const create = readRecord(args.create, "userItemState.upsert.args.create");
+  assert(
+    create.eventId === "event-fresh",
+    `Fresh event must be the one upserted, received ${String(create.eventId)}.`,
+  );
+  assert(
+    create.saved === false,
+    `Fresh (unsaved) event must keep saved=false, received ${String(create.saved)}.`,
+  );
+}
+
+async function verifyMarkBriefingEventsReadDoesNotLeakAcrossUsers(): Promise<void> {
+  // 用户 A 对自己的 UserItemState 批量已读，不得影响用户 B 的状态。
+  // mock 中用户 B 有一个 saved state——必须不被触碰。
+  const { prisma, calls } = makeBriefingReadMockPrisma({
+    events: [
+      { id: "event-a", organizationId: "org-1", primaryItemId: "item-a", topicId: "topic-1" },
+    ],
+    userStates: [
+      { userId: "user-B", eventId: "event-a", status: "SAVED", saved: true, readAt: null },
+    ],
+  });
+
+  const result = await markBriefingEventsRead(prisma as PrismaClient, {
+    briefingId: "briefing-1",
+    organizationId: "org-1",
+    userId: "user-A",
+  });
+
+  assert(result.changed === 1, `Expected changed=1, received changed=${result.changed}.`);
+
+  const findArgs = readArgsByName(calls, "userItemState.findMany");
+  const where = readRecord(findArgs.where, "userItemState.findMany.where");
+  assert(
+    where.userId === "user-A",
+    `User isolation: findMany must scope by current userId, received ${String(where.userId)}.`,
+  );
+
+  const upsert = calls.find((c) => c.method === "userItemState.upsert");
+  const args = readRecord(upsert!.args, "userItemState.upsert.args");
+  const where2 = readRecord(args.where, "userItemState.upsert.args.where");
+  const key = readRecord(where2.userId_eventId, "userItemState.upsert.args.where.userId_eventId");
+  assert(
+    key.userId === "user-A",
+    `User isolation: upsert where must be scoped by current userId, received ${String(key.userId)}.`,
+  );
+}
+
+async function verifyMarkBriefingEventsReadIsOrganizationScoped(): Promise<void> {
+  // briefing 查询必须 organization fenced：跨组织 briefingId 不得被命中。
+  const { prisma } = makeBriefingReadMockPrisma({
+    briefingOrganizationId: "org-1",
+    events: [
+      { id: "event-a", organizationId: "org-1", primaryItemId: "item-a", topicId: "topic-1" },
+    ],
+    userStates: [],
+  });
+
+  // 用 org-2 调用：mock briefing 只在 orgId 匹配 org-1 时返回非空。
+  const result = await markBriefingEventsRead(prisma as PrismaClient, {
+    briefingId: "briefing-1",
+    organizationId: "org-2",
+    userId: "user-1",
+  });
+
+  assert(
+    result.changed === 0 && result.skipped === 0,
+    `Cross-org briefing must yield no changes, received changed=${result.changed} skipped=${result.skipped}.`,
+  );
+}
+
+async function verifyMarkBriefingEventsReadNoNPlusOne(): Promise<void> {
+  // 不产生 N+1：不得对每个 event 单独 findFirst + 单写。
+  // 允许的形状：1 次 briefing.findFirst + 1 次 userItemState.findMany（批量）+ N 次 upsert（单事务内）。
+  // 关键反模式：N 次 intelligenceEvent.findFirst、N 次 userItemState.findUnique。
+  const { prisma, calls } = makeBriefingReadMockPrisma({
+    events: Array.from({ length: 5 }, (_, i) => ({
+      id: `event-${i}`,
+      organizationId: "org-1",
+      primaryItemId: `item-${i}`,
+      topicId: "topic-1",
+    })),
+    userStates: [],
+  });
+
+  await markBriefingEventsRead(prisma as PrismaClient, {
+    briefingId: "briefing-1",
+    organizationId: "org-1",
+    userId: "user-1",
+  });
+
+  const briefingFindFirst = calls.filter((c) => c.method === "briefing.findFirst");
+  assert(
+    briefingFindFirst.length === 1,
+    `No N+1: briefing.findFirst must be called exactly once, received ${briefingFindFirst.length}.`,
+  );
+
+  const eventFindFirst = calls.filter((c) => c.method === "intelligenceEvent.findFirst");
+  assert(
+    eventFindFirst.length === 0,
+    `No N+1: must not call intelligenceEvent.findFirst per event (received ${eventFindFirst.length}). Use a single userItemState.findMany to load existing states.`,
+  );
+
+  const stateFindMany = calls.filter((c) => c.method === "userItemState.findMany");
+  assert(
+    stateFindMany.length === 1,
+    `No N+1: userItemState.findMany must be called exactly once (batched), received ${stateFindMany.length}.`,
+  );
+  const findArgs = readArgsByName(calls, "userItemState.findMany");
+  const where = readRecord(findArgs.where, "userItemState.findMany.where");
+  const eventId = readRecord(where.eventId, "userItemState.findMany.where.eventId");
+  assert(
+    Array.isArray(eventId.in) && eventId.in.length === 5,
+    `No N+1: findMany must use eventId.in [...] for all briefing events (received ${String(eventId.in)}).`,
+  );
 }
 
 async function verifyDailyBriefingWindowFilter(): Promise<void> {

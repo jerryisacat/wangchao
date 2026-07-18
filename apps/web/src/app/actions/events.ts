@@ -187,6 +187,80 @@ async function refreshPreferenceMemory(
   );
 }
 
+export async function markBriefingAsReadAction(
+  formData: FormData,
+): Promise<void> {
+  // SPEC §5.5 / Plan Task 3.2 (#173): 按当日 Briefing snapshot 批量标记当前用户已读。
+  // 复用 #172 UserItemState 隔离；不写 IntelligenceEvent.status；保留 saved；幂等。
+  const briefingId = readRequiredField(formData, "briefingId");
+  const returnTo = readSafeReturnPath(formData, "returnTo") ?? `/briefings`;
+  let message = "简报内的事件已批量标记为已读。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to mark briefing as read.");
+    }
+
+    const {
+      assertMembershipRole,
+      getPrismaClient,
+      markBriefingEventsRead,
+      recordUsageEvent,
+    } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
+    const prisma = getPrismaClient();
+    const workspace = await getSessionWorkspace();
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN", "MEMBER"],
+    );
+
+    const result = await markBriefingEventsRead(prisma, {
+      briefingId,
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
+    });
+
+    if (result.changed > 0) {
+      await refreshPreferenceMemory(prisma, workspace);
+    }
+
+    await recordUsageEvent(prisma, {
+      metadata: {
+        briefingId,
+        changed: result.changed,
+        skipped: result.skipped,
+        source: "briefing-bulk-read",
+      },
+      organizationId: workspace.organizationId,
+      quantity: result.changed,
+      subjectId: briefingId,
+      subjectType: "briefing",
+      type: "WEB_ACTION",
+      unit: "events-marked-read",
+      userId: workspace.userId,
+    });
+
+    if (result.changed === 0) {
+      message = "简报中没有需要标记的新事件。";
+    }
+  } catch (error) {
+    logActionError("markBriefingAsReadAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/");
+  revalidatePath(returnTo);
+  redirect(actionRedirectHref(returnTo, type, message));
+}
+
 export async function regenerateEventSummaryAction(
   formData: FormData,
 ): Promise<void> {

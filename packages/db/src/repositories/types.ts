@@ -292,6 +292,21 @@ export interface UpdateDashboardEventStateInput {
   userId: string;
 }
 
+// SPEC §5.5 / Plan Task 3.2 (#173): 按 briefing snapshot 批量标记当前用户已读。
+// briefing snapshot = Briefing.events 关系表当时固定的 event IDs 集合。
+// 复用 #172 UserItemState 隔离：只写 UserItemState + FeedbackEvent(READ)，
+// 不写 IntelligenceEvent.status；保留 saved（双轨，对齐 updateDashboardEventState）。
+export interface MarkBriefingEventsReadInput {
+  briefingId: string;
+  organizationId: string;
+  userId: string;
+}
+
+export interface MarkBriefingEventsReadResult {
+  changed: number;
+  skipped: number;
+}
+
 export interface RecordCategoryPreferenceFeedbackInput extends TenantScope {
   action: "up" | "down";
   eventId: string;

@@ -1,5 +1,16 @@
 ## 2026-07-18
 
+### Feat: Issue #173 支持按当日 Briefing 批量标记事件已读
+
+- Cause: 无批量已读功能，用户需逐条标记。
+- Changed:
+  - `packages/db/src/repositories/event.ts`：新增 `markBriefingEventsAsRead()` 批量 upsert UserItemState 为 READ（保留 saved=true，createMany skipDuplicates 幂等，返回 changed/skipped counts）。
+  - `apps/web/src/app/actions/events.ts`：新增 `markBriefingAsReadAction` server action。
+  - `packages/db/src/repositories.fixtures.ts`：批量 + 幂等 + 保留 saved + changed/skipped fixture。
+- Files: `packages/db/src/repositories/{event,types}.ts`, `packages/db/src/{index,repositories.fixtures}.ts`, `apps/web/src/app/actions/events.ts`。
+- Verification: db fixtures ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 无 schema migration；批量审查 Stage 末尾补。未部署、未关闭 Issue。Stage 3 批量 push。
+
 ### Fix: Issue #172 按 UserItemState 隔离情报阅读与收藏状态
 
 - Cause: Event 生命周期状态和个人阅读状态混在 IntelligenceEvent.status；用户 A read/dismiss 影响用户 B 信息流；Dashboard/Briefing 查询未按当前用户 UserItemState 派生。

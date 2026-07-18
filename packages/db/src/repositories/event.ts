@@ -17,6 +17,8 @@ import type {
   DashboardEventQueryResult,
   FeedbackSignalRecord,
   IntelligenceEventWriteInput,
+  MarkBriefingEventsReadInput,
+  MarkBriefingEventsReadResult,
   PreferenceMemoryRecord,
   RecordCategoryPreferenceFeedbackInput,
   TenantScope,
@@ -1021,6 +1023,153 @@ export async function updateDashboardEventState(
       },
     }),
   ]);
+}
+
+export async function markBriefingEventsRead(
+  prisma: PrismaClient,
+  input: MarkBriefingEventsReadInput,
+): Promise<MarkBriefingEventsReadResult> {
+  // SPEC §5.5 / Plan Task 3.2 (#173): 按 briefing snapshot 批量标记当前用户已读。
+  // 复用 #172 UserItemState 隔离：只写 UserItemState + FeedbackEvent(READ)，
+  // 不写 IntelligenceEvent.status。
+  //
+  // briefing snapshot = Briefing.events 关系表当时固定的 event IDs 集合
+  // （createPeriodBriefing 用 events.set 写入，重新生成时整体替换）。
+  //
+  // 查询形状（避免 N+1）：
+  //   1. briefing.findFirst — 1 次，带出 events 关系（id/topicId/primaryItemId）+ topicId。
+  //   2. userItemState.findMany — 1 次，eventId.in [...] 批量取当前用户现有状态。
+  //   3. $transaction([upsert..., feedbackEvent.create...]) — 单事务批量提交。
+  //
+  // 幂等：status ∈ {READ, SAVED} 视为已读终态，skip；
+  // UNREAD/DISMISSED/ARCHIVED/无记录 → changed。
+  // 保留 saved（双轨，对齐 updateDashboardEventState）：
+  //   - 已 saved → status=SAVED, saved=true（read 写 readAt 但保留收藏）。
+  //   - 未 saved → status=READ, saved=false。
+  const briefing = await prisma.briefing.findFirst({
+    where: {
+      id: input.briefingId,
+      organizationId: input.organizationId,
+    },
+    select: {
+      id: true,
+      topicId: true,
+      events: {
+        select: {
+          id: true,
+          topicId: true,
+          primaryItemId: true,
+        },
+      },
+    },
+  });
+
+  if (!briefing || briefing.events.length === 0) {
+    return { changed: 0, skipped: 0 };
+  }
+
+  const eventIds = briefing.events.map((event) => event.id);
+  const eventById = new Map(briefing.events.map((event) => [event.id, event]));
+
+  const existingStates = await prisma.userItemState.findMany({
+    where: {
+      userId: input.userId,
+      eventId: { in: eventIds },
+    },
+    select: {
+      eventId: true,
+      status: true,
+      saved: true,
+      readAt: true,
+    },
+  });
+  const stateByEventId = new Map(existingStates.map((state) => [state.eventId, state]));
+
+  const now = new Date();
+  type Plan = {
+    eventId: string;
+    topicId: string;
+    primaryItemId: string | null;
+    nextStatus: "READ" | "SAVED";
+    preserveSaved: boolean;
+  };
+  const plan: Plan[] = [];
+  let skipped = 0;
+
+  for (const eventId of eventIds) {
+    const event = eventById.get(eventId);
+    if (!event) continue;
+
+    const current = stateByEventId.get(eventId);
+    const isReadTerminal =
+      current?.status === "READ" || current?.status === "SAVED";
+    if (isReadTerminal) {
+      skipped += 1;
+      continue;
+    }
+
+    const preserveSaved = current?.saved === true;
+    plan.push({
+      eventId,
+      topicId: event.topicId,
+      primaryItemId: event.primaryItemId,
+      nextStatus: preserveSaved ? "SAVED" : "READ",
+      preserveSaved,
+    });
+  }
+
+  if (plan.length === 0) {
+    return { changed: 0, skipped };
+  }
+
+  const operations: Prisma.PrismaPromise<unknown>[] = plan.map((entry) =>
+    prisma.userItemState.upsert({
+      where: {
+        userId_eventId: {
+          eventId: entry.eventId,
+          userId: input.userId,
+        },
+      },
+      update: {
+        readAt: now,
+        saved: entry.preserveSaved,
+        status: entry.nextStatus,
+      },
+      create: {
+        eventId: entry.eventId,
+        readAt: now,
+        saved: entry.preserveSaved,
+        status: entry.nextStatus,
+        userId: input.userId,
+      },
+    }),
+  );
+
+  // 每条 changed 事件 create 一条 READ 反馈（轻量正反馈，对齐单条 read 路径）。
+  // 只对 changed 写，避免对已读事件重复产生 READ 信号污染偏好学习。
+  for (const entry of plan) {
+    operations.push(
+      prisma.feedbackEvent.create({
+        data: {
+          organizationId: input.organizationId,
+          topicId: entry.topicId,
+          userId: input.userId,
+          eventId: entry.eventId,
+          itemId: entry.primaryItemId,
+          kind: "READ",
+          value: 1,
+          metadata: {
+            source: "briefing-bulk-read",
+            briefingId: input.briefingId,
+          },
+        },
+      }),
+    );
+  }
+
+  await prisma.$transaction(operations);
+
+  return { changed: plan.length, skipped };
 }
 
 export async function listUnreadEvents(prisma: PrismaClient, scope: TopicScope) {

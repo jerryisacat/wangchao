@@ -186,6 +186,7 @@ export {
   testAiCredential,
   testSearchCredential,
   updateDashboardEventState,
+  markBriefingEventsRead,
   updateItemContentCapture,
   updateSourceGovernanceStatus,
   updateTopic,

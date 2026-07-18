@@ -4,6 +4,14 @@
 
 ## 2026-07-18
 
+## Stage 3 / Task 3.2: Briefing 批量已读（#173）
+
+- Phase: implementation plan Stage 3 Task 3.2。
+- Scope: 按 briefing snapshot 批量 upsert 当前用户 UserItemState 为 READ、保留 saved、不产生 N+1、重复幂等返回 changed/skipped counts。
+- Alignment: SPEC §5.5 批量标记当日简报已读。
+- Verification: db fixtures（批量 + 幂等 + 保留 saved + changed/skipped）+ web action；全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 3 批量 push）；未部署、未关闭 Issue。
+
 ## Stage 3 / Task 3.1: UserItemState 用户隔离（#172）
 
 - Phase: implementation plan Stage 3 Task 3.1。
