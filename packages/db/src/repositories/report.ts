@@ -202,7 +202,47 @@ export interface ReportEvidenceEvent {
   sourceId: string | null;
   sourceName: string | null;
   sourceUrl: string | null;
+  sourceTrustScore: number | null;
+  sourceQualityScore: number | null;
+  primaryItemId: string | null;
   primaryItemUrl: string | null;
+  primaryItemRawContent: string | null;
+  primaryItemPublishedAt: Date | null;
+}
+
+export interface ReportEvidenceItem {
+  itemId: string;
+  eventId: string;
+  topicId: string;
+  sourceId: string;
+  sourceName: string | null;
+  sourceTrustScore: number | null;
+  url: string;
+  canonicalUrl: string;
+  title: string;
+  rawContent: string | null;
+  publishedAt: Date | null;
+}
+
+export interface ReportEvidenceBriefing {
+  briefingId: string;
+  topicId: string;
+  period: string;
+  title: string;
+  markdown: string | null;
+  generatedAt: Date | null;
+}
+
+export interface ReportEvidenceSet {
+  events: ReportEvidenceEvent[];
+  items: ReportEvidenceItem[];
+  briefings: ReportEvidenceBriefing[];
+  eventCount: number;
+  itemCount: number;
+  briefingCount: number;
+  topicIds: string[];
+  sourceIds: string[];
+  evidenceIds: string[];
 }
 
 export async function searchReportEvidenceEvents(
@@ -243,7 +283,18 @@ export async function searchReportEvidenceEvents(
         select: {
           id: true,
           url: true,
-          source: { select: { id: true, name: true, url: true } },
+          rawContent: true,
+          publishedAt: true,
+          contentStatus: true,
+          source: {
+            select: {
+              id: true,
+              name: true,
+              url: true,
+              trustScore: true,
+              qualityScore: true,
+            },
+          },
         },
       },
     },
@@ -265,8 +316,193 @@ export async function searchReportEvidenceEvents(
     sourceId: event.primaryItem?.source.id ?? null,
     sourceName: event.primaryItem?.source.name ?? null,
     sourceUrl: event.primaryItem?.source.url ?? null,
+    sourceTrustScore: event.primaryItem?.source.trustScore ?? null,
+    sourceQualityScore: event.primaryItem?.source.qualityScore ?? null,
+    primaryItemId: event.primaryItem?.id ?? null,
     primaryItemUrl: event.primaryItem?.url ?? null,
+    primaryItemRawContent: event.primaryItem?.rawContent ?? null,
+    primaryItemPublishedAt: event.primaryItem?.publishedAt ?? null,
   }));
+}
+
+/**
+ * Issue #178 — recall Item bodies (rawContent) that are associated with the
+ * given event IDs through the EventItem join table. Returns primary items
+ * first, then secondary merged items, so dedup keeps the most authoritative
+ * copy when multiple events reference the same canonical URL.
+ */
+export async function searchReportEvidenceItems(
+  prisma: PrismaClient,
+  scope: TenantScope,
+  query: { eventIds: string[]; limit?: number },
+): Promise<ReportEvidenceItem[]> {
+  if (query.eventIds.length === 0) return [];
+  const rows = await prisma.eventItem.findMany({
+    where: {
+      event: {
+        organizationId: scope.organizationId,
+        id: { in: query.eventIds },
+      },
+    },
+    select: {
+      role: true,
+      mergedAt: true,
+      event: { select: { id: true, topicId: true } },
+      item: {
+        select: {
+          id: true,
+          url: true,
+          canonicalUrl: true,
+          title: true,
+          rawContent: true,
+          publishedAt: true,
+          sourceId: true,
+          source: {
+            select: { name: true, trustScore: true },
+          },
+        },
+      },
+    },
+    orderBy: { mergedAt: "asc" },
+    take: query.limit ?? 60,
+  });
+
+  return rows.map((row) => ({
+    itemId: row.item.id,
+    eventId: row.event.id,
+    topicId: row.event.topicId,
+    sourceId: row.item.sourceId,
+    sourceName: row.item.source.name,
+    sourceTrustScore: row.item.source.trustScore,
+    url: row.item.url,
+    canonicalUrl: row.item.canonicalUrl,
+    title: row.item.title,
+    rawContent: row.item.rawContent,
+    publishedAt: row.item.publishedAt,
+  }));
+}
+
+/**
+ * Issue #178 — recall Briefings whose event set overlaps the recalled events,
+ * so the report can cite prior daily/weekly summaries as structured evidence.
+ */
+export async function searchReportEvidenceBriefings(
+  prisma: PrismaClient,
+  scope: TenantScope,
+  query: { eventIds: string[]; limit?: number },
+): Promise<ReportEvidenceBriefing[]> {
+  if (query.eventIds.length === 0) return [];
+  const rows = await prisma.briefing.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      events: { some: { id: { in: query.eventIds } } },
+    },
+    select: {
+      id: true,
+      topicId: true,
+      period: true,
+      title: true,
+      markdown: true,
+      generatedAt: true,
+    },
+    orderBy: { generatedAt: "desc" },
+    take: query.limit ?? 10,
+  });
+
+  return rows.map((row) => ({
+    briefingId: row.id,
+    topicId: row.topicId,
+    period: row.period,
+    title: row.title,
+    markdown: row.markdown,
+    generatedAt: row.generatedAt,
+  }));
+}
+
+/**
+ * Issue #178 — assemble the full traceable evidence set for a topic report:
+ * events (with source trust + primary item body), secondary Item bodies via
+ * EventItem, and Briefings that referenced those events. Deduplicates Items
+ * by canonicalUrl (keeps the first / highest-trust copy) and preserves every
+ * evidence ID so the report can cite concrete provenance.
+ *
+ * No network calls — this only reads what the worker has already ingested.
+ */
+export async function collectReportEvidence(
+  prisma: PrismaClient,
+  scope: TenantScope,
+  query: {
+    keywords: string[];
+    rangeStart?: Date | null;
+    rangeEnd?: Date | null;
+    eventLimit?: number;
+    itemLimit?: number;
+    briefingLimit?: number;
+  },
+): Promise<ReportEvidenceSet> {
+  const events = await searchReportEvidenceEvents(prisma, scope, {
+    keywords: query.keywords,
+    rangeStart: query.rangeStart ?? null,
+    rangeEnd: query.rangeEnd ?? null,
+    limit: query.eventLimit ?? 30,
+  });
+
+  const eventIds = events.map((e) => e.eventId);
+  const [rawItems, briefings] = await Promise.all([
+    searchReportEvidenceItems(prisma, scope, {
+      eventIds,
+      limit: query.itemLimit ?? 60,
+    }),
+    searchReportEvidenceBriefings(prisma, scope, {
+      eventIds,
+      limit: query.briefingLimit ?? 10,
+    }),
+  ]);
+
+  // Dedup items by canonicalUrl — keep the first occurrence (events are
+  // ordered by gravityScore desc, so primary/higher-gravity events win).
+  const seenCanonical = new Set<string>();
+  const dedupedItems: ReportEvidenceItem[] = [];
+  for (const item of rawItems) {
+    if (item.canonicalUrl && seenCanonical.has(item.canonicalUrl)) continue;
+    if (item.canonicalUrl) seenCanonical.add(item.canonicalUrl);
+    dedupedItems.push(item);
+  }
+
+  const topicIds = Array.from(
+    new Set([
+      ...events.map((e) => e.topicId),
+      ...dedupedItems.map((i) => i.topicId),
+      ...briefings.map((b) => b.topicId),
+    ]),
+  );
+  const sourceIds = Array.from(
+    new Set(
+      [
+        ...events.map((e) => e.sourceId),
+        ...dedupedItems.map((i) => i.sourceId),
+      ].filter((id): id is string => Boolean(id)),
+    ),
+  );
+  const evidenceIds = Array.from(
+    new Set([
+      ...events.map((e) => e.eventId),
+      ...dedupedItems.map((i) => i.itemId),
+      ...briefings.map((b) => b.briefingId),
+    ]),
+  );
+
+  return {
+    events,
+    items: dedupedItems,
+    briefings,
+    eventCount: events.length,
+    itemCount: dedupedItems.length,
+    briefingCount: briefings.length,
+    topicIds,
+    sourceIds,
+    evidenceIds,
+  };
 }
 
 function toReportRecord(row: {

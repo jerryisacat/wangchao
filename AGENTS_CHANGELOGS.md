@@ -1,5 +1,16 @@
 ## 2026-07-18
 
+### Feat: Issue #178 专题报告接入可追溯正文证据集
+
+- Cause: 报告 itemCount 硬编码 events.length；无 briefingCount/evidenceIds；AI prompt 无 provenance；未禁止联网补全。
+- Changed:
+  - `packages/db/src/repositories/report.ts`：新增 `collectReportEvidence()`（从 Event/Item.rawContent/Briefing/Source metadata 召回，去重压缩，保留 evidenceIds/URLs/timestamps/trust）。
+  - `apps/worker/src/modules/report.ts`：itemCount/briefingCount 真实数量；AI prompt 每条证据带编号+ID+URL+timestamp+trust，禁止联网补全；INSUFFICIENT_DATA 持久化 evidenceIds。
+  - `apps/worker/src/modules/report.fixtures.ts`：7 项 fixture。
+- Files: `packages/db/src/repositories/report.ts`, `packages/db/src/index.ts`, `apps/worker/src/modules/{report,report.fixtures}.ts`。
+- Verification: worker report 7 fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: briefingCount/evidenceIds 存 Report.metadata JSON（不改 schema）；真实 PG 三层 include 验证待补。未部署、未关闭 Issue。Stage 4 批量 push。
+
 ### Fix: Issue #177 专题报告正确记录证据不足状态
 
 - Cause: 报告证据不足时未正确落库 INSUFFICIENT_DATA，可能错误标记 COMPLETED。

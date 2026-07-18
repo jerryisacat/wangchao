@@ -121,6 +121,12 @@ export default async function ReportDetailPage({ params }: ReportDetailPageProps
                 <dt className="w-20 shrink-0 text-muted-foreground">事件数</dt>
                 <dd className="text-muted-foreground">{report.eventCount}</dd>
               </div>
+              {report.itemCount > 0 ? (
+                <div className="flex gap-2">
+                  <dt className="w-20 shrink-0 text-muted-foreground">情报正文</dt>
+                  <dd className="text-muted-foreground">{report.itemCount}</dd>
+                </div>
+              ) : null}
               {report.topicIds.length > 0 ? (
                 <div className="flex gap-2">
                   <dt className="w-20 shrink-0 text-muted-foreground">涉及主题</dt>

@@ -4,6 +4,14 @@
 
 ## 2026-07-18
 
+## Stage 4 / Task 4.2: 报告正文证据集（#178）
+
+- Phase: implementation plan Stage 4 Task 4.2。
+- Scope: 从 Event/Item.rawContent/Briefing/Source metadata 召回证据、去重压缩保留 evidence IDs/URLs/timestamps/trust、itemCount/briefingCount 真实数量、AI prompt 关键判断关联证据编号禁止联网补全。
+- Alignment: SPEC §5.8。
+- Verification: worker report fixture（7 项：INSUFFICIENT_DATA 终态/幂等/COMPLETED 回归/零事件/真实 itemCount+provenance+dedup/AI prompt 含证据 ID+URL+timestamp+trust+禁止联网/INSUFFICIENT_DATA 持久化 evidenceIds）+ 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 4 批量 push）；未部署、未关闭 Issue。
+
 ## Stage 4 / Task 4.1: ReportStatus INSUFFICIENT_DATA（#177）
 
 - Phase: implementation plan Stage 4 Task 4.1。

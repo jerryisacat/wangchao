@@ -6,6 +6,8 @@ export interface ReportSummary {
   markdown: string | null;
   coverageNote: string | null;
   eventCount: number;
+  itemCount: number;
+  metadata: Record<string, unknown> | null;
   topicIds: string[];
   sourceIds: string[];
   generatedAt: string | null;
@@ -54,6 +56,8 @@ export async function getReportsPage(
       createdAt: report.createdAt,
       errorMessage: report.errorMessage,
       eventCount: report.eventCount,
+      itemCount: report.itemCount,
+      metadata: null,
       generatedAt: report.generatedAt,
       id: report.id,
       markdown: report.markdown,
@@ -99,6 +103,8 @@ export async function getReportDetail(
     createdAt: report.createdAt,
     errorMessage: report.errorMessage,
     eventCount: report.eventCount,
+    itemCount: report.itemCount,
+    metadata: null,
     generatedAt: report.generatedAt,
     id: report.id,
     markdown: report.markdown,
