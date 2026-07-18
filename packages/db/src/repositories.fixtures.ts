@@ -7,6 +7,7 @@ import {
   applyAutomaticSourceGovernance,
   getSourceQualitySummary,
   listBriefingsPage,
+  listDashboardEvents,
   listEventsForDailyBriefing,
   listFetchedItemsForAnalysis,
   listRecentFeedbackSignals,
@@ -38,6 +39,10 @@ export async function runRepositoryFixtures(): Promise<void> {
   await verifyCryptoRoundTrip();
   await verifyCryptoSmokeTestExecutes();
   await verifySavedPagination();
+  await verifyUserReadDoesNotLeakToOtherUserViaEventStatus();
+  await verifyUserDismissDoesNotLeakToOtherUserViaEventStatus();
+  await verifyDashboardFeedDerivesUnreadFromCurrentUserState();
+  await verifyDashboardRecordDerivesUserStateNotGlobalStatus();
   await verifyReadPreservesSavedState();
   await verifyCategoryFeedbackIsPersistedAndLearned();
   await verifyFeedbackSignalMapperPreservesContractFields();
@@ -478,7 +483,10 @@ async function verifySavedPagination(): Promise<void> {
   assert(findArgs.take === 30, `Expected page size 30, received ${String(findArgs.take)}.`);
 }
 
-async function verifyReadPreservesSavedState(): Promise<void> {
+async function verifyUserReadDoesNotLeakToOtherUserViaEventStatus(): Promise<void> {
+  // SPEC §5.5: 个人阅读状态完全由 UserItemState 承载，IntelligenceEvent.status
+  // 回归为事件生命周期。用户 A read 后不得写 IntelligenceEvent.status，否则
+  // 用户 B 的信息流被污染。
   const calls: Array<{ args: unknown; method: string }> = [];
   const prisma = {
     $transaction: async (operations: Array<Promise<unknown>>) =>
@@ -495,7 +503,232 @@ async function verifyReadPreservesSavedState(): Promise<void> {
         organizationId: "org-1",
         primaryItemId: "item-1",
         topicId: "topic-1",
-        userStates: [{ readAt: null, saved: true }],
+        userStates: [{ readAt: null, saved: false }],
+      }),
+      update: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.update" });
+        return {};
+      },
+    },
+    userItemState: {
+      upsert: async (args: unknown) => {
+        calls.push({ args, method: "userItemState.upsert" });
+        return {};
+      },
+    },
+  } as unknown as PrismaClient;
+
+  await updateDashboardEventState(prisma, {
+    action: "read",
+    eventId: "event-1",
+    organizationId: "org-1",
+    userId: "user-A",
+  });
+
+  const eventUpdates = calls.filter((c) => c.method === "intelligenceEvent.update");
+  assert(
+    eventUpdates.length === 0,
+    "SPEC §5.5 违规：用户 A read 不应再写 IntelligenceEvent.status（会泄漏到用户 B）。" +
+      `观察到 ${eventUpdates.length} 次 intelligenceEvent.update 调用。`,
+  );
+
+  const userUpsert = readArgsByName(calls, "userItemState.upsert");
+  const userUpdate = readRecord(userUpsert.update, "userItemState.upsert.update");
+  assert(
+    userUpdate.status === "READ",
+    "UserItemState.status 必须记录用户 A 的个人阅读状态 READ。",
+  );
+  assert(
+    userUpdate.readAt instanceof Date,
+    "UserItemState.readAt 必须记录阅读时间。",
+  );
+}
+
+async function verifyUserDismissDoesNotLeakToOtherUserViaEventStatus(): Promise<void> {
+  // SPEC §5.5: DISMISSED 是个人阅读状态，不得写 IntelligenceEvent.status。
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const prisma = {
+    $transaction: async (operations: Array<Promise<unknown>>) =>
+      Promise.all(operations),
+    feedbackEvent: {
+      create: async (args: unknown) => {
+        calls.push({ args, method: "feedbackEvent.create" });
+        return {};
+      },
+    },
+    intelligenceEvent: {
+      findFirstOrThrow: async () => ({
+        id: "event-1",
+        organizationId: "org-1",
+        primaryItemId: "item-1",
+        topicId: "topic-1",
+        userStates: [{ readAt: null, saved: false }],
+      }),
+      update: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.update" });
+        return {};
+      },
+    },
+    userItemState: {
+      upsert: async (args: unknown) => {
+        calls.push({ args, method: "userItemState.upsert" });
+        return {};
+      },
+    },
+  } as unknown as PrismaClient;
+
+  await updateDashboardEventState(prisma, {
+    action: "dismiss",
+    eventId: "event-1",
+    organizationId: "org-1",
+    userId: "user-A",
+  });
+
+  const eventUpdates = calls.filter((c) => c.method === "intelligenceEvent.update");
+  assert(
+    eventUpdates.length === 0,
+    "SPEC §5.5 违规：用户 A dismiss 不应再写 IntelligenceEvent.status。",
+  );
+
+  const userUpsert = readArgsByName(calls, "userItemState.upsert");
+  const userUpdate = readRecord(userUpsert.update, "userItemState.upsert.update");
+  assert(
+    userUpdate.status === "DISMISSED",
+    "UserItemState.status 必须记录用户 A 的个人 DISMISSED 状态。",
+  );
+}
+
+async function verifyDashboardFeedDerivesUnreadFromCurrentUserState(): Promise<void> {
+  // SPEC §5.5: 主信息流（listDashboardEvents）必须按当前用户 UserItemState 派生，
+  // 不得用 IntelligenceEvent.status in [UNREAD,SAVED] 全局过滤。
+  // 用户 A 已 read/dimiss 的事件，对用户 B 仍应可见。
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const prisma = {
+    intelligenceEvent: {
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "findMany" });
+        return [];
+      },
+    },
+  } as unknown as PrismaClient;
+
+  await listDashboardEvents(
+    prisma,
+    { organizationId: "org-1", userId: "user-B" },
+    30,
+  );
+
+  assert(calls.length === 1, "listDashboardEvents 应只发一次 findMany。");
+  const args = readArgsByName(calls, "findMany");
+  const where = readRecord(args.where, "findMany.where");
+
+  // SPEC §5.5: 禁止用全局 IntelligenceEvent.status 过滤个人阅读状态（隔离泄漏根因）。
+  // 允许的：status: { notIn: ["ARCHIVED"] }（组织级归档生命周期，合法）。
+  // 禁止的：status: { in: [...] } 把 READ/SAVED/DISMISSED 当全局用。
+  const statusFilter = where.status as Record<string, unknown> | undefined;
+  if (statusFilter && Array.isArray(statusFilter.in)) {
+    const personalStatesInGlobalFilter = (statusFilter.in as string[]).filter(
+      (s) => s === "READ" || s === "SAVED" || s === "DISMISSED",
+    );
+    assert(
+      personalStatesInGlobalFilter.length === 0,
+      "SPEC §5.5 违规：listDashboardEvents 不得用 IntelligenceEvent.status in [READ/SAVED/DISMISSED] " +
+        "全局过滤主信息流（个人状态泄漏）。观察到 where.status=" +
+        JSON.stringify(where.status),
+    );
+  }
+
+  // 必须有 userStates 过滤，按当前 userId 派生。
+  // 这里不严格断言是 some/none 哪种结构，只要证明派生自当前用户即可。
+  const hasUserStateFilter =
+    where.userStates !== undefined || where.NOT !== undefined;
+  assert(
+    hasUserStateFilter,
+    "listDashboardEvents 必须包含 userStates 或 NOT 子句以按当前用户派生阅读状态。",
+  );
+
+  // include 必须带 userStates（按当前 userId 过滤），用于派生 userStatus/userSaved。
+  const include = readRecord(args.include, "findMany.include");
+  assert(
+    include.userStates !== undefined,
+    "listDashboardEvents 必须 include userStates 以派生当前用户状态。",
+  );
+}
+
+async function verifyDashboardRecordDerivesUserStateNotGlobalStatus(): Promise<void> {
+  // SPEC §5.5: DashboardEventRecord.userSaved 必须只来自当前用户 UserItemState.saved，
+  // 不得 fallback 到 IntelligenceEvent.status === "SAVED"。
+  // 当 UserItemState 不存在（新事件、新用户）时，userSaved 必须是 false、
+  // userStatus 必须是 null（派生为 UNREAD），而不是继承全局 status。
+  const prisma = {
+    intelligenceEvent: {
+      findMany: async () => [
+        {
+          id: "event-1",
+          organizationId: "org-1",
+          topicId: "topic-1",
+          primaryItemId: null,
+          // 全局 status 仍是 SAVED（旧全局写入遗留），但当前用户没有 UserItemState。
+          status: "SAVED",
+          title: "t",
+          summary: "s",
+          summaryStatus: "READY",
+          category: null,
+          score: 0,
+          gravityScore: 0,
+          eventHash: null,
+          titleHash: null,
+          explanation: null,
+          entities: [],
+          followUpSuggestion: null,
+          mergeReason: null,
+          occurredAt: null,
+          updatedAt: new Date(),
+          topic: { name: "Topic" },
+          primaryItem: null,
+          eventItems: [],
+          userStates: [],
+        },
+      ],
+    },
+  } as unknown as PrismaClient;
+
+  const events = await listDashboardEvents(
+    prisma,
+    { organizationId: "org-1", userId: "user-B" },
+    30,
+  );
+
+  assert(events.length === 1, "应返回 1 条事件。");
+  const record = events[0]!;
+  assert(
+    record.userSaved === false,
+    "SPEC §5.5 违规：userSaved 必须只来自当前用户 UserItemState.saved。" +
+      "当用户 B 没有 UserItemState 时，即使全局 status=SAVED，userSaved 也必须是 false。" +
+      `观察到 userSaved=${String(record.userSaved)}。`,
+  );
+}
+
+async function verifyReadPreservesSavedState(): Promise<void> {
+  // SPEC §5.5: 对已收藏事件执行 read 保留 saved=true，status 保持 SAVED（双轨）。
+  // 新契约（#172）：read 只写 UserItemState + FeedbackEvent，不写 IntelligenceEvent.status。
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const prisma = {
+    $transaction: async (operations: Array<Promise<unknown>>) =>
+      Promise.all(operations),
+    feedbackEvent: {
+      create: async (args: unknown) => {
+        calls.push({ args, method: "feedbackEvent.create" });
+        return {};
+      },
+    },
+    intelligenceEvent: {
+      findFirstOrThrow: async () => ({
+        id: "event-1",
+        organizationId: "org-1",
+        primaryItemId: "item-1",
+        topicId: "topic-1",
+        userStates: [{ readAt: null, saved: true, status: "SAVED" }],
       }),
       update: async (args: unknown) => {
         calls.push({ args, method: "intelligenceEvent.update" });
@@ -517,10 +750,13 @@ async function verifyReadPreservesSavedState(): Promise<void> {
     userId: "user-1",
   });
 
-  const eventUpdate = readRecord(
-    readArgsByName(calls, "intelligenceEvent.update").data,
-    "intelligenceEvent.update.data",
+  // 新契约：read 不再写 IntelligenceEvent.status（隔离要求）。
+  const eventUpdates = calls.filter((c) => c.method === "intelligenceEvent.update");
+  assert(
+    eventUpdates.length === 0,
+    "read 已收藏事件时不应写 IntelligenceEvent.status（SPEC §5.5 个人状态隔离）。",
   );
+
   const userUpsert = readArgsByName(calls, "userItemState.upsert");
   const userUpdate = readRecord(userUpsert.update, "userItemState.upsert.update");
   const feedbackData = readRecord(
@@ -528,7 +764,6 @@ async function verifyReadPreservesSavedState(): Promise<void> {
     "feedbackEvent.create.data",
   );
 
-  assert(eventUpdate.status === "SAVED", "Reading a saved event must keep event status SAVED.");
   assert(userUpdate.status === "SAVED", "Reading a saved event must keep user status SAVED.");
   assert(userUpdate.saved === true, "Reading a saved event must not clear the saved flag.");
   assert(userUpdate.readAt instanceof Date, "Reading a saved event must still record readAt.");
@@ -559,15 +794,26 @@ async function verifyDailyBriefingWindowFilter(): Promise<void> {
   const args = readArgsByName(calls, "intelligenceEvent.findMany");
   const where = readRecord(args.where, "intelligenceEvent.findMany.where");
   const createdAt = readRecord(where.createdAt, "briefing.where.createdAt");
-  const status = readRecord(where.status, "briefing.where.status");
-  const statuses = status.in as unknown[];
   const primaryItem = readRecord(where.primaryItem, "briefing.where.primaryItem");
   const source = readRecord(primaryItem.source, "briefing.where.primaryItem.source");
 
   assert(createdAt.gte === rangeStart, "Daily briefing query must include the UTC range start.");
   assert(createdAt.lt === rangeEnd, "Daily briefing query must exclude the next UTC day boundary.");
-  assert(statuses.includes("READ"), "Read events from the same day must remain briefing candidates.");
-  assert(!statuses.includes("DISMISSED"), "Dismissed events must stay out of formal briefings.");
+
+  // SPEC §5.5 (#172): 简报是组织级产物，不按个人阅读状态（READ/SAVED/DISMISSED）过滤候选。
+  // 只排除组织级 ARCHIVED。旧实现用 status in [UNREAD,READ,SAVED] 全局过滤是隔离泄漏。
+  const statusFilter = where.status as Record<string, unknown> | undefined;
+  assert(statusFilter !== undefined, "Briefing query must fence out ARCHIVED events.");
+  const notIn = Array.isArray(statusFilter.notIn) ? (statusFilter.notIn as string[]) : [];
+  assert(
+    notIn.includes("ARCHIVED"),
+    "Briefing query must exclude organization-level ARCHIVED events.",
+  );
+  // 不得出现 in: [...] 把个人状态当全局用。
+  assert(
+    !statusFilter.in,
+    "SPEC §5.5 违规：briefing 查询不得用全局 status in [...] 过滤个人阅读状态。",
+  );
   assert(where.summaryStatus === "READY", "Only successfully summarized events may enter formal briefings.");
   assert(source.status === "ACTIVE", "Only active sources may enter formal briefings.");
 }

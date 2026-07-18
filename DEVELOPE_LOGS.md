@@ -4,6 +4,15 @@
 
 ## 2026-07-18
 
+## Stage 3 / Task 3.1: UserItemState 用户隔离（#172）
+
+- Phase: implementation plan Stage 3 Task 3.1。
+- Scope: 分离 Event 生命周期状态和个人阅读状态；Dashboard/Briefing/history 查询按当前用户 UserItemState 派生；updateDashboardEventState 不再写 IntelligenceEvent.status；旧全局状态兼容 fallback；两用户真实 PG 隔离测试。
+- Alignment: SPEC §5.5/§6.5。
+- Verification: db 4 个新隔离测试 + 真实 PostgreSQL 两用户隔离（4 invariant：A read/dismiss/save 不影响 B；B saved 不含 A 收藏；操作不改 IntelligenceEvent.status；B 无 A 的 UserItemState 行）；全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 3 批量 push）；未部署、未关闭 Issue。
+- Follow-up: #174 个人 ARCHIVED 引入时需重新审视 notIn[ARCHIVED] 查询逻辑。
+
 ## Stage 2 / Task 2.6: 扩大语义去重覆盖（#171）
 
 - Phase: implementation plan Stage 2 Task 2.6。

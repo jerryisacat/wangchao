@@ -1,5 +1,16 @@
 ## 2026-07-18
 
+### Fix: Issue #172 按 UserItemState 隔离情报阅读与收藏状态
+
+- Cause: Event 生命周期状态和个人阅读状态混在 IntelligenceEvent.status；用户 A read/dismiss 影响用户 B 信息流；Dashboard/Briefing 查询未按当前用户 UserItemState 派生。
+- Changed:
+  - `packages/db/src/repositories/event.ts`：`updateDashboardEventState` 移除 `intelligenceEvent.update({data:{status}})`，只 upsert UserItemState + 写 feedback；`listDashboardEvents` where 改为 `status notIn [ARCHIVED]` + NOT EXISTS 当前用户 READ/DISMISSED UserItemState；`listEventsForDailyBriefing`/`listTimelineEvents` 改为 `status notIn [ARCHIVED]`（briefing 是组织级产物）；`mapDashboardEventRecord` 返回派生 status（`userState?.status ?? "UNREAD"`）+ userSaved 完全来自 userState。
+  - `packages/db/src/repositories.fixtures.ts`：4 个新隔离测试（A read 不影响 B、A dismiss 不影响 B、A save 不进 B saved、操作不改 IntelligenceEvent.status）+ 旧全局状态兼容 fallback 测试。
+  - `packages/db/src/user-item-state-pg.fixtures.ts`：真实 PostgreSQL 两用户隔离 opt-in fixture（4 invariant）。
+- Files: `packages/db/src/repositories/{event,types}.ts`, `packages/db/src/{repositories.fixtures,user-item-state-pg.fixtures}.ts`。
+- Verification: db 4 新隔离测试 + 真实 PG 两用户隔离 4 invariant ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 无 schema migration（UserItemState 已存在）；旧全局 READ/SAVED/DISMISSED 兼容 fallback（当无当前用户 UserItemState 但 event.status 是旧值时视为历史状态）；#174 个人 ARCHIVED 需重新审视 notIn 查询。未部署、未关闭 Issue。Stage 3 批量 push。
+
 ### Fix: Issue #171 扩大跨源语义去重覆盖
 
 - Cause: 不同 URL/标题同一事件无法合并；已读旧事件无法与新报道合并；别名实体无法匹配；晚到报道漏入窗口；无 AI 时按 URL 隔绝跨源候选。

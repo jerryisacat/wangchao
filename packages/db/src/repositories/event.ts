@@ -209,11 +209,23 @@ export async function listDashboardEvents(
   scope: TenantScope & { userId: string },
   limit = 30,
 ): Promise<DashboardEventRecord[]> {
+  // SPEC §5.5: 主信息流按当前用户 UserItemState 派生。
+  // 默认显示组织内未归档事件中，当前用户未 READ/DISMISSED 的（即没有 UserItemState，
+  // 或 UserItemState.status 为 UNREAD/SAVED 的事件）。
+  // 不再用全局 IntelligenceEvent.status in [UNREAD,SAVED] 过滤——那是隔离泄漏的根因。
   const events = await prisma.intelligenceEvent.findMany({
     where: {
       organizationId: scope.organizationId,
-      status: {
-        in: ["UNREAD", "SAVED"],
+      // 组织级归档（语义合并/组织级 ARCHIVED）仍排除。
+      status: { notIn: ["ARCHIVED"] },
+      // 排除当前用户已 READ 或 DISMISSED 的事件。
+      NOT: {
+        userStates: {
+          some: {
+            userId: scope.userId,
+            status: { in: ["READ", "DISMISSED"] },
+          },
+        },
       },
     },
     include: {
@@ -380,14 +392,18 @@ function mapDashboardEventRecord(
     sourceId: event.primaryItem?.sourceId ?? null,
     sourceName: event.primaryItem?.source.name ?? null,
     sourceUrl: event.primaryItem?.source.url ?? null,
-    status: event.status,
+    // SPEC §5.5: status 派生自当前用户 UserItemState，无则默认 UNREAD。
+    // 不再回传全局 IntelligenceEvent.status 当个人状态（那是事件生命周期）。
+    status: userState?.status ?? "UNREAD",
     summary: event.summary,
     summaryStatus: event.summaryStatus,
     title: event.title,
     topicId: event.topicId,
     topicName: event.topic.name,
     updatedAt: event.updatedAt,
-    userSaved: userState?.saved ?? event.status === "SAVED",
+    // SPEC §5.5: userSaved 只来自当前用户 UserItemState.saved，
+    // 不得 fallback 到全局 IntelligenceEvent.status === "SAVED"。
+    userSaved: userState?.saved ?? false,
     userStatus: userState?.status ?? null,
   };
 }
@@ -579,9 +595,10 @@ export async function listEventsForDailyBriefing(
         gte: scope.rangeStart,
         lt: scope.rangeEnd,
       },
-      status: {
-        in: ["UNREAD", "READ", "SAVED"],
-      },
+      // SPEC §5.5: 简报是组织级产物，不按个人阅读状态过滤候选。
+      // 只排除组织级 ARCHIVED（语义合并/归档）。旧实现用 status in [UNREAD,READ,SAVED]
+      // 全局过滤会因用户 A read 后把事件移出 READ 状态而影响简报内容——隔离泄漏。
+      status: { notIn: ["ARCHIVED"] },
       primaryItem: {
         source: {
           status: "ACTIVE",
@@ -659,7 +676,9 @@ export async function listTimelineEvents(
     organizationId: scope.organizationId,
     topicId: scope.topicId,
     summaryStatus: "READY",
-    status: { in: ["UNREAD", "READ", "SAVED"] },
+    // SPEC §5.5: 历史时间线是组织级视图，不按个人阅读状态过滤。
+    // 只排除组织级 ARCHIVED。
+    status: { notIn: ["ARCHIVED"] },
     primaryItem: { source: { status: "ACTIVE" } },
   };
   if (scope.rangeStart || scope.rangeEnd) {
@@ -902,6 +921,10 @@ export async function updateDashboardEventState(
   prisma: PrismaClient,
   input: UpdateDashboardEventStateInput,
 ) {
+  // SPEC §5.5: 个人阅读状态完全由 UserItemState 承载。
+  // read/save/dismiss/unsave 只写 UserItemState + FeedbackEvent，
+  // 不再写 IntelligenceEvent.status（那是事件生命周期，组织级）。
+  // 旧实现同时双写 IntelligenceEvent.status 导致用户 A 的状态泄漏到用户 B。
   const target = actionToEventState(input.action);
   const event = await prisma.intelligenceEvent.findFirstOrThrow({
     where: {
@@ -915,7 +938,7 @@ export async function updateDashboardEventState(
       primaryItemId: true,
       userStates: {
         where: { userId: input.userId },
-        select: { readAt: true, saved: true },
+        select: { readAt: true, saved: true, status: true },
         take: 1,
       },
     },
@@ -928,13 +951,12 @@ export async function updateDashboardEventState(
   const now = new Date();
 
   if (input.action === "unsave") {
-    const restoredStatus = event.userStates[0]?.readAt ? "READ" : "UNREAD";
+    // unsave 只清除 saved 标记；个人阅读状态（READ/UNREAD）由是否曾 readAt 决定，
+    // 不回退到 UNREAD——已读事件取消收藏后仍保持 READ（SPEC §5.5 双轨：saved 与 status 独立）。
+    const current = event.userStates[0];
+    const restoredStatus = current?.status ?? (current?.readAt ? "READ" : "UNREAD");
 
     await prisma.$transaction([
-      prisma.intelligenceEvent.update({
-        where: { id: event.id },
-        data: { status: restoredStatus },
-      }),
       prisma.userItemState.upsert({
         where: {
           userId_eventId: {
@@ -957,17 +979,13 @@ export async function updateDashboardEventState(
     return;
   }
 
+  // read/save/dismiss：保留已收藏标记（SPEC §5.5：对已收藏事件执行 read 保留 saved=true，
+  // 只有显式 unsave 才移出收藏）。
   const preserveSaved =
     input.action === "read" && event.userStates[0]?.saved === true;
   const nextStatus = preserveSaved ? "SAVED" : target.status;
 
   await prisma.$transaction([
-    prisma.intelligenceEvent.update({
-      where: { id: event.id },
-      data: {
-        status: nextStatus,
-      },
-    }),
     prisma.userItemState.upsert({
       where: {
         userId_eventId: {
@@ -1006,12 +1024,14 @@ export async function updateDashboardEventState(
 }
 
 export async function listUnreadEvents(prisma: PrismaClient, scope: TopicScope) {
+  // SPEC §5.5: IntelligenceEvent.status 回归事件生命周期，个人阅读状态不在全局 status。
+  // 此查询语义从"个人未读"修正为"组织级未归档"，供 worker/instant push 使用。
   return prisma.intelligenceEvent.findMany({
     where: {
       organizationId: scope.organizationId,
       topicId: scope.topicId,
       summaryStatus: "READY",
-      status: "UNREAD",
+      status: { notIn: ["ARCHIVED"] },
     },
     orderBy: [{ gravityScore: "desc" }, { createdAt: "desc" }],
   });
