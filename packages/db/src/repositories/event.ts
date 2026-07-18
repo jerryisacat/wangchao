@@ -434,6 +434,8 @@ export async function listRecentFeedbackSignals(
       organizationId: scope.organizationId,
       userId: scope.userId,
       kind: {
+        // SPEC §5.6: every feedback kind except SOURCE_APPROVE/SOURCE_REJECT
+        // (governance audit only, must not enter personal preference learning).
         in: [
           "READ",
           "SAVE",
@@ -441,10 +443,19 @@ export async function listRecentFeedbackSignals(
           "EXPORT",
           "CATEGORY_UP",
           "CATEGORY_DOWN",
+          "MORE_LIKE_THIS",
+          "LESS_LIKE_THIS",
+          "SOURCE_QUALITY_UP",
+          "SOURCE_QUALITY_DOWN",
+          "SCORE_UP",
+          "SCORE_DOWN",
         ],
       },
     },
     include: {
+      // IntelligenceEvent is optional for enhanced feedback (SOURCE_QUALITY_UP/DOWN,
+      // MORE/LESS_LIKE_THIS may carry no eventId). When present, it provides
+      // category + primary item source; when absent, fall back to FeedbackEvent.source.
       event: {
         select: {
           category: true,
@@ -460,19 +471,31 @@ export async function listRecentFeedbackSignals(
           },
         },
       },
+      source: {
+        select: {
+          name: true,
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
     take: limit,
   });
 
-  return feedbackEvents.map((event) => ({
-    category: event.event?.category ?? null,
-    kind: event.kind as FeedbackSignalRecord["kind"],
-    sourceId: event.event?.primaryItem?.sourceId ?? null,
-    sourceName: event.event?.primaryItem?.source.name ?? null,
-    topicId: event.topicId,
-    value: event.value,
-  }));
+  return feedbackEvents.map((feedbackEvent) => {
+    const eventSourceId = feedbackEvent.event?.primaryItem?.sourceId ?? null;
+    const eventSourceName = feedbackEvent.event?.primaryItem?.source.name ?? null;
+    return {
+      category: feedbackEvent.event?.category ?? null,
+      createdAt: feedbackEvent.createdAt,
+      eventId: feedbackEvent.eventId,
+      feedbackEventId: feedbackEvent.id,
+      kind: feedbackEvent.kind as FeedbackSignalRecord["kind"],
+      sourceId: eventSourceId ?? feedbackEvent.sourceId ?? null,
+      sourceName: eventSourceName ?? feedbackEvent.source?.name ?? null,
+      topicId: feedbackEvent.topicId,
+      value: feedbackEvent.value,
+    };
+  });
 }
 
 export async function recordCategoryPreferenceFeedback(

@@ -1,5 +1,21 @@
 ## 2026-07-18
 
+### Fix: Issue #164 反馈信号字段完整性、跨 Topic 隔离与时间衰减
+
+- Cause: `listRecentFeedbackSignals` mapper 丢失 `feedbackEventId`/`eventId`/`createdAt`，`generatePreferenceDeltas` dedupKey 退化为 `eventId+kind`（空 eventId 时跨 Topic 吞信号），查询排除 6 种增强反馈类型，30 天半衰期因缺失 createdAt 失效；MORE_LIKE_THIS/LESS_LIKE_THIS 的 preferenceKeysForSignal 重复推送 category key 导致单信号双倍计算。
+- Changed:
+  - `packages/db/src/repositories/event.ts` `listRecentFeedbackSignals`：查询 `kind.in` 扩展为全部 12 种非治理反馈（READ/SAVE/DISMISS/EXPORT/CATEGORY_UP/CATEGORY_DOWN/MORE_LIKE_THIS/LESS_LIKE_THIS/SOURCE_QUALITY_UP/SOURCE_QUALITY_DOWN/SCORE_UP/SCORE_DOWN）；include 新增 `source` 关系；mapper 返回 `feedbackEventId`(=id)/`eventId`/`createdAt`/`topicId`/`sourceId`/`sourceName`/`category`/`value`，eventId 缺失时 fallback 到 `feedbackEvent.sourceId`/`feedbackEvent.source.name`。
+  - `packages/db/src/repositories/types.ts` `FeedbackSignalRecord`：新增 `feedbackEventId: string`、`eventId: string | null`、`createdAt: Date`，kind 联合类型扩展为 12 种。
+  - `packages/core/src/preference.ts` `FeedbackSignal`：新增 `feedbackEventId?: string | null`、`createdAt?: Date | null`；`generatePreferenceDeltas` dedupKey 改为 `${feedbackEventId}::${kind}::${topicId}`，防止跨 Topic 吞信号；`preferenceKeysForSignal` MORE/LESS_LIKE_THIS 分支委托给 `preferenceKeysForEvent` 避免重复 category key。
+  - `packages/core/src/index.fixtures.ts`：新增 5 个测试（同 Topic 三次 DISMISS 累积、跨 Topic 隔离、replay 幂等、31 天衰减、增强反馈不跨 Topic 合并、缺失 feedbackEventId 安全、MORE_LIKE_THIS 不重复计算）。
+  - `packages/db/src/repositories.fixtures.ts`：新增 `verifyFeedbackSignalMapperPreservesContractFields`，验证 mapper 在 Prisma 返回形状下正确映射全部字段。
+- Files: `packages/core/src/{preference,index.fixtures}.ts`, `packages/db/src/repositories/{event,types}.ts`, `packages/db/src/repositories.fixtures.ts`, `docs/L3-modules.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification:
+  - Core fixtures 19 测试（含新增回归）✓；DB repositories fixture ✓。
+  - 全仓 `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` / `git diff --check` ✓（Node 26 + Prisma generate）。
+  - DeepSeek V4 Pro 只读审计：首轮 REQUEST_CHANGES（1 Critical: MORE_LIKE_THIS category key 重复计算）→ 父 Agent 修复 + 补回归测试 → Core fixtures 重跑全绿。
+- Notes / Risk: DB mapper 的真实 PostgreSQL 集成证明依赖 disposable PG，当前用精确 mock 覆盖；Stage 2/#176 会重建 Source 质量 fixture 时补真实 PG 链路。未部署、未关闭 Issue。
+
 ### Docs: 同步 SPEC 对齐 Stage 1 已完成进度
 
 - Cause: Task 1.1–1.5 已分别完成、验证并推送，但实施计划缺少当前完成检查点，且 `DEVELOPE_LOGS.md` 的 Task 1.5 Follow-up 仍停留在提交前状态。

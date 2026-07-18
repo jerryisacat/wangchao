@@ -34,6 +34,7 @@ export async function runRepositoryFixtures(): Promise<void> {
   await verifySavedPagination();
   await verifyReadPreservesSavedState();
   await verifyCategoryFeedbackIsPersistedAndLearned();
+  await verifyFeedbackSignalMapperPreservesContractFields();
   await verifyTopicUpdateAndAnalysisContextStayTenantScoped();
   await verifyDailyBriefingWindowFilter();
   await verifyDailyBriefingUpsert();
@@ -201,6 +202,13 @@ async function verifyCategoryFeedbackIsPersistedAndLearned(): Promise<void> {
         calls.push({ args, method: "feedbackEvent.findMany" });
         return [
           {
+            id: "fb-cat-1",
+            createdAt: new Date("2026-07-18T00:00:00.000Z"),
+            eventId: "event-1",
+            sourceId: null,
+            kind: "CATEGORY_UP",
+            topicId: "topic-1",
+            value: 2,
             event: {
               category: "AI",
               primaryItem: {
@@ -208,9 +216,7 @@ async function verifyCategoryFeedbackIsPersistedAndLearned(): Promise<void> {
                 sourceId: "source-1",
               },
             },
-            kind: "CATEGORY_UP",
-            topicId: "topic-1",
-            value: 2,
+            source: null,
           },
         ];
       },
@@ -250,6 +256,172 @@ async function verifyCategoryFeedbackIsPersistedAndLearned(): Promise<void> {
   assert(kinds.includes("CATEGORY_DOWN"), "Preference learning must query category-down feedback.");
   assert(signal?.kind === "CATEGORY_UP", "Category feedback must reach the learning signal mapper.");
   assert(signal?.category === "AI", "Category feedback must retain the event category.");
+}
+
+/**
+ * Issue #164: listRecentFeedbackSignals must return the full FeedbackSignalRecord
+ * contract (feedbackEventId, eventId, createdAt, topic/source/category/value) and
+ * must not swallow enhanced feedback kinds (SCORE_*, SOURCE_QUALITY_*, MORE/LESS_LIKE_THIS)
+ * nor merge cross-topic signals when eventId is absent.
+ *
+ * The mock below mirrors the real Prisma FeedbackEvent row shape (scalar fields are
+ * returned by default; relations are gated by `include`). Enhanced feedback such as
+ * SOURCE_QUALITY_UP typically has no bound IntelligenceEvent, so the mapper must fall
+ * back to FeedbackEvent.sourceId.
+ */
+async function verifyFeedbackSignalMapperPreservesContractFields(): Promise<void> {
+  const capturedWhereKinds: string[] = [];
+  const createdAtA = new Date("2026-06-17T00:00:00.000Z");
+  const createdAtB = new Date("2026-07-18T00:00:00.000Z");
+
+  const mockedRows = [
+    {
+      // DISMISS bound to an IntelligenceEvent (classic case).
+      id: "fb-dismiss-1",
+      createdAt: createdAtA,
+      eventId: "event-1",
+      sourceId: null,
+      kind: "DISMISS",
+      topicId: "topic-1",
+      value: null,
+      event: {
+        category: "AI",
+        primaryItem: {
+          sourceId: "source-via-event",
+          source: { name: "Source Via Event" },
+        },
+      },
+      source: null,
+    },
+    {
+      // SOURCE_QUALITY_UP with no IntelligenceEvent — must read FeedbackEvent.sourceId.
+      id: "fb-sq-up-1",
+      createdAt: createdAtB,
+      eventId: null,
+      sourceId: "source-direct",
+      kind: "SOURCE_QUALITY_UP",
+      topicId: "topic-2",
+      value: null,
+      event: null,
+      source: { name: "Source Direct" },
+    },
+    {
+      // SCORE_UP on a different topic — must not be swallowed or merged.
+      id: "fb-score-up-1",
+      createdAt: createdAtB,
+      eventId: "event-3",
+      sourceId: null,
+      kind: "SCORE_UP",
+      topicId: "topic-3",
+      value: null,
+      event: {
+        category: "Policy",
+        primaryItem: {
+          sourceId: null,
+          source: { name: null },
+        },
+      },
+      source: null,
+    },
+  ] as unknown as Awaited<ReturnType<PrismaClient["feedbackEvent"]["findMany"]>>;
+
+  const prisma = {
+    feedbackEvent: {
+      findMany: async (args: { where?: { kind?: { in?: unknown[] } } }) => {
+        const kinds = args.where?.kind?.in;
+        if (Array.isArray(kinds)) {
+          capturedWhereKinds.push(...(kinds as string[]));
+        }
+        return mockedRows;
+      },
+    },
+  } as unknown as PrismaClient;
+
+  const signals = await listRecentFeedbackSignals(prisma, {
+    organizationId: "org-1",
+    userId: "user-1",
+  });
+
+  // 1. Enhanced feedback kinds must be queried, not filtered out.
+  const requiredKinds = [
+    "READ",
+    "SAVE",
+    "DISMISS",
+    "EXPORT",
+    "CATEGORY_UP",
+    "CATEGORY_DOWN",
+    "MORE_LIKE_THIS",
+    "LESS_LIKE_THIS",
+    "SOURCE_QUALITY_UP",
+    "SOURCE_QUALITY_DOWN",
+    "SCORE_UP",
+    "SCORE_DOWN",
+  ];
+  for (const kind of requiredKinds) {
+    assert(
+      capturedWhereKinds.includes(kind),
+      `Preference learning must query ${kind} feedback (got: ${capturedWhereKinds.join(",")}).`,
+    );
+  }
+  assert(
+    !capturedWhereKinds.includes("SOURCE_APPROVE") &&
+      !capturedWhereKinds.includes("SOURCE_REJECT"),
+    "Governance-only feedback (SOURCE_APPROVE/REJECT) must not enter personal preference learning.",
+  );
+
+  // 2. All three signals must survive — no cross-topic or enhanced-kind swallowing.
+  assert(signals.length === 3, `Expected 3 signals, got ${signals.length}.`);
+  const dismiss = signals.find((s) => s.feedbackEventId === "fb-dismiss-1");
+  const quality = signals.find((s) => s.feedbackEventId === "fb-sq-up-1");
+  const score = signals.find((s) => s.feedbackEventId === "fb-score-up-1");
+  assert(dismiss !== undefined, "DISMISS signal must be present.");
+  assert(quality !== undefined, "SOURCE_QUALITY_UP signal must not be swallowed.");
+  assert(score !== undefined, "SCORE_UP signal must not be swallowed.");
+
+  // 3. Contract fields must be populated.
+  assert(dismiss?.eventId === "event-1", "DISMISS must carry its eventId.");
+  assert(
+    dismiss?.createdAt.toISOString() === createdAtA.toISOString(),
+    "DISMISS must carry its createdAt for time decay.",
+  );
+  assert(dismiss?.topicId === "topic-1", "DISMISS must carry its topicId.");
+  assert(dismiss?.category === "AI", "DISMISS must carry event category.");
+  assert(
+    dismiss?.sourceId === "source-via-event",
+    "DISMISS must read sourceId via the bound IntelligenceEvent.",
+  );
+  assert(
+    dismiss?.sourceName === "Source Via Event",
+    "DISMISS must read sourceName via the bound IntelligenceEvent.",
+  );
+
+  // 4. Enhanced feedback with no IntelligenceEvent must fall back to FeedbackEvent.sourceId.
+  assert(quality?.eventId === null, "SOURCE_QUALITY_UP without event must expose null eventId, not undefined.");
+  assert(
+    quality?.createdAt.toISOString() === createdAtB.toISOString(),
+    "SOURCE_QUALITY_UP must carry its createdAt.",
+  );
+  assert(quality?.topicId === "topic-2", "SOURCE_QUALITY_UP must carry its topicId.");
+  assert(
+    quality?.sourceId === "source-direct",
+    "SOURCE_QUALITY_UP must fall back to FeedbackEvent.sourceId when no event is bound.",
+  );
+  assert(
+    quality?.sourceName === "Source Direct",
+    "SOURCE_QUALITY_UP must read source name from the FeedbackEvent.source relation.",
+  );
+
+  // 5. Missing identifiers must degrade safely (null, not crash).
+  assert(score?.eventId === "event-3", "SCORE_UP must carry its eventId.");
+  assert(score?.category === "Policy", "SCORE_UP must carry event category.");
+  assert(score?.sourceId === null, "SCORE_UP with no source must expose null, not undefined.");
+  assert(score?.sourceName === null, "SCORE_UP with no source name must expose null.");
+
+  // 6. feedbackEventId must always be non-null (it is the dedup primary key).
+  assert(
+    signals.every((s) => typeof s.feedbackEventId === "string" && s.feedbackEventId.length > 0),
+    "Every signal must carry a non-empty feedbackEventId for idempotent dedup.",
+  );
 }
 
 async function verifySavedPagination(): Promise<void> {

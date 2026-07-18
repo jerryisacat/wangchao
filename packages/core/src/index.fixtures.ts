@@ -20,6 +20,13 @@ export function runCoreFixtures(): void {
   testEntityAndIncludeScopeDriveExplainableFallback();
   testPreferenceDeltasKeepTopicsIsolated();
   testCategoryFeedbackOnlyChangesCategoryWeight();
+  testPreferenceDeltasAccumulateSameTopicDismiss();
+  testPreferenceDeltasKeepCrossTopicDismissIsolated();
+  testPreferenceDeltasAreIdempotentOnSameFeedbackEvent();
+  testPreferenceDeltasApplyTimeDecayToOldSignals();
+  testPreferenceDeltasIncludeEnhancedFeedbackWithoutCrossTopicMerge();
+  testPreferenceDeltasSurviveMissingFeedbackEventIdAcrossTopics();
+  testMoreLikeThisDoesNotDuplicateCategoryKey();
   testTopicProfileContextUsesTopicIdentityAndSanitizesLists();
   testInstantPushPlanAccess();
 }
@@ -281,7 +288,250 @@ function testCreateIntelligenceEventDraftReturnsNullForIrrelevant(): void {
   assert(draft === null, "Draft should be null for irrelevant item");
 }
 
-function assert(condition: boolean, message: string): void {
+function testPreferenceDeltasAccumulateSameTopicDismiss(): void {
+  const deltas = generatePreferenceDeltas([
+    {
+      category: "AI",
+      feedbackEventId: "fb-dismiss-1",
+      kind: "DISMISS",
+      topicId: "topic-1",
+    },
+    {
+      category: "AI",
+      feedbackEventId: "fb-dismiss-2",
+      kind: "DISMISS",
+      topicId: "topic-1",
+    },
+    {
+      category: "AI",
+      feedbackEventId: "fb-dismiss-3",
+      kind: "DISMISS",
+      topicId: "topic-1",
+    },
+  ]);
+
+  assert(deltas.length === 1, "Three same-topic DISMISS must collapse into one delta.");
+  const delta = deltas[0];
+  assert(delta !== undefined, "Delta must exist.");
+  assert(delta.value.signalCount === 3, "signalCount must accumulate to 3.");
+  assert(
+    delta.value.weight === -4,
+    `Three DISMISS (-2 each = -6) must clamp to -4, got ${delta.value.weight}.`,
+  );
+  assert(
+    delta.explanation.includes("3 feedback signals"),
+    "Explanation must reflect 3 accumulated signals.",
+  );
+}
+
+function testPreferenceDeltasKeepCrossTopicDismissIsolated(): void {
+  const deltas = generatePreferenceDeltas([
+    {
+      category: "AI",
+      feedbackEventId: "fb-cross-1",
+      kind: "DISMISS",
+      topicId: "topic-1",
+    },
+    {
+      category: "AI",
+      feedbackEventId: "fb-cross-2",
+      kind: "DISMISS",
+      topicId: "topic-2",
+    },
+  ]);
+
+  assert(deltas.length === 2, "Cross-topic DISMISS must produce two deltas, not merge.");
+  const first = deltas.find((d) => d.topicId === "topic-1");
+  const second = deltas.find((d) => d.topicId === "topic-2");
+  assert(first?.value.weight === -2, "Topic 1 DISMISS weight must be -2.");
+  assert(second?.value.weight === -2, "Topic 2 DISMISS weight must be -2.");
+  assert(
+    first?.value.signalCount === 1 && second?.value.signalCount === 1,
+    "Each topic must count its own signal independently.",
+  );
+}
+
+function testPreferenceDeltasAreIdempotentOnSameFeedbackEvent(): void {
+  const deltas = generatePreferenceDeltas([
+    {
+      category: "AI",
+      feedbackEventId: "fb-replay-1",
+      kind: "DISMISS",
+      topicId: "topic-1",
+    },
+    {
+      category: "AI",
+      feedbackEventId: "fb-replay-1",
+      kind: "DISMISS",
+      topicId: "topic-1",
+    },
+  ]);
+
+  assert(deltas.length === 1, "Same feedbackEventId replay must be idempotent.");
+  assert(
+    deltas[0]?.value.signalCount === 1,
+    "signalCount must not inflate on replay.",
+  );
+}
+
+function testPreferenceDeltasApplyTimeDecayToOldSignals(): void {
+  const now = new Date("2026-07-18T00:00:00.000Z");
+  const oldDate = new Date("2026-06-17T00:00:00.000Z"); // 31 days ago
+  const deltas = generatePreferenceDeltas(
+    [
+      {
+        category: "AI",
+        createdAt: oldDate,
+        feedbackEventId: "fb-old",
+        kind: "SAVE",
+        topicId: "topic-old",
+        value: 4,
+      },
+      {
+        category: "AI",
+        createdAt: now,
+        feedbackEventId: "fb-new",
+        kind: "SAVE",
+        topicId: "topic-new",
+        value: 4,
+      },
+    ],
+    now,
+  );
+
+  const oldDelta = deltas.find((d) => d.topicId === "topic-old");
+  const newDelta = deltas.find((d) => d.topicId === "topic-new");
+  assert(oldDelta !== undefined, "Old signal must still produce a delta.");
+  assert(newDelta !== undefined, "New signal must produce a delta.");
+  assert(
+    oldDelta!.value.signalCount === 1,
+    "Old signal count must be 1.",
+  );
+  assert(
+    Math.abs(oldDelta!.value.weight) < Math.abs(newDelta!.value.weight),
+    `Old signal weight (${oldDelta!.value.weight}) must be decayed below new (${newDelta!.value.weight}).`,
+  );
+}
+
+function testPreferenceDeltasIncludeEnhancedFeedbackWithoutCrossTopicMerge(): void {
+  const deltas = generatePreferenceDeltas([
+    {
+      feedbackEventId: "fb-sq-up-1",
+      kind: "SOURCE_QUALITY_UP",
+      sourceId: "source-1",
+      sourceName: "Source One",
+      topicId: "topic-1",
+    },
+    {
+      feedbackEventId: "fb-sq-up-2",
+      kind: "SOURCE_QUALITY_UP",
+      sourceId: "source-2",
+      sourceName: "Source Two",
+      topicId: "topic-2",
+    },
+    {
+      category: "AI",
+      feedbackEventId: "fb-score-up",
+      kind: "SCORE_UP",
+      topicId: "topic-3",
+    },
+  ]);
+
+  assert(
+    deltas.length === 3,
+    "Enhanced feedback on different topics must not merge into one delta.",
+  );
+  const topic1Delta = deltas.find((d) => d.topicId === "topic-1");
+  const topic2Delta = deltas.find((d) => d.topicId === "topic-2");
+  const scoreDelta = deltas.find((d) => d.topicId === "topic-3");
+  assert(
+    topic1Delta?.key === "source:source-1",
+    "SOURCE_QUALITY_UP must target the source key.",
+  );
+  assert(
+    topic2Delta?.key === "source:source-2",
+    "Second topic's SOURCE_QUALITY_UP must not be swallowed.",
+  );
+  assert(
+    scoreDelta?.key === "category:AI",
+    "SCORE_UP must target the category key.",
+  );
+}
+
+function testPreferenceDeltasSurviveMissingFeedbackEventIdAcrossTopics(): void {
+  // Upstream contract violation: feedbackEventId missing. Core must not crash,
+  // and must not swallow cross-topic signals that share the same kind just
+  // because their dedup key would otherwise collapse to "::KIND".
+  const deltas = generatePreferenceDeltas([
+    {
+      category: "AI",
+      kind: "DISMISS",
+      topicId: "topic-a",
+    },
+    {
+      category: "AI",
+      kind: "DISMISS",
+      topicId: "topic-b",
+    },
+  ]);
+
+  assert(
+    deltas.length === 2,
+    "Missing feedbackEventId must not cause cross-topic DISMISS to be swallowed.",
+  );
+  const a = deltas.find((d) => d.topicId === "topic-a");
+  const b = deltas.find((d) => d.topicId === "topic-b");
+  assert(a?.value.signalCount === 1, "Topic A must count its own signal.");
+  assert(b?.value.signalCount === 1, "Topic B must count its own signal.");
+  assert(
+    a?.value.weight === -2 && b?.value.weight === -2,
+    "Each topic must retain its independent DISMISS weight.",
+  );
+}
+
+function testMoreLikeThisDoesNotDuplicateCategoryKey(): void {
+  // Regression: MORE_LIKE_THIS with a category must produce exactly one
+  // delta for that category (not two), because preferenceKeysForEvent
+  // already emits category:<cat>. Double-counting inflated both signalCount
+  // and weight for a single feedback signal.
+  const deltas = generatePreferenceDeltas([
+    {
+      category: "AI",
+      feedbackEventId: "fb-mlt-1",
+      kind: "MORE_LIKE_THIS",
+      sourceId: "source-1",
+      sourceName: "Source One",
+      topicId: "topic-1",
+    },
+  ]);
+
+  const categoryDelta = deltas.find((d) => d.key === "category:AI");
+  assert(
+    categoryDelta !== undefined,
+    "MORE_LIKE_THIS must produce a category delta.",
+  );
+  assert(
+    categoryDelta!.value.signalCount === 1,
+    `MORE_LIKE_THIS single signal must count once, got ${categoryDelta!.value.signalCount}.`,
+  );
+  // MORE_LIKE_THIS base weight is 2 (see feedbackSignalWeight).
+  assert(
+    categoryDelta!.value.weight === 2,
+    `MORE_LIKE_THIS single signal weight must be exactly 2, got ${categoryDelta!.value.weight}.`,
+  );
+
+  const sourceDelta = deltas.find((d) => d.key === "source:source-1");
+  assert(
+    sourceDelta !== undefined,
+    "MORE_LIKE_THIS must also produce a source delta.",
+  );
+  assert(
+    sourceDelta!.value.signalCount === 1,
+    "MORE_LIKE_THIS source delta must also count once.",
+  );
+}
+
+function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
     throw new Error(message);
   }

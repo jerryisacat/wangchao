@@ -151,13 +151,22 @@ export interface DashboardEventPage {
 
 export interface FeedbackSignalRecord {
   category: string | null;
+  createdAt: Date;
+  eventId: string | null;
+  feedbackEventId: string;
   kind:
     | "READ"
     | "SAVE"
     | "DISMISS"
     | "EXPORT"
     | "CATEGORY_UP"
-    | "CATEGORY_DOWN";
+    | "CATEGORY_DOWN"
+    | "MORE_LIKE_THIS"
+    | "LESS_LIKE_THIS"
+    | "SOURCE_QUALITY_UP"
+    | "SOURCE_QUALITY_DOWN"
+    | "SCORE_UP"
+    | "SCORE_DOWN";
   sourceId: string | null;
   sourceName: string | null;
   topicId: string;

@@ -4,6 +4,16 @@
 
 ## 2026-07-18
 
+## Stage 1 / Task 1.6: 反馈信号契约修复（#164）
+
+- Phase: implementation plan Stage 1 Task 1.6。
+- Scope: FeedbackSignalRecord 字段完整性（feedbackEventId/eventId/createdAt）、12 种非治理反馈类型纳入查询、按 feedbackEventId 主键幂等、跨 Topic 信号隔离、30 天半衰期时间衰减恢复、MORE_LIKE_THIS category key 重复计算修复。
+- Alignment: SPEC §5.6 全部 15 种 FeedbackKind 中除 SOURCE_APPROVE/SOURCE_REJECT 外均纳入偏好学习；§6.7 PreferenceMemory 的 signalCount/weight 语义与实际累计一致。
+- Bugs fixed: DB mapper 丢失 feedbackEventId/eventId/createdAt 导致 core dedupKey 退化为 eventId+kind（空 eventId 时跨 Topic 吞信号）；查询排除 6 种增强反馈类型；MORE_LIKE_THIS/LESS_LIKE_THIS 的 preferenceKeysForSignal 重复推送 category key 导致单信号双倍计算。
+- Verification: Core 19 个 fixture（含新增 MORE_LIKE_THIS 重复计算回归测试）+ DB repositories fixture（含新增 verifyFeedbackSignalMapperPreservesContractFields）全绿；全仓 typecheck/lint/test/build/db:validate/diff-check 通过；DeepSeek V4 Pro 只读审计 REQUEST_CHANGES（1 Critical: MORE_LIKE_THIS 重复计算）已修复并补回归测试。
+- Completion: 本次 commit 后推送 `feat/spec-alignment-160`；未部署、未关闭 Issue。
+- Follow-up: Stage 1 exit gate 已通过（#161/#153/#166/#162/#163/#164 全部完成）；进入 Stage 2。
+
 ## Stage 1 / Task 1.5: 主 Worker 多组织化（#163）
 
 - Phase: implementation plan Stage 1 Task 1.5。

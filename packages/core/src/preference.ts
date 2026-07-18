@@ -3,6 +3,7 @@ import { normalizeTitle } from "./hashing.js";
 export interface FeedbackSignal {
   category?: string | null;
   eventId?: string | null;
+  feedbackEventId?: string | null;
   kind:
     | "READ"
     | "SAVE"
@@ -56,7 +57,11 @@ export function generatePreferenceDeltas(
   >();
 
   for (const signal of signals) {
-    const dedupKey = `${signal.eventId ?? ""}::${signal.kind}`;
+    // Dedup by feedbackEventId (SPEC §5.6: idempotent on FeedbackEvent primary key).
+    // topicId is included in the dedup key so that signals with missing
+    // feedbackEventId (upstream contract violation) cannot be swallowed across
+    // topics — the same kind in different topics must always remain independent.
+    const dedupKey = `${signal.feedbackEventId ?? ""}::${signal.kind}::${signal.topicId}`;
     if (processedKeys.has(dedupKey)) continue;
     processedKeys.add(dedupKey);
     const weight = feedbackSignalWeight(signal);
@@ -150,16 +155,13 @@ function preferenceKeysForSignal(signal: FeedbackSignal): string[] {
   }
 
   if (signal.kind === "MORE_LIKE_THIS" || signal.kind === "LESS_LIKE_THIS") {
-    const keys: string[] = [];
-    if (signal.category) {
-      keys.push(`category:${signal.category}`);
-    }
-    keys.push(...preferenceKeysForEvent({
+    // preferenceKeysForEvent already emits category:<cat> when category is present,
+    // so we delegate entirely to it to avoid double-counting the same key.
+    return preferenceKeysForEvent({
       category: signal.category,
       sourceId: signal.sourceId,
       sourceName: signal.sourceName,
-    }));
-    return keys;
+    });
   }
 
   if (signal.kind === "SOURCE_QUALITY_UP" || signal.kind === "SOURCE_QUALITY_DOWN") {
