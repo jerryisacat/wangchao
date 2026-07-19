@@ -1,5 +1,16 @@
 ## 2026-07-18
 
+### Refactor: Issue #183 按 SPEC 重构中文结构化简报
+
+- Cause: 简报渲染不完整消费 Topic.digestStyle，可能有英文模板残留，结构不符合 SPEC §4.2 分区展示。
+- Changed:
+  - `packages/core/src/render-briefing.ts`：zh-CN 默认；分区展示（重要性/影响对象/可信度/后续动作/多来源）；完整消费 digestStyle（compact/standard/detailed structure + brief/standard/comprehensive detailLevel + maxEvents 上限）；不丢 entities/followUpSuggestion/secondarySources；Preference 影响事件选择。
+  - `apps/worker/src/modules/briefing.ts`：消费新渲染器。
+  - `packages/core/src/index.fixtures.ts`：15 个新 briefing fixture。
+- Files: `packages/core/src/{render-briefing,index.fixtures}.ts`, `apps/worker/src/modules/briefing.ts`。
+- Verification: core 15 新 fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 无 schema migration；批量审查 Stage 末尾补。未部署、未关闭 Issue。Stage 4 批量 push。
+
 ### Fix: Issue #179 完善 Telegram 简报重试与补投
 
 - Cause: 第一次 500 后第二轮永不重试，FAILED 永久漏投。

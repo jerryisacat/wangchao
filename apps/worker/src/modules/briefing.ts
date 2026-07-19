@@ -73,9 +73,12 @@ export async function runDailyBriefingCycle(
         digestStyle: context.digestStyle ?? DEFAULT_DIGEST_STYLE,
         events: events.map((event) => ({
           category: event.category,
+          entities: event.entities,
           explanation: event.explanation,
+          followUpSuggestion: event.followUpSuggestion ?? undefined,
           occurredAt: event.occurredAt,
           score: event.score,
+          secondarySources: event.secondarySources,
           sourceName: event.sourceName,
           sourceUrl: event.sourceUrl,
           summary: event.summary,
@@ -104,7 +107,7 @@ export async function runDailyBriefingCycle(
         organizationId,
         rangeEnd,
         rangeStart,
-        title: `${topic.name} Daily Briefing`,
+        title: `${topic.name}｜每日简报`,
         topicId: topic.id,
       });
       await completeTaskRun(prisma, taskRun.id, {
@@ -187,9 +190,12 @@ export async function runPeriodBriefingCycle(
         digestStyle: context.digestStyle ?? DEFAULT_DIGEST_STYLE,
         events: events.map((event) => ({
           category: event.category,
+          entities: event.entities,
           explanation: event.explanation,
+          followUpSuggestion: event.followUpSuggestion ?? undefined,
           occurredAt: event.occurredAt,
           score: event.score,
+          secondarySources: event.secondarySources,
           sourceName: event.sourceName,
           sourceUrl: event.sourceUrl,
           summary: event.summary,
@@ -203,7 +209,7 @@ export async function runPeriodBriefingCycle(
         rangeStart,
         topicName: topic.name,
       });
-      const titleSuffix = period === "WEEKLY" ? "Weekly Briefing" : "Monthly Briefing";
+      const titleSuffix = period === "WEEKLY" ? "周报" : "月报";
       const briefing = await createPeriodBriefing(prisma, {
         content: markdown,
         eventIds: events.map((event) => event.eventId),

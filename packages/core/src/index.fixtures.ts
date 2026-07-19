@@ -17,6 +17,7 @@ import {
   type PreferenceSnapshot,
 } from "./index.js";
 import { runDedupFixtures } from "./dedup.fixtures.js";
+import { runRenderBriefingFixtures } from "./render-briefing.fixtures.js";
 import type { AiEventExtraction } from "./index.js";
 import { checkInstantPushQuota, resolveEffectivePlan } from "./quota.js";
 
@@ -60,6 +61,7 @@ export function runCoreFixtures(): void {
   testRelevanceFilterAppliesBoostedKeywords();
   testRelevanceFilterWithoutSnapshotKeepsLegacyBehavior();
   runDedupFixtures();
+  runRenderBriefingFixtures();
 }
 
 function testInstantPushPlanAccess(): void {

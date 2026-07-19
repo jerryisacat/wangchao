@@ -4,6 +4,14 @@
 
 ## 2026-07-18
 
+## Stage 4 / Task 4.4: 中文结构化简报（#183）
+
+- Phase: implementation plan Stage 4 Task 4.4。
+- Scope: zh-CN 默认无英文残留、分区展示（重要性/影响对象/可信度/后续动作/多来源）、完整消费 digestStyle（compact/standard/detailed/detailLevel/maxEvents）、Preference 影响选择、不丢 entities/followUpSuggestion/secondarySources。
+- Alignment: SPEC §4.2/§5.1。
+- Verification: core 15 个新 briefing fixture + 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 4 批量 push）；未部署、未关闭 Issue。
+
 ## Stage 4 / Task 4.3: Telegram 重试补投（#179）
 
 - Phase: implementation plan Stage 4 Task 4.3。
