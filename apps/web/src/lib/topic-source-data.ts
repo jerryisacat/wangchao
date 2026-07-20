@@ -745,3 +745,108 @@ export async function getTopicTimeline(
     total: result.total,
   };
 }
+
+// Issue #185 (Plan Task 4.7) — 每主题一体化 Dashboard。
+// SPEC §5.8 Dashboard：每主题一个页面，整合未读 Top、已读/收藏、趋势、信源健康、最近简报。
+// 服务端聚合，web 层只做 session workspace fence + DTO 序列化。
+
+export interface TopicDashboardData {
+  topic: {
+    id: string;
+    name: string;
+    description: string | null;
+    status: "ACTIVE" | "PAUSED" | "ARCHIVED";
+    createdAt: string;
+    updatedAt: string;
+    sourceCount: number;
+    eventCount: number;
+    briefingCount: number;
+  };
+  unreadTop: DashboardEventSummary[];
+  savedEvents: DashboardEventSummary[];
+  savedTotal: number;
+  readTotal: number;
+  recentBriefings: Array<{
+    briefingId: string;
+    generatedAt: string;
+    period: "DAILY" | "WEEKLY" | "MONTHLY";
+    title: string;
+    rangeStart: string;
+    rangeEnd: string;
+  }>;
+  sourceHealth: Array<{
+    sourceId: string;
+    name: string;
+    status: "ACTIVE" | "CANDIDATE" | "MUTED" | "REJECTED";
+    qualityScore: number;
+    hitRate: number;
+    noiseRate: number;
+    duplicateRate: number;
+    totalItems: number;
+    eventCount: number;
+    lastFetchedAt: string | null;
+    lastError: string | null;
+    consecutiveFailures: number;
+  }>;
+  trends: {
+    "7": TopicTrendData;
+    "30": TopicTrendData;
+  };
+}
+
+export interface TopicTrendData {
+  rangeDays: 7 | 30;
+  rangeStart: string;
+  rangeEnd: string;
+  totalEvents: number;
+  dailyBuckets: Array<{ date: string; count: number }>;
+  categoryBuckets: Array<{ category: string; count: number }>;
+  entityBuckets: Array<{ entity: string; count: number }>;
+  sourceQuality: Array<{
+    sourceId: string;
+    sourceName: string;
+    qualityScore: number;
+    hitRate: number;
+    noiseRate: number;
+    eventCount: number;
+  }>;
+}
+
+export async function getTopicDashboardData(
+  topicId: string,
+): Promise<TopicDashboardData | null> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not configured. Set DATABASE_URL to connect to Postgres.",
+    );
+  }
+
+  const { getSessionWorkspace } = await import("@/lib/session");
+  const { getPrismaClient, getTopicDashboard } = await import("@wangchao/db");
+  const prisma = getPrismaClient();
+  const workspace = await getSessionWorkspace();
+
+  const dashboard = await getTopicDashboard(prisma, {
+    organizationId: workspace.organizationId,
+    topicId,
+    userId: workspace.userId,
+  });
+
+  if (!dashboard) {
+    return null;
+  }
+
+  return {
+    topic: dashboard.topic,
+    unreadTop: dashboard.unreadTop.map((event) => toDashboardEventSummary(event)),
+    savedEvents: dashboard.savedEvents.map((event) => toDashboardEventSummary(event)),
+    savedTotal: dashboard.savedTotal,
+    readTotal: dashboard.readTotal,
+    recentBriefings: dashboard.recentBriefings,
+    sourceHealth: dashboard.sourceHealth,
+    trends: {
+      "7": dashboard.trends["7"],
+      "30": dashboard.trends["30"],
+    },
+  };
+}

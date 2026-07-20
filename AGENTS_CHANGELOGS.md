@@ -1,5 +1,19 @@
 ## 2026-07-18
 
+### Feat: Issue #185 实现主题一体化 Dashboard 与趋势
+
+- Cause: 缺少每主题一体化 Dashboard（未读/收藏/趋势/信源健康/简报）。
+- Changed:
+  - `packages/db/src/repositories/dashboard.ts`：新增 `getTopicDashboard`（8 并发查询：topic + 未读 Top + 收藏 + 7/30 天趋势 + 信源健康 + 最近简报）。
+  - `packages/db/src/repositories/types.ts`：TopicDashboardRecord/TopicTrendData 类型。
+  - `apps/web/src/lib/topic-source-data.ts`：`getTopicDashboardData` web 封装。
+  - `apps/web/src/components/intelligence/{trend-chart,topic-dashboard-view}.tsx`：纯 CSS 图表（TrendBarChart/DailyTrendChart/SourceHealthList）+ Dashboard 视图。
+  - `apps/web/src/app/topics/[topicId]/page.tsx`：重写调用 Dashboard。
+  - 父 Agent 修复：移除未定义的 `adaptEventForCard` 引用（数据已是 DTO 格式）。
+- Files: `packages/db/src/repositories/{dashboard,types,event}.ts`, `packages/db/src/{index,repositories.fixtures,repositories}.ts`, `apps/web/src/{lib/topic-source-data,components/intelligence/{trend-chart,topic-dashboard-view},app/topics/[topicId]/page}.tsx`。
+- Verification: db dashboard fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 纯 CSS 图表无图表库依赖；实体聚合客户端 Map；globals.css 待补。未部署、未关闭 Issue。Stage 4 批量 push。
+
 ### Feat: Issue #182 增加浏览器简报详情页
 
 - Cause: 缺少浏览器内简报正文详情与阅读操作。

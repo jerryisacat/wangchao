@@ -6,6 +6,8 @@ import {
   failTaskRun,
   applyAutomaticSourceGovernance,
   getSourceQualitySummary,
+  getTopicDashboard,
+  getTopicTrends,
   listBriefingsPage,
   getBriefingDetail,
   listDashboardEvents,
@@ -82,6 +84,13 @@ export async function runRepositoryFixtures(): Promise<void> {
   await verifyFuzzyEventMatchUpdatesExistingEvent();
   await verifySemanticMergeClearsArchivedMatchKeys();
   await verifyInstantPushSettingsUseTelegramCredential();
+  await verifyTopicDashboardAggregatesAllSections();
+  await verifyTopicDashboardReturnsNullForMissingTopic();
+  await verifyTopicTrendsUsesDbAggregationAndDateWindow();
+  await verifyTopicTrendsCollapsesDailyBucketsWithZeroFill();
+  await verifyTopicDashboardUnreadExcludesUserReadDismissedArchived();
+  await verifyTopicDashboardSavedIsUserScoped();
+  await verifyTopicTrendsEntityAggregationExpandsAndRanks();
 }
 
 async function verifyInstantPushSettingsUseTelegramCredential(): Promise<void> {
@@ -2438,6 +2447,395 @@ async function verifySemanticMergeClearsArchivedMatchKeys(): Promise<void> {
   assert(keepWhere.organizationId === "org-semantic", "Keep event lookup must be organization fenced.");
   assert(mergeWhere.organizationId === "org-semantic", "Merge event lookup must be organization fenced.");
   assert(archiveWhere.organizationId === "org-semantic", "Archive update must be organization fenced.");
+}
+
+// ===== Issue #185 (Plan Task 4.7) — Topic Dashboard 与趋势视图 =====
+
+async function verifyTopicDashboardAggregatesAllSections(): Promise<void> {
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const now = new Date("2026-07-20T12:00:00.000Z");
+  const prisma = {
+    topic: {
+      findFirst: async (args: unknown) => {
+        calls.push({ args, method: "topic.findFirst" });
+        return {
+          id: "topic-1",
+          name: "中国商业航空",
+          description: "C919/COMAC",
+          status: "ACTIVE",
+          createdAt: now,
+          updatedAt: now,
+          _count: { intelligenceEvents: 42, sources: 3, briefings: 5 },
+        };
+      },
+    },
+    intelligenceEvent: {
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.findMany" });
+        return [
+          {
+            id: "event-1",
+            category: "适航认证",
+            entities: ["C919", "COMAC"],
+            explanation: "重要进展",
+            followUpSuggestion: null,
+            gravityScore: 8.5,
+            mergeReason: null,
+            occurredAt: now,
+            primaryItem: {
+              sourceId: "src-1",
+              url: "https://example.com/article",
+              source: { name: "Source A", url: "https://source-a.com" },
+            },
+            eventItems: [{ itemId: "item-1", role: "PRIMARY" }],
+            userStates: [],
+            score: 7,
+            summary: "C919 完成适航",
+            summaryStatus: "READY",
+            title: "C919 适认证",
+            topicId: "topic-1",
+            topic: { name: "中国商业航空" },
+            updatedAt: now,
+          },
+        ];
+      },
+      count: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.count" });
+        return 5;
+      },
+      groupBy: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.groupBy" });
+        return [
+          { occurredAt: now, _count: { id: 3 } },
+        ];
+      },
+    },
+    briefing: {
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "briefing.findMany" });
+        return [
+          {
+            id: "briefing-1",
+            generatedAt: now,
+            period: "DAILY",
+            title: "7月20日简报",
+            rangeStart: now,
+            rangeEnd: now,
+          },
+        ];
+      },
+    },
+    source: {
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "source.findMany" });
+        return [
+          {
+            id: "src-1",
+            name: "Source A",
+            status: "ACTIVE",
+            qualityScore: 0.8,
+            trustScore: 0.7,
+            lastFetchedAt: now,
+            lastError: null,
+            lastErrorAt: null,
+            consecutiveFailures: 0,
+            items: [
+              {
+                status: "ANALYZED",
+                intelligenceEvents: [{ id: "event-1", status: "UNREAD" }],
+                eventItems: [],
+              },
+            ],
+          },
+        ];
+      },
+    },
+  } as unknown as PrismaClient;
+
+  const dashboard = await getTopicDashboard(prisma, {
+    organizationId: "org-1",
+    topicId: "topic-1",
+    userId: "user-1",
+  });
+
+  assert(dashboard !== null, "Dashboard must return data for existing topic.");
+
+  // Verify topic section.
+  assert(dashboard.topic.id === "topic-1", "Dashboard topic.id must match.");
+  assert(dashboard.topic.name === "中国商业航空", "Dashboard topic.name must match.");
+  assert(dashboard.topic.sourceCount === 3, "Dashboard topic.sourceCount must match _count.");
+  assert(dashboard.topic.eventCount === 42, "Dashboard topic.eventCount must match _count.");
+
+  // Verify unread section.
+  assert(dashboard.unreadTop.length === 1, "Dashboard unreadTop must return events.");
+  assert(dashboard.unreadTop[0]!.eventId === "event-1", "Dashboard unreadTop event must be mapped.");
+
+  // Verify saved section.
+  assert(dashboard.savedTotal === 5, "Dashboard savedTotal must come from count query.");
+  assert(dashboard.readTotal === 5, "Dashboard readTotal must come from count query.");
+
+  // Verify recent briefings.
+  assert(dashboard.recentBriefings.length === 1, "Dashboard recentBriefings must return briefings.");
+  assert(dashboard.recentBriefings[0]!.briefingId === "briefing-1", "Dashboard briefing must be mapped.");
+  assert(dashboard.recentBriefings[0]!.period === "DAILY", "Dashboard briefing period must be preserved.");
+
+  // Verify source health.
+  assert(dashboard.sourceHealth.length === 1, "Dashboard sourceHealth must return sources.");
+  assert(dashboard.sourceHealth[0]!.sourceId === "src-1", "Dashboard sourceHealth must map sourceId.");
+
+  // Verify trends (7 and 30 day).
+  assert(dashboard.trends["7"].rangeDays === 7, "Dashboard trend 7 must have rangeDays=7.");
+  assert(dashboard.trends["30"].rangeDays === 30, "Dashboard trend 30 must have rangeDays=30.");
+  assert(dashboard.trends["7"].dailyBuckets.length === 7, "Dashboard trend 7 must have 7 daily buckets.");
+  assert(dashboard.trends["30"].dailyBuckets.length === 30, "Dashboard trend 30 must have 30 daily buckets.");
+
+  // Verify topic.findFirst was organization + topic fenced.
+  const topicArgs = readArgsByName(calls, "topic.findFirst");
+  const topicWhere = readRecord(topicArgs.where, "topic.findFirst.where");
+  assert(topicWhere.organizationId === "org-1", "Dashboard topic query must be organization fenced.");
+  assert(topicWhere.id === "topic-1", "Dashboard topic query must target the requested topic.");
+}
+
+async function verifyTopicDashboardReturnsNullForMissingTopic(): Promise<void> {
+  const prisma = {
+    topic: {
+      findFirst: async () => null,
+    },
+  } as unknown as PrismaClient;
+
+  const dashboard = await getTopicDashboard(prisma, {
+    organizationId: "org-1",
+    topicId: "missing-topic",
+    userId: "user-1",
+  });
+
+  assert(dashboard === null, "Dashboard must return null for missing topic.");
+}
+
+async function verifyTopicTrendsUsesDbAggregationAndDateWindow(): Promise<void> {
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const prisma = {
+    intelligenceEvent: {
+      count: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.count" });
+        return 10;
+      },
+      groupBy: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.groupBy" });
+        return [];
+      },
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.findMany" });
+        return [];
+      },
+    },
+    source: {
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "source.findMany" });
+        return [];
+      },
+    },
+  } as unknown as PrismaClient;
+
+  const trends = await getTopicTrends(prisma, {
+    organizationId: "org-1",
+    topicId: "topic-1",
+  }, 7);
+
+  // Verify the count query has the correct where clause with date window.
+  const countArgs = readArgsByName(calls, "intelligenceEvent.count");
+  const countWhere = readRecord(countArgs.where, "trends.count.where");
+  assert(countWhere.organizationId === "org-1", "Trends must be organization fenced.");
+  assert(countWhere.topicId === "topic-1", "Trends must be topic fenced.");
+  const occurredAt = readRecord(countWhere.occurredAt, "trends.count.where.occurredAt");
+  assert(occurredAt.gte instanceof Date, "Trends must have rangeStart (gte) as Date.");
+  assert(occurredAt.lt instanceof Date, "Trends must have rangeEnd (lt) as Date.");
+  assert((occurredAt.lt as Date).getTime() - (occurredAt.gte as Date).getTime() === 7 * 24 * 60 * 60 * 1000, "Trends 7-day window must be 7 days wide.");
+
+  assert(trends.rangeDays === 7, "Trends must return rangeDays=7.");
+  assert(trends.totalEvents === 10, "Trends must return totalEvents from count.");
+  assert(trends.dailyBuckets.length === 7, "Trends must return 7 daily buckets.");
+}
+
+async function verifyTopicTrendsCollapsesDailyBucketsWithZeroFill(): Promise<void> {
+  // Test that daily buckets are zero-filled for days with no events.
+  const threeDaysAgo = new Date();
+  threeDaysAgo.setUTCDate(threeDaysAgo.getUTCDate() - 3);
+  threeDaysAgo.setUTCHours(6, 0, 0, 0);
+
+  const prisma = {
+    intelligenceEvent: {
+      count: async () => 1,
+      groupBy: async () => [
+        { occurredAt: threeDaysAgo, _count: { id: 1 } },
+      ],
+      findMany: async () => [],
+    },
+    source: {
+      findMany: async () => [],
+    },
+  } as unknown as PrismaClient;
+
+  const trends = await getTopicTrends(prisma, {
+    organizationId: "org-1",
+    topicId: "topic-1",
+  }, 7);
+
+  // Must have 7 buckets.
+  assert(trends.dailyBuckets.length === 7, "Trends must produce 7 daily buckets.");
+
+  // Exactly one bucket should have count=1 (the day 3 days ago).
+  const nonZeroBuckets = trends.dailyBuckets.filter((b) => b.count > 0);
+  assert(nonZeroBuckets.length === 1, "Trends daily buckets must have exactly 1 non-zero day.");
+  assert(nonZeroBuckets[0]!.count === 1, "Trends non-zero bucket must have count=1.");
+
+  // All other buckets must be 0.
+  const zeroBuckets = trends.dailyBuckets.filter((b) => b.count === 0);
+  assert(zeroBuckets.length === 6, "Trends must zero-fill 6 remaining days.");
+
+  // Buckets must be in chronological order.
+  for (let i = 1; i < trends.dailyBuckets.length; i++) {
+    assert(trends.dailyBuckets[i]!.date > trends.dailyBuckets[i - 1]!.date, "Trends daily buckets must be in ascending date order.");
+  }
+}
+
+async function verifyTopicDashboardUnreadExcludesUserReadDismissedArchived(): Promise<void> {
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const prisma = {
+    topic: {
+      findFirst: async () => ({
+        id: "topic-1",
+        name: "Test",
+        description: null,
+        status: "ACTIVE",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        _count: { intelligenceEvents: 1, sources: 0, briefings: 0 },
+      }),
+    },
+    intelligenceEvent: {
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.findMany" });
+        return [];
+      },
+      count: async () => 0,
+      groupBy: async () => [],
+    },
+    briefing: { findMany: async () => [] },
+    source: { findMany: async () => [] },
+  } as unknown as PrismaClient;
+
+  await getTopicDashboard(prisma, {
+    organizationId: "org-1",
+    topicId: "topic-1",
+    userId: "user-1",
+  });
+
+  // The first findMany call should be the unread query.
+  const unreadCall = calls.find(
+    (c) => c.method === "intelligenceEvent.findMany" &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ((c.args as any)?.orderBy?.[0]?.gravityScore === "desc"),
+  );
+  assert(unreadCall, "Dashboard must query unread events ordered by gravityScore desc.");
+  const unreadWhere = readRecord(
+    (unreadCall!.args as { where: unknown }).where,
+    "unread.where",
+  );
+  // The NOT clause must exclude userStates with READ/DISMISSED/ARCHIVED for the current user.
+  const notClause = readRecord(unreadWhere.NOT, "unread.where.NOT");
+  const userStates = readRecord(notClause.userStates, "unread.where.NOT.userStates");
+  const someClause = readRecord(userStates.some, "unread.where.NOT.userStates.some");
+  assert(someClause.userId === "user-1", "Unread exclusion must be scoped to current user.");
+  const statusIn = someClause.status as { in: string[] };
+  assert(
+    statusIn.in.includes("READ") && statusIn.in.includes("DISMISSED") && statusIn.in.includes("ARCHIVED"),
+    "Unread exclusion must include READ, DISMISSED, and ARCHIVED.",
+  );
+}
+
+async function verifyTopicDashboardSavedIsUserScoped(): Promise<void> {
+  const calls: Array<{ args: unknown; method: string }> = [];
+  const prisma = {
+    topic: {
+      findFirst: async () => ({
+        id: "topic-1",
+        name: "Test",
+        description: null,
+        status: "ACTIVE",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        _count: { intelligenceEvents: 1, sources: 0, briefings: 0 },
+      }),
+    },
+    intelligenceEvent: {
+      findMany: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.findMany" });
+        return [];
+      },
+      count: async (args: unknown) => {
+        calls.push({ args, method: "intelligenceEvent.count" });
+        return 0;
+      },
+      groupBy: async () => [],
+    },
+    briefing: { findMany: async () => [] },
+    source: { findMany: async () => [] },
+  } as unknown as PrismaClient;
+
+  await getTopicDashboard(prisma, {
+    organizationId: "org-1",
+    topicId: "topic-1",
+    userId: "user-1",
+  });
+
+  // The second findMany should be the saved query with userStates.saved=true and userId.
+  const savedCalls = calls.filter((c) => c.method === "intelligenceEvent.findMany");
+  assert(savedCalls.length >= 2, "Dashboard must make at least 2 findMany calls (unread + saved).");
+  const savedCall = savedCalls[1];
+  assert(savedCall, "Dashboard saved query must exist.");
+  const savedWhere = readRecord(
+    (savedCall!.args as { where: unknown }).where,
+    "saved.where",
+  );
+  const userStates = readRecord(savedWhere.userStates, "saved.where.userStates");
+  const someClause = readRecord(userStates.some, "saved.where.userStates.some");
+  assert(someClause.saved === true, "Saved query must filter saved=true.");
+  assert(someClause.userId === "user-1", "Saved query must be scoped to current user.");
+}
+
+async function verifyTopicTrendsEntityAggregationExpandsAndRanks(): Promise<void> {
+  const prisma = {
+    intelligenceEvent: {
+      count: async () => 3,
+      groupBy: async () => [],
+      findMany: async () => [
+        { category: "适航", entities: ["C919", "COMAC", "CAAC"] },
+        { category: "适航", entities: ["C919", "COMAC"] },
+        { category: "交付", entities: ["C919"] },
+      ],
+    },
+    source: { findMany: async () => [] },
+  } as unknown as PrismaClient;
+
+  const trends = await getTopicTrends(prisma, {
+    organizationId: "org-1",
+    topicId: "topic-1",
+  }, 7);
+
+  // Entity counts: C919=3, COMAC=2, CAAC=1.
+  assert(trends.entityBuckets.length === 3, "Trends must expand entities from arrays.");
+  assert(trends.entityBuckets[0]!.entity === "C919", "Top entity must be C919 (count=3).");
+  assert(trends.entityBuckets[0]!.count === 3, "C919 count must be 3.");
+  assert(trends.entityBuckets[1]!.entity === "COMAC", "Second entity must be COMAC (count=2).");
+  assert(trends.entityBuckets[1]!.count === 2, "COMAC count must be 2.");
+  assert(trends.entityBuckets[2]!.entity === "CAAC", "Third entity must be CAAC (count=1).");
+
+  // Category counts: 适航=2, 交付=1.
+  assert(trends.categoryBuckets.length === 2, "Trends must aggregate categories.");
+  assert(trends.categoryBuckets[0]!.category === "适航", "Top category must be 适航 (count=2).");
+  assert(trends.categoryBuckets[0]!.count === 2, "适航 count must be 2.");
+  assert(trends.categoryBuckets[1]!.category === "交付", "Second category must be 交付 (count=1).");
 }
 
 function readArgs(

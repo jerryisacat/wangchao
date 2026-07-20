@@ -4,6 +4,15 @@
 
 ## 2026-07-18
 
+## Stage 4 / Task 4.7: 每主题 Dashboard（#185）
+
+- Phase: implementation plan Stage 4 Task 4.7。
+- Scope: getTopicDashboard（未读 Top/收藏/趋势/信源健康/最近简报 5 区）、7/30 天事件/类别/实体/来源质量趋势、服务端聚合、纯 CSS 图表（无图表库依赖）。
+- Alignment: SPEC §5.8。
+- Verification: db dashboard fixture + 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后 Stage 4 全部完成，批量 push。
+- Follow-up: globals.css 类待补（mobile viewport）；实体聚合客户端 Map（大窗口性能后续优化）。
+
 ## Stage 4 / Task 4.6: 浏览器 Briefing 详情（#182）
 
 - Phase: implementation plan Stage 4 Task 4.6。

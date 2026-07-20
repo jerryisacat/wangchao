@@ -467,7 +467,7 @@ export async function getDashboardEventById(
   return event ? mapDashboardEventRecord(event) : null;
 }
 
-function mapDashboardEventRecord(
+export function mapDashboardEventRecord(
   event: DashboardEventQueryResult,
 ): DashboardEventRecord {
   const userState = event.userStates[0];

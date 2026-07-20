@@ -307,6 +307,95 @@ export interface SourceDiscoveryPageRecord {
   url: string;
 }
 
+// Issue #185 (Plan Task 4.7) — 每主题一体化 Dashboard 与趋势视图。
+// SPEC §5.8 Dashboard：每主题一个页面，整合未读 Top、已读/收藏、趋势、信源状态。
+// 趋势维度：7/30 天事件/类别/实体/来源质量。
+// 所有查询严格 organization + topic fenced；DB 聚合用 Prisma groupBy。
+export type TrendRangeDays = 7 | 30;
+
+export interface TrendDailyBucket {
+  date: string; // ISO date (YYYY-MM-DD)
+  count: number;
+}
+
+export interface TrendCategoryBucket {
+  category: string;
+  count: number;
+}
+
+export interface TrendEntityBucket {
+  entity: string;
+  count: number;
+}
+
+export interface TrendSourceQualityBucket {
+  sourceId: string;
+  sourceName: string;
+  qualityScore: number;
+  hitRate: number;
+  noiseRate: number;
+  eventCount: number;
+}
+
+export interface TopicTrendSummary {
+  rangeDays: TrendRangeDays;
+  rangeStart: string; // ISO datetime
+  rangeEnd: string; // ISO datetime
+  totalEvents: number;
+  dailyBuckets: TrendDailyBucket[];
+  categoryBuckets: TrendCategoryBucket[];
+  entityBuckets: TrendEntityBucket[];
+  sourceQuality: TrendSourceQualityBucket[];
+}
+
+export interface TopicDashboardBriefingRecord {
+  briefingId: string;
+  generatedAt: string; // ISO datetime
+  period: "DAILY" | "WEEKLY" | "MONTHLY";
+  title: string;
+  rangeStart: string; // ISO datetime
+  rangeEnd: string; // ISO datetime
+}
+
+export interface TopicDashboardSourceHealthRecord {
+  sourceId: string;
+  name: string;
+  status: "ACTIVE" | "CANDIDATE" | "MUTED" | "REJECTED";
+  qualityScore: number;
+  hitRate: number;
+  noiseRate: number;
+  duplicateRate: number;
+  totalItems: number;
+  eventCount: number;
+  lastFetchedAt: string | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+}
+
+export interface TopicDashboardSummary {
+  topic: {
+    id: string;
+    name: string;
+    description: string | null;
+    status: "ACTIVE" | "PAUSED" | "ARCHIVED";
+    createdAt: string;
+    updatedAt: string;
+    sourceCount: number;
+    eventCount: number;
+    briefingCount: number;
+  };
+  unreadTop: DashboardEventRecord[];
+  savedEvents: DashboardEventRecord[];
+  savedTotal: number;
+  readTotal: number;
+  recentBriefings: TopicDashboardBriefingRecord[];
+  sourceHealth: TopicDashboardSourceHealthRecord[];
+  trends: {
+    "7": TopicTrendSummary;
+    "30": TopicTrendSummary;
+  };
+}
+
 export type SourceGovernanceAction = "approve" | "mute" | "reject" | "observe";
 
 export type DashboardEventAction = "read" | "save" | "unsave" | "dismiss" | "archive" | "restore";
