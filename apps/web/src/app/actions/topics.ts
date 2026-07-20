@@ -57,10 +57,11 @@ async function createTopicWithCandidateDiscovery(formData: FormData) {
     getPrismaClient,
     getSubscriptionPlanView,
     getTopicCount,
+    reserveSourceSlot,
     recordUsageEvent,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
-  const { buildTopicProfile, checkTopicQuota, resolveEffectivePlanFromView } = await import("@wangchao/core");
+  const { buildTopicProfile, checkTopicQuota, PLAN_LIMITS, resolveEffectivePlanFromView } = await import("@wangchao/core");
   const { validateRssFeedUrl } = await import("@wangchao/sources");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
@@ -75,9 +76,21 @@ async function createTopicWithCandidateDiscovery(formData: FormData) {
   );
 
   const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
+  const effectivePlan = resolveEffectivePlanFromView(subscription);
   const topicCount = await getTopicCount(prisma, { organizationId: workspace.organizationId });
-  const quota = checkTopicQuota(resolveEffectivePlanFromView(subscription), topicCount, subscription.isSelfHosted);
+  const quota = checkTopicQuota(effectivePlan, topicCount, subscription.isSelfHosted);
   if (!quota.allowed) throw new Error(quota.reason ?? "Topic limit reached.");
+
+  // Issue #181: Reserve a source slot for the first candidate this topic will create.
+  const sourceLimit = subscription.isSelfHosted ? null : PLAN_LIMITS[effectivePlan].maxSources;
+  const reservation = await reserveSourceSlot(
+    prisma,
+    { organizationId: workspace.organizationId },
+    sourceLimit,
+  );
+  if (!reservation.reserved) {
+    throw new Error("Source limit reached — cannot create a new topic with candidate sources.");
+  }
 
   const profile = buildTopicProfile({ description, name });
   const topic = await createTopic(
@@ -210,14 +223,14 @@ async function createTopicWithSource(formData: FormData) {
   const {
     assertMembershipRole,
     createTopicWithActiveRssSource,
-    getActiveSourceCount,
     getPrismaClient,
     getSubscriptionPlanView,
     getTopicCount,
+    reserveSourceSlot,
     recordUsageEvent,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
-  const { checkSourceQuota, checkTopicQuota, resolveEffectivePlanFromView } = await import("@wangchao/core");
+  const { checkSourceQuota, checkTopicQuota, PLAN_LIMITS, resolveEffectivePlanFromView } = await import("@wangchao/core");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -231,13 +244,23 @@ async function createTopicWithSource(formData: FormData) {
   );
 
   const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
+  const effectivePlan = resolveEffectivePlanFromView(subscription);
   const topicCount = await getTopicCount(prisma, { organizationId: workspace.organizationId });
-  const topicQuota = checkTopicQuota(resolveEffectivePlanFromView(subscription), topicCount, subscription.isSelfHosted);
+  const topicQuota = checkTopicQuota(effectivePlan, topicCount, subscription.isSelfHosted);
   if (!topicQuota.allowed) throw new Error(topicQuota.reason ?? "Topic limit reached.");
 
-  const sourceCount = await getActiveSourceCount(prisma, { organizationId: workspace.organizationId });
-  const sourceQuota = checkSourceQuota(resolveEffectivePlanFromView(subscription), sourceCount, subscription.isSelfHosted);
-  if (!sourceQuota.allowed) throw new Error(sourceQuota.reason ?? "Source limit reached.");
+  // Issue #181: Atomic reserve prevents concurrent over-selling.
+  // Issue #181: CANDIDATE sources now count toward quota (not just ACTIVE).
+  const sourceLimit = subscription.isSelfHosted ? null : PLAN_LIMITS[effectivePlan].maxSources;
+  const reservation = await reserveSourceSlot(
+    prisma,
+    { organizationId: workspace.organizationId },
+    sourceLimit,
+  );
+  if (!reservation.reserved) {
+    const sourceQuota = checkSourceQuota(effectivePlan, reservation.currentCount, subscription.isSelfHosted);
+    throw new Error(sourceQuota.reason ?? "Source limit reached.");
+  }
 
   const { source, topic } = await createTopicWithActiveRssSource(prisma, {
     organizationId: workspace.organizationId,
@@ -688,10 +711,11 @@ async function createTopicFromConfirmedDraft(formData: FormData) {
     getPrismaClient,
     getSubscriptionPlanView,
     getTopicCount,
+    reserveSourceSlot,
     recordUsageEvent,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
-  const { checkTopicQuota, resolveEffectivePlanFromView } = await import("@wangchao/core");
+  const { checkTopicQuota, PLAN_LIMITS, resolveEffectivePlanFromView } = await import("@wangchao/core");
   const { validateRssFeedUrl } = await import("@wangchao/sources");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
@@ -708,15 +732,27 @@ async function createTopicFromConfirmedDraft(formData: FormData) {
   const subscription = await getSubscriptionPlanView(prisma, {
     organizationId: workspace.organizationId,
   });
+  const effectivePlan = resolveEffectivePlanFromView(subscription);
   const topicCount = await getTopicCount(prisma, {
     organizationId: workspace.organizationId,
   });
   const quota = checkTopicQuota(
-    resolveEffectivePlanFromView(subscription),
+    effectivePlan,
     topicCount,
     subscription.isSelfHosted,
   );
   if (!quota.allowed) throw new Error(quota.reason ?? "Topic limit reached.");
+
+  // Issue #181: Reserve a source slot for the first candidate this topic will create.
+  const sourceLimit = subscription.isSelfHosted ? null : PLAN_LIMITS[effectivePlan].maxSources;
+  const reservation = await reserveSourceSlot(
+    prisma,
+    { organizationId: workspace.organizationId },
+    sourceLimit,
+  );
+  if (!reservation.reserved) {
+    throw new Error("Source limit reached — cannot create a new topic with candidate sources.");
+  }
 
   // The persisted profile keeps the sanitised draft fields plus a `source`
   // marker so downstream tooling (worker, observability) can tell a confirmed

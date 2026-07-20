@@ -13,6 +13,8 @@ import {
   completeTaskRun,
   failTaskRun,
   getPrismaClient,
+  getSubscriptionPlanView,
+  getQuotaSubjectSourceCount,
   listHighScoreEventPagesForDiscovery,
   listRecentActiveSourcePagesForDiscovery,
   listTopicsForSourceDiscovery,
@@ -23,6 +25,7 @@ import {
 } from "@wangchao/db";
 import { createSearchProvider, createSourceRecommendationRuntime, getSourceRecommendation } from "./runtime.js";
 import { readPositiveIntegerEnv, readFloatEnv } from "./env.js";
+import { PLAN_LIMITS, resolveEffectivePlanFromView } from "@wangchao/core";
 import type { DiscoveryChannel, SourceDiscoveryCycleOptions, SourceDiscoveryCycleResult, WorkspaceScope } from "./types.js";
 import { isCycleShuttingDown, isCycleTimeExhausted } from "./lifecycle.js";
 
@@ -316,6 +319,7 @@ export async function runSourceDiscoveryForWorkspace(
     skippedKeywordSearch: false,
     taskRunId,
     topicsScanned: 0,
+    quotaExhaustedCandidatesSkipped: 0,
   };
 
   const topics = await listTopicsForSourceDiscovery(prisma, {
@@ -342,8 +346,29 @@ export async function runSourceDiscoveryForWorkspace(
     readPositiveIntegerEnv("WANGCHAO_DISCOVERY_WEEKLY_LIMIT", 5),
   );
 
+  // Issue #181: Discovery must use the same quota count as manual creation.
+  // CANDIDATE sources now count toward the quota. Self-hosted orgs bypass.
+  const subscription = await getSubscriptionPlanView(prisma, {
+    organizationId: workspace.organizationId,
+  });
+  const effectivePlan = resolveEffectivePlanFromView(subscription);
+  const sourceLimit = subscription.isSelfHosted ? null : PLAN_LIMITS[effectivePlan].maxSources;
+  let quotaSlotsRemaining = sourceLimit === null
+    ? Number.POSITIVE_INFINITY
+    : Math.max(
+        0,
+        sourceLimit - await getQuotaSubjectSourceCount(prisma, { organizationId: workspace.organizationId }),
+      );
+
   for (const candidate of limitedCandidates) {
     if (isCycleShuttingDown() || isCycleTimeExhausted()) break;
+
+    // Issue #181: Stop creating candidates when the quota is exhausted.
+    if (quotaSlotsRemaining <= 0) {
+      result.quotaExhaustedCandidatesSkipped += 1;
+      continue;
+    }
+
     const recommendation = await getSourceRecommendation(candidate, ai);
     result.aiRecommendationAttempts += recommendation.attemptedAi ? 1 : 0;
     result.aiRecommendationFallbacks +=
@@ -371,6 +396,7 @@ export async function runSourceDiscoveryForWorkspace(
 
       if (source.status === "CANDIDATE") {
         result.candidateSourcesWritten += 1;
+        quotaSlotsRemaining -= 1;
         if (candidate.channel === "keyword-search") result.keywordCandidates += 1;
         if (candidate.channel === "backlink-from-highscore") {
           result.backlinkedCandidates += 1;

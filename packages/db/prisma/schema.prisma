@@ -250,10 +250,11 @@ model Subscription {
   id             String @id @default(cuid())
   organizationId String @unique
 
-  plan            Plan               @default(FREE)
-  status          SubscriptionStatus @default(ACTIVE)
-  billingInterval BillingInterval    @default(MONTHLY)
-  isSelfHosted    Boolean            @default(false)
+  plan               Plan               @default(FREE)
+  status             SubscriptionStatus @default(ACTIVE)
+  billingInterval    BillingInterval    @default(MONTHLY)
+  isSelfHosted       Boolean            @default(false)
+  showAdsInSelfHosted Boolean           @default(true)
 
   stripeCustomerId     String?
   stripeSubscriptionId String?

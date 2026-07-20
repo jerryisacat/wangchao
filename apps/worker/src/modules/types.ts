@@ -42,6 +42,8 @@ export interface SourceDiscoveryCycleResult {
   skippedKeywordSearch: boolean;
   taskRunId: string;
   topicsScanned: number;
+  /** Issue #181: candidates skipped because the org's source quota was exhausted. */
+  quotaExhaustedCandidatesSkipped: number;
 }
 
 export interface SourceDiscoveryCycleOptions {

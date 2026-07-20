@@ -23,7 +23,7 @@ import { runExportSchemaFixtures } from "./export-schema.fixtures.js";
 import { runRenderPdfFixtures } from "./render-pdf.fixtures.js";
 import { runFilteredStatsFixtures } from "./filtered-stats.fixtures.js";
 import type { AiEventExtraction } from "./index.js";
-import { checkInstantPushQuota, resolveEffectivePlan, resolveEffectivePlanFromView } from "./quota.js";
+import { checkInstantPushQuota, resolveEffectivePlan, resolveEffectivePlanFromView, QUOTA_SUBJECT_SOURCE_STATUSES } from "./quota.js";
 
 export async function runCoreFixtures(): Promise<void> {
   testUtcDayRangeUsesStableBoundaries();
@@ -47,6 +47,7 @@ export async function runCoreFixtures(): Promise<void> {
   testTopicProfileContextUsesTopicIdentityAndSanitizesLists();
   testInstantPushPlanAccess();
   testEffectivePlanEntitlementContext();
+  testSourceQuotaSubjectStatuses();
   testGravityScoreSeparatesRelevanceAndImportance();
   testGravityScoreSeparatesSourceQualityFactor();
   testGravityScoreAppliesPreferenceAdjustment();
@@ -144,6 +145,55 @@ function testEffectivePlanEntitlementContext(): void {
   assert(
     resolveEffectivePlanFromView({ plan: "PRO", status: null, isSelfHosted: false, currentPeriodEnd: null }, now) === "PRO",
     "A null status with a paid plan must normalise to ACTIVE and keep the plan.",
+  );
+}
+
+/**
+ * Issue #181 (Plan Task 6.2): Source quota subject statuses.
+ *
+ * The old `getActiveSourceCount` only counted ACTIVE sources. This allowed
+ * CANDIDATE sources (created by auto-discovery or manual candidate creation)
+ * to bypass the quota entirely — a user on a FREE plan (maxSources=3) could
+ * accumulate unlimited CANDIDATE sources that never counted toward the 3-slot
+ * limit.
+ *
+ * The fix defines `QUOTA_SUBJECT_SOURCE_STATUSES` — every status except
+ * REJECTED occupies a quota slot. This test proves the constant contains
+ * exactly the right statuses and does NOT include REJECTED.
+ */
+function testSourceQuotaSubjectStatuses(): void {
+  // The constant must exist and be an array.
+  assert(Array.isArray(QUOTA_SUBJECT_SOURCE_STATUSES), "QUOTA_SUBJECT_SOURCE_STATUSES must be an array.");
+
+  // Must include CANDIDATE — the core fix. Old code excluded CANDIDATE from quota.
+  assert(
+    QUOTA_SUBJECT_SOURCE_STATUSES.includes("CANDIDATE" as const),
+    "CANDIDATE must occupy a quota slot — otherwise discovery bypasses the limit.",
+  );
+
+  // Must include ACTIVE — the only status the old code counted.
+  assert(
+    QUOTA_SUBJECT_SOURCE_STATUSES.includes("ACTIVE" as const),
+    "ACTIVE must occupy a quota slot.",
+  );
+
+  // Must include MUTED — a muted source still exists and can be re-activated.
+  assert(
+    QUOTA_SUBJECT_SOURCE_STATUSES.includes("MUTED" as const),
+    "MUTED must occupy a quota slot — it still exists and can be re-activated.",
+  );
+
+  // Must NOT include REJECTED — REJECTED is the only status that releases the slot.
+  assert(
+    !QUOTA_SUBJECT_SOURCE_STATUSES.includes("REJECTED" as const),
+    "REJECTED must NOT occupy a quota slot — it is the only status that releases the slot.",
+  );
+
+  // Exactly 3 statuses: CANDIDATE, ACTIVE, MUTED.
+  const statusCount = QUOTA_SUBJECT_SOURCE_STATUSES.length as number;
+  assert(
+    statusCount === 3,
+    `Expected exactly 3 quota-subject statuses, got ${statusCount}.`,
   );
 }
 

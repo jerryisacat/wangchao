@@ -48,6 +48,8 @@ export {
   failReport,
   findPaymentInvoiceByOrderId,
   getActiveSourceCount,
+  getQuotaSubjectSourceCount,
+  reserveSourceSlot,
   getByokCredentialView,
   getCcpaymentCredentialView,
   getDecryptedByokCredential,

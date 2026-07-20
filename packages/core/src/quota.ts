@@ -122,6 +122,23 @@ export function checkTopicQuota(
   };
 }
 
+/**
+ * Issue #181 (Plan Task 6.2): Source statuses that occupy a quota slot.
+ *
+ * SPEC §6.2 defines four Source statuses: CANDIDATE, ACTIVE, MUTED, REJECTED.
+ * A source occupies a quota slot in every status EXCEPT REJECTED — REJECTED is
+ * the only status that fully releases the slot (the source is no longer
+ * contributing to the user's intelligence pipeline in any capacity).
+ *
+ * This aligns with the usage dashboard, which already counts
+ * `status: { not: "REJECTED" }`.
+ */
+export const QUOTA_SUBJECT_SOURCE_STATUSES = [
+  "CANDIDATE",
+  "ACTIVE",
+  "MUTED",
+] as const;
+
 export function checkSourceQuota(
   plan: Plan,
   currentSourceCount: number,
