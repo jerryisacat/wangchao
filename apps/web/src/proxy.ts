@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { buildContentSecurityPolicy } from "@/lib/content-security-policy";
 import { buildLoginPath, isApiPath, isPublicAuthPath } from "@/lib/auth-access";
 import { isAuthEnabled } from "@/lib/auth";
+import { evaluateAccountGate, shouldRevokeSessions } from "@/lib/account-gate";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -20,11 +21,15 @@ export async function proxy(request: NextRequest) {
 async function createAuthGateResponse(request: NextRequest): Promise<NextResponse | null> {
   if (!isAuthEnabled() || isPublicAuthPath(request.nextUrl.pathname)) return null;
 
+  let sessionUserId: string | null = null;
+
   try {
     const { getAuth } = await import("@/lib/auth");
     const auth = await getAuth();
     const session = await auth.api.getSession({ headers: request.headers });
-    if (session) return null;
+    if (session) {
+      sessionUserId = session.user.id;
+    }
   } catch {
     return NextResponse.json(
       { code: "AUTH_UNAVAILABLE", error: "Authentication service unavailable." },
@@ -32,15 +37,86 @@ async function createAuthGateResponse(request: NextRequest): Promise<NextRespons
     );
   }
 
+  // No session → unauthenticated flow (401 for API, redirect for pages).
+  if (!sessionUserId) {
+    if (isApiPath(request.nextUrl.pathname) || request.headers.has("next-action")) {
+      return NextResponse.json(
+        { code: "UNAUTHENTICATED", error: "Authentication required." },
+        { status: 401 },
+      );
+    }
+
+    const returnPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+    return NextResponse.redirect(new URL(buildLoginPath(returnPath), request.url));
+  }
+
+  // Issue #157: Session exists — check accountStatus before allowing.
+  // A SUSPENDED or DELETED user must not use existing sessions.
+  const accountGateResponse = await checkAccountStatus(request, sessionUserId);
+  if (accountGateResponse) return accountGateResponse;
+
+  // Account is active (or status check failed open) — allow the request.
+  return null;
+}
+
+/**
+ * Issue #157 — Account status gate.
+ *
+ * After better-auth confirms a valid session, check the user's accountStatus.
+ * If SUSPENDED or DELETED:
+ *   1. Revoke all sessions for the user (force re-authentication on next request).
+ *   2. Return 401 for API/Server Action requests, or redirect to login for pages.
+ *
+ * This catches sessions that were created before the user was suspended.
+ */
+async function checkAccountStatus(
+  request: NextRequest,
+  userId: string,
+): Promise<NextResponse | null> {
+  try {
+    const { getPrismaClient, getUserLifecycleStatus, revokeUserSessions } = await import(
+      "@wangchao/db"
+    );
+    const prisma = getPrismaClient();
+    const status = await getUserLifecycleStatus(prisma, userId);
+
+    // If user doesn't exist in our DB (edge case: better-auth session exists
+    // but user was hard-deleted), deny access.
+    if (!status) {
+      return createDenialResponse(request, "ACCOUNT_DELETED");
+    }
+
+    const decision = evaluateAccountGate(status.accountStatus);
+    if (!shouldRevokeSessions(decision)) return null;
+
+    // Revoke all sessions so the user must re-authenticate.
+    // On the next request, getSession will return null and the normal
+    // unauthenticated flow takes over.
+    await revokeUserSessions(prisma, userId);
+
+    return createDenialResponse(request, decision.reason);
+  } catch {
+    // If we can't check the account status (DB unavailable, etc.),
+    // fail open — the session check itself is the primary gate.
+    // Do NOT lock out all users if the DB is temporarily unreachable.
+    return null;
+  }
+}
+
+function createDenialResponse(
+  request: NextRequest,
+  reason: "ACCOUNT_SUSPENDED" | "ACCOUNT_DELETED",
+): NextResponse {
   if (isApiPath(request.nextUrl.pathname) || request.headers.has("next-action")) {
     return NextResponse.json(
-      { code: "UNAUTHENTICATED", error: "Authentication required." },
-      { status: 401 },
+      { code: reason, error: "Account access denied." },
+      { status: 403 },
     );
   }
 
-  const returnPath = `${request.nextUrl.pathname}${request.nextUrl.search}`;
-  return NextResponse.redirect(new URL(buildLoginPath(returnPath), request.url));
+  // For page requests, redirect to login with a denial message.
+  const params = new URLSearchParams({ reason });
+  return NextResponse.redirect(new URL(`/login?${params.toString()}`, request.url));
 }
 
 function createNextResponse(
