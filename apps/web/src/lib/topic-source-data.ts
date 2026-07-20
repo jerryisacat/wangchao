@@ -423,6 +423,75 @@ export async function getBriefingsPage(
   };
 }
 
+// Issue #182 (Plan Task 4.6) - 浏览器简报详情。
+// web 层封装：session workspace fence + DB getBriefingDetail 调用。
+// 跨租户由 DB 层 organizationId fence 保证（返回 null）。
+export interface BriefingDetailEventSummary {
+  eventId: string;
+  title: string;
+  occurredAt: string | null;
+  topicId: string;
+}
+
+export interface BriefingDetailSummary {
+  body: string;
+  briefingId: string;
+  content: string;
+  events: BriefingDetailEventSummary[];
+  generatedAt: string;
+  markdown: string | null;
+  period: "DAILY" | "WEEKLY" | "MONTHLY";
+  rangeEnd: string;
+  rangeStart: string;
+  title: string;
+  topicId: string;
+  topicName: string;
+}
+
+export async function getBriefingDetail(
+  briefingId: string,
+): Promise<BriefingDetailSummary | null> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not configured. Set DATABASE_URL to connect to Postgres.",
+    );
+  }
+
+  const { getSessionWorkspace } = await import("@/lib/session");
+  const db = await import("@wangchao/db");
+  const prisma = db.getPrismaClient();
+  const workspace = await getSessionWorkspace();
+
+  const detail = await db.getBriefingDetail(prisma, {
+    briefingId,
+    organizationId: workspace.organizationId,
+  });
+
+  if (!detail) {
+    return null;
+  }
+
+  return {
+    body: detail.body,
+    briefingId: detail.briefingId,
+    content: detail.content,
+    events: detail.events.map((event) => ({
+      eventId: event.eventId,
+      title: event.title,
+      occurredAt: event.occurredAt?.toISOString() ?? null,
+      topicId: event.topicId,
+    })),
+    generatedAt: detail.generatedAt.toISOString(),
+    markdown: detail.markdown,
+    period: detail.period,
+    rangeEnd: detail.rangeEnd.toISOString(),
+    rangeStart: detail.rangeStart.toISOString(),
+    title: detail.title,
+    topicId: detail.topicId,
+    topicName: detail.topicName,
+  };
+}
+
 export async function getSavedEventsPage(
   requestedPage: number,
   pageSize = 30,

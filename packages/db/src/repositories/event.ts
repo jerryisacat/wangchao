@@ -7,6 +7,7 @@ import {
 } from "./util.js";
 import { resolveSecondarySources } from "./secondary-sources.js";
 import type {
+  BriefingDetailRecord,
   BriefingEventRecord,
   CreateDailyBriefingInput,
   CreatePeriodBriefingInput,
@@ -955,6 +956,76 @@ export async function getBriefingMarkdownForDownload(
       topicId: true,
     },
   });
+}
+
+// Issue #182 (Plan Task 4.6) - 浏览器简报详情。
+// 返回 briefing 完整元数据 + 正文（markdown 优先，content fallback）+ 关联 events 列表。
+// 关联 events 来自 Briefing.events 关系表（createPeriodBriefing 用 events.set 写入的 snapshot），
+// 供页面提供 Event 跳转入口。严格 organization fenced：跨租户返回 null。
+// 查询形状：1 次 briefing.findFirst（带出 topic.name + events），无 N+1。
+export async function getBriefingDetail(
+  prisma: PrismaClient,
+  scope: TenantScope & { briefingId: string },
+): Promise<BriefingDetailRecord | null> {
+  const briefing = await prisma.briefing.findFirst({
+    where: {
+      id: scope.briefingId,
+      organizationId: scope.organizationId,
+    },
+    select: {
+      id: true,
+      content: true,
+      generatedAt: true,
+      markdown: true,
+      period: true,
+      rangeEnd: true,
+      rangeStart: true,
+      title: true,
+      topicId: true,
+      topic: {
+        select: {
+          name: true,
+        },
+      },
+      events: {
+        select: {
+          id: true,
+          title: true,
+          occurredAt: true,
+          topicId: true,
+        },
+        orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
+      },
+    },
+  });
+
+  if (!briefing) {
+    return null;
+  }
+
+  const markdown = briefing.markdown;
+  const content = briefing.content ?? "";
+  const body = markdown ?? content;
+
+  return {
+    briefingId: briefing.id,
+    body,
+    content,
+    events: briefing.events.map((event) => ({
+      eventId: event.id,
+      title: event.title,
+      occurredAt: event.occurredAt,
+      topicId: event.topicId,
+    })),
+    generatedAt: briefing.generatedAt,
+    markdown,
+    period: briefing.period,
+    rangeEnd: briefing.rangeEnd,
+    rangeStart: briefing.rangeStart,
+    title: briefing.title,
+    topicId: briefing.topicId,
+    topicName: briefing.topic.name,
+  };
 }
 
 export async function getEventMarkdownExportRecord(

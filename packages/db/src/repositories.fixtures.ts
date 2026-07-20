@@ -7,6 +7,7 @@ import {
   applyAutomaticSourceGovernance,
   getSourceQualitySummary,
   listBriefingsPage,
+  getBriefingDetail,
   listDashboardEvents,
   listEventsForDailyBriefing,
   listFetchedItemsForAnalysis,
@@ -65,6 +66,9 @@ export async function runRepositoryFixtures(): Promise<void> {
   await verifyDailyBriefingWindowFilter();
   await verifyDailyBriefingUpsert();
   await verifyBriefingHistoryPagination();
+  await verifyGetBriefingDetailReturnsContentAndEvents();
+  await verifyGetBriefingDetailIsOrganizationScoped();
+  await verifyGetBriefingDetailReturnsNullForMissingMarkdownAndContent();
   await verifyTaskRunLifecycle();
   await verifySourceGovernanceMetricsUseActiveEventLinks();
   await verifySourceQualityScoreIsPersistedToSource();
@@ -1566,6 +1570,172 @@ async function verifyBriefingHistoryPagination(): Promise<void> {
   const findArgs = readArgsByName(calls, "briefing.findMany");
   assert(findArgs.skip === 40, `Expected briefing offset 40, received ${String(findArgs.skip)}.`);
   assert(findArgs.take === 20, `Expected briefing page size 20, received ${String(findArgs.take)}.`);
+}
+
+// ─── Issue #182 - 浏览器简报详情 (Plan Task 4.6) ───────────────────────────────
+// getBriefingDetail 必须返回 briefing 正文（markdown 优先，content fallback）+ 关联 events
+// （供 Event 跳转），并严格 organization fenced：跨租户返回 null。
+// 这些 mock 测试锁定契约；真实 PG 隔离由后续 disposable fixture 承载（后置）。
+
+function makeBriefingDetailMockPrisma(opts: {
+  briefing?: {
+    id: string;
+    organizationId: string;
+    topicId: string;
+    period: "DAILY" | "WEEKLY" | "MONTHLY";
+    title: string;
+    content: string;
+    markdown: string | null;
+    generatedAt: Date;
+    rangeStart: Date;
+    rangeEnd: Date;
+    topicName: string;
+    events: Array<{ id: string; title: string; occurredAt: Date | null; topicId: string }>;
+  } | null;
+}): { prisma: unknown; calls: BriefingReadCall[] } {
+  const calls: BriefingReadCall[] = [];
+  const briefing = opts.briefing;
+  const prisma = {
+    briefing: {
+      findFirst: async (args: unknown) => {
+        calls.push({ args, method: "briefing.findFirst" });
+        const a = args as { where?: { id?: string; organizationId?: string } };
+        const id = a.where?.id;
+        const orgId = a.where?.organizationId;
+        if (!briefing) return null;
+        const idMatches = id === undefined || id === briefing.id;
+        const orgMatches = orgId === undefined || orgId === briefing.organizationId;
+        if (!idMatches || !orgMatches) return null;
+        return {
+          id: briefing.id,
+          organizationId: briefing.organizationId,
+          topicId: briefing.topicId,
+          period: briefing.period,
+          title: briefing.title,
+          content: briefing.content,
+          markdown: briefing.markdown,
+          generatedAt: briefing.generatedAt,
+          rangeStart: briefing.rangeStart,
+          rangeEnd: briefing.rangeEnd,
+          topic: { name: briefing.topicName },
+          events: briefing.events.map((e) => ({
+            id: e.id,
+            title: e.title,
+            occurredAt: e.occurredAt,
+            topicId: e.topicId,
+          })),
+        };
+      },
+    },
+  };
+  return { prisma, calls };
+}
+
+async function verifyGetBriefingDetailReturnsContentAndEvents(): Promise<void> {
+  const generatedAt = new Date("2026-07-11T12:00:00.000Z");
+  const rangeStart = new Date("2026-07-11T00:00:00.000Z");
+  const rangeEnd = new Date("2026-07-12T00:00:00.000Z");
+  const { prisma, calls } = makeBriefingDetailMockPrisma({
+    briefing: {
+      id: "briefing-1",
+      organizationId: "org-1",
+      topicId: "topic-1",
+      period: "DAILY",
+      title: "AI 基础设施｜每日简报",
+      content: "structured-content",
+      markdown: "# Heading\n\n1. Event A\n",
+      generatedAt,
+      rangeStart,
+      rangeEnd,
+      topicName: "AI 基础设施",
+      events: [
+        { id: "event-a", title: "Event A", occurredAt: new Date("2026-07-11T03:00:00Z"), topicId: "topic-1" },
+        { id: "event-b", title: "Event B", occurredAt: new Date("2026-07-11T05:00:00Z"), topicId: "topic-1" },
+      ],
+    },
+  });
+
+  const detail = await getBriefingDetail(prisma as PrismaClient, {
+    briefingId: "briefing-1",
+    organizationId: "org-1",
+  });
+
+  assert(detail !== null, "getBriefingDetail must return the briefing for a matching org.");
+  const d = detail as {
+    briefingId: string;
+    title: string;
+    content: string;
+    markdown: string | null;
+    events: Array<{ eventId: string; title: string }>;
+  };
+  assert(d.briefingId === "briefing-1", `briefingId mismatch: ${d.briefingId}`);
+  assert(d.title === "AI 基础设施｜每日简报", `title mismatch: ${d.title}`);
+  assert(d.markdown === "# Heading\n\n1. Event A\n", `markdown must be returned verbatim, got: ${d.markdown}`);
+  assert(d.content === "structured-content", `content must be returned as fallback, got: ${d.content}`);
+  assert(Array.isArray(d.events) && d.events.length === 2, `events must have 2 entries, got ${d.events?.length}`);
+  const firstEvent = d.events[0];
+  assert(firstEvent && firstEvent.eventId === "event-a", `first event id mismatch: ${firstEvent?.eventId}`);
+
+  const findArgs = readArgsByName(calls, "briefing.findFirst");
+  const where = readRecord(findArgs.where, "briefing.findFirst.where");
+  assert(where.id === "briefing-1", `briefing.findFirst must filter by id, got ${where.id}`);
+  assert(where.organizationId === "org-1", `briefing.findFirst must be org-scoped, got ${where.organizationId}`);
+}
+
+async function verifyGetBriefingDetailIsOrganizationScoped(): Promise<void> {
+  const { prisma } = makeBriefingDetailMockPrisma({
+    briefing: {
+      id: "briefing-1",
+      organizationId: "org-1",
+      topicId: "topic-1",
+      period: "DAILY",
+      title: "Daily",
+      content: "c",
+      markdown: "# m",
+      generatedAt: new Date("2026-07-11T12:00:00.000Z"),
+      rangeStart: new Date("2026-07-11T00:00:00.000Z"),
+      rangeEnd: new Date("2026-07-12T00:00:00.000Z"),
+      topicName: "T",
+      events: [],
+    },
+  });
+
+  // 跨租户：org-2 查 org-1 的 briefing 必须返回 null。
+  const cross = await getBriefingDetail(prisma as PrismaClient, {
+    briefingId: "briefing-1",
+    organizationId: "org-2",
+  });
+  assert(cross === null, `Cross-org briefing detail must be null, got: ${JSON.stringify(cross)}`);
+}
+
+async function verifyGetBriefingDetailReturnsNullForMissingMarkdownAndContent(): Promise<void> {
+  const { prisma } = makeBriefingDetailMockPrisma({
+    briefing: {
+      id: "briefing-1",
+      organizationId: "org-1",
+      topicId: "topic-1",
+      period: "DAILY",
+      title: "Daily",
+      content: "",
+      markdown: null,
+      generatedAt: new Date("2026-07-11T12:00:00.000Z"),
+      rangeStart: new Date("2026-07-11T00:00:00.000Z"),
+      rangeEnd: new Date("2026-07-12T00:00:00.000Z"),
+      topicName: "T",
+      events: [],
+    },
+  });
+
+  const detail = await getBriefingDetail(prisma as PrismaClient, {
+    briefingId: "briefing-1",
+    organizationId: "org-1",
+  });
+  assert(detail !== null, "Briefing with empty content/markdown should still return metadata.");
+  const d = detail as { body: string; markdown: string | null; content: string };
+  assert(
+    d.body === "",
+    `body must be empty string when both markdown and content are empty, got: ${d.body}`,
+  );
 }
 
 async function verifyTaskRunLifecycle(): Promise<void> {

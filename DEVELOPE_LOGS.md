@@ -4,6 +4,14 @@
 
 ## 2026-07-18
 
+## Stage 4 / Task 4.6: 浏览器 Briefing 详情（#182）
+
+- Phase: implementation plan Stage 4 Task 4.6。
+- Scope: briefings/[briefingId] 详情页（安全 Markdown 渲染、下载、批量已读、Event 跳转）、跨租户拒绝、XSS 防护。
+- Alignment: SPEC §5.8。
+- Verification: web briefing markdown renderer fixture（XSS 覆盖 script/iframe/img onerror/javascript/data:）+ db getBriefingDetail fixture + 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 4 批量 push）；未部署、未关闭 Issue。
+
 ## Stage 4 / Task 4.5: 业务时区与过滤统计（#184）
 
 - Phase: implementation plan Stage 4 Task 4.5。

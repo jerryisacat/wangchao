@@ -1,5 +1,17 @@
 ## 2026-07-18
 
+### Feat: Issue #182 增加浏览器简报详情页
+
+- Cause: 缺少浏览器内简报正文详情与阅读操作。
+- Changed:
+  - `packages/db/src/repositories/event.ts`：新增 `getBriefingDetail`（tenant-scoped，跨租户拒绝）。
+  - `apps/web/src/lib/briefing-markdown.ts`：自定义安全 Markdown renderer（白名单标签/属性 + 全量 HTML escape，不引入第三方库）。
+  - `apps/web/src/app/briefings/[briefingId]/page.tsx`：详情页（安全渲染、下载、批量已读复用 #173、Event 跳转、空正文兜底）。
+  - `apps/web/scripts/briefing-detail.fixture.mjs`：XSS 测试（script/iframe/img onerror/javascript/data:）。
+- Files: `packages/db/src/repositories/{event,types}.ts`, `packages/db/src/{index,repositories.fixtures}.ts`, `apps/web/src/lib/{briefing-markdown,topic-source-data}.ts`, `apps/web/src/app/briefings/[briefingId]/page.tsx`, `apps/web/scripts/briefing-detail.fixture.mjs`, `apps/web/package.json`。
+- Verification: web briefing markdown renderer fixture ✓ + db getBriefingDetail fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: `dangerouslySetInnerHTML` 经白名单+escape+XSS fixture 覆盖；globals.css 类待补；批量审查 Stage 末尾补。未部署、未关闭 Issue。Stage 4 批量 push。
+
 ### Feat: Issue #184 简报支持业务时区与过滤统计
 
 - Cause: SPEC §4.2 可配置业务时区未实现（固定 UTC）；低价值过滤统计未在简报呈现。

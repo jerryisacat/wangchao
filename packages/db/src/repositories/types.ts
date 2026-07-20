@@ -234,6 +234,32 @@ export interface DashboardBriefingPage {
   total: number;
 }
 
+// Issue #182 (Plan Task 4.6) — 浏览器简报详情。
+// getBriefingDetail 返回的完整简报记录：元数据 + 正文（markdown 优先，content fallback）
+// + 关联 events 列表（供 Event 跳转）。严格 organization fenced。
+export interface BriefingDetailEventRecord {
+  eventId: string;
+  title: string;
+  occurredAt: Date | null;
+  topicId: string;
+}
+
+export interface BriefingDetailRecord {
+  briefingId: string;
+  content: string;
+  // body = markdown ?? content ?? "" — 页面渲染用，避免每个调用方自己判空。
+  body: string;
+  events: BriefingDetailEventRecord[];
+  generatedAt: Date;
+  markdown: string | null;
+  period: "DAILY" | "WEEKLY" | "MONTHLY";
+  rangeEnd: Date;
+  rangeStart: Date;
+  title: string;
+  topicId: string;
+  topicName: string;
+}
+
 export interface SourceGovernanceRecord {
   discoveryChannel: string | null;
   duplicateRate: number;
