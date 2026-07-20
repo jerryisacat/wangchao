@@ -160,6 +160,7 @@ model User {
   usageEvents         UsageEvent[]
   accounts            Account[]
   sessions            Session[]
+  platformAdmin       PlatformAdmin?
   createdAt           DateTime           @default(now())
   updatedAt           DateTime           @updatedAt
 
@@ -814,4 +815,48 @@ model WebhookEvent {
 
   @@unique([provider, recordId])
   @@index([organizationId])
+}
+
+enum PlatformAdminRole {
+  PLATFORM_OWNER
+  PLATFORM_ADMIN
+  PLATFORM_AUDITOR
+}
+
+enum AuditActorType {
+  PLATFORM_ADMIN
+  SYSTEM
+  USER
+}
+
+model PlatformAdmin {
+  id           String             @id @default(cuid())
+  userId       String             @unique
+  role         PlatformAdminRole  @default(PLATFORM_AUDITOR)
+  mfaEnabled   Boolean?
+  lastReauthAt DateTime?
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([role])
+}
+
+model AuditLog {
+  id         String          @id @default(cuid())
+  actorType  AuditActorType
+  actorId    String
+  action     String
+  targetType String
+  targetId   String
+  reason     String?
+  before     Json?
+  after      Json?
+  requestId  String?
+  createdAt  DateTime        @default(now())
+
+  @@index([actorType, actorId, createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@index([action, createdAt])
 }

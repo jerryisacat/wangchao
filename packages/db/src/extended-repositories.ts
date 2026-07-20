@@ -7,3 +7,5 @@ export * from "./repositories/byok-credential.js";
 export * from "./repositories/subscription.js";
 export * from "./repositories/ccpayment-credential.js";
 export * from "./repositories/payment-invoice.js";
+export * from "./repositories/platform-admin.js";
+export * from "./repositories/audit-log.js";
