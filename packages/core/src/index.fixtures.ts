@@ -23,7 +23,7 @@ import { runExportSchemaFixtures } from "./export-schema.fixtures.js";
 import { runRenderPdfFixtures } from "./render-pdf.fixtures.js";
 import { runFilteredStatsFixtures } from "./filtered-stats.fixtures.js";
 import type { AiEventExtraction } from "./index.js";
-import { checkInstantPushQuota, resolveEffectivePlan, resolveEffectivePlanFromView, QUOTA_SUBJECT_SOURCE_STATUSES } from "./quota.js";
+import { checkInstantPushQuota, resolveEffectivePlan, resolveEffectivePlanFromView, shouldShowAds, QUOTA_SUBJECT_SOURCE_STATUSES } from "./quota.js";
 
 export async function runCoreFixtures(): Promise<void> {
   testUtcDayRangeUsesStableBoundaries();
@@ -48,6 +48,7 @@ export async function runCoreFixtures(): Promise<void> {
   testInstantPushPlanAccess();
   testEffectivePlanEntitlementContext();
   testSourceQuotaSubjectStatuses();
+  testShouldShowAdsAllCombinations();
   testGravityScoreSeparatesRelevanceAndImportance();
   testGravityScoreSeparatesSourceQualityFactor();
   testGravityScoreAppliesPreferenceAdjustment();
@@ -145,6 +146,133 @@ function testEffectivePlanEntitlementContext(): void {
   assert(
     resolveEffectivePlanFromView({ plan: "PRO", status: null, isSelfHosted: false, currentPeriodEnd: null }, now) === "PRO",
     "A null status with a paid plan must normalise to ACTIVE and keep the plan.",
+  );
+}
+
+/**
+ * Issue #188 (Plan Task 6.3): Server-derived ad display policy.
+ *
+ * Tests docs/business-model.md §14.3 shouldShowAds across every
+ * plan / status / self-hosted / showAdsInSelfHosted combination.
+ *
+ * Decision table (§14.2):
+ *
+ * | isSelfHosted | plan   | status   | showAdsInSelfHosted | → showAds |
+ * |--------------|--------|----------|---------------------|-----------|
+ * | true         | *      | *        | true (default)      | true      |
+ * | true         | *      | *        | false (opt-out)     | false     |
+ * | false        | FREE   | ACTIVE   | n/a                 | true      |
+ * | false        | PLUS   | ACTIVE   | n/a                 | false     |
+ * | false        | PRO    | ACTIVE   | n/a                 | false     |
+ * | false        | PLUS   | EXPIRED  | n/a                 | true (→FREE) |
+ * | false        | PRO    | CANCELED past period | n/a    | true (→FREE) |
+ * | false        | PRO    | CANCELED before period | n/a  | false     |
+ * | false        | FREE   | null (no sub) | n/a            | true      |
+ */
+function testShouldShowAdsAllCombinations(): void {
+  const now = new Date("2026-07-11T00:00:00.000Z");
+  const periodEndFuture = "2026-07-12T00:00:00.000Z";
+  const periodEndPast = "2026-07-10T00:00:00.000Z";
+
+  // ── Self-hosted branch: showAdsInSelfHosted is the only input that matters ──
+
+  // Self-hosted default: showAdsInSelfHosted omitted → defaults to true
+  assert(
+    shouldShowAds({ plan: "FREE", status: "ACTIVE", isSelfHosted: true, now }) === true,
+    "Self-hosted with omitted showAdsInSelfHosted must default to true.",
+  );
+
+  // Self-hosted with showAdsInSelfHosted=true → ads shown
+  assert(
+    shouldShowAds({ plan: "PRO", status: "EXPIRED", isSelfHosted: true, showAdsInSelfHosted: true, now }) === true,
+    "Self-hosted with showAdsInSelfHosted=true must show ads regardless of plan/status.",
+  );
+
+  // Self-hosted with showAdsInSelfHosted=false → ads hidden (opt-out)
+  assert(
+    shouldShowAds({ plan: "FREE", status: "ACTIVE", isSelfHosted: true, showAdsInSelfHosted: false, now }) === false,
+    "Self-hosted with showAdsInSelfHosted=false must hide ads (OWNER/ADMIN opt-out).",
+  );
+
+  // Self-hosted plan/status must NOT influence the result — only the toggle
+  assert(
+    shouldShowAds({ plan: "PRO", status: "CANCELED", isSelfHosted: true, showAdsInSelfHosted: false, currentPeriodEnd: periodEndPast, now }) === false,
+    "Self-hosted opt-out must hold even when plan/status would otherwise hide ads.",
+  );
+
+  // ── Non-self-hosted branch: derived from effective plan ──
+
+  // FREE active → show ads
+  assert(
+    shouldShowAds({ plan: "FREE", status: "ACTIVE", isSelfHosted: false, now }) === true,
+    "Free active plan must show ads.",
+  );
+
+  // PLUS active → no ads
+  assert(
+    shouldShowAds({ plan: "PLUS", status: "ACTIVE", isSelfHosted: false, now }) === false,
+    "Plus active plan must not show ads.",
+  );
+
+  // PRO active → no ads
+  assert(
+    shouldShowAds({ plan: "PRO", status: "ACTIVE", isSelfHosted: false, now }) === false,
+    "Pro active plan must not show ads.",
+  );
+
+  // EXPIRED paid plan degrades to FREE → show ads
+  assert(
+    shouldShowAds({ plan: "PLUS", status: "EXPIRED", isSelfHosted: false, now }) === true,
+    "Expired Plus must degrade to Free and show ads.",
+  );
+
+  assert(
+    shouldShowAds({ plan: "PRO", status: "EXPIRED", isSelfHosted: false, now }) === true,
+    "Expired Pro must degrade to Free and show ads.",
+  );
+
+  // CANCELED before period end → keeps plan → no ads for paid
+  assert(
+    shouldShowAds({ plan: "PLUS", status: "CANCELED", isSelfHosted: false, currentPeriodEnd: periodEndFuture, now }) === false,
+    "Canceled Plus before period end must keep plan and not show ads.",
+  );
+
+  // CANCELED after period end → degrades to FREE → show ads
+  assert(
+    shouldShowAds({ plan: "PLUS", status: "CANCELED", isSelfHosted: false, currentPeriodEnd: periodEndPast, now }) === true,
+    "Canceled Plus past period end must degrade to Free and show ads.",
+  );
+
+  // PAST_DUE keeps plan → no ads for paid
+  assert(
+    shouldShowAds({ plan: "PRO", status: "PAST_DUE", isSelfHosted: false, now }) === false,
+    "Past-due Pro must retain plan access and not show ads.",
+  );
+
+  // null status (no subscription record) with FREE plan → show ads
+  assert(
+    shouldShowAds({ plan: "FREE", status: null, isSelfHosted: false, now }) === true,
+    "Null status (no subscription record) with Free must show ads.",
+  );
+
+  // null status with PRO plan → keeps plan → no ads
+  assert(
+    shouldShowAds({ plan: "PRO", status: null, isSelfHosted: false, now }) === false,
+    "Null status (no subscription record) with Pro must not show ads.",
+  );
+
+  // ── showAdsInSelfHosted must be IGNORED when not self-hosted ──
+  // A non-self-hosted FREE user with showAdsInSelfHosted=false still sees ads
+  // because the toggle only applies to self-hosted mode.
+  assert(
+    shouldShowAds({ plan: "FREE", status: "ACTIVE", isSelfHosted: false, showAdsInSelfHosted: false, now }) === true,
+    "Non-self-hosted Free must show ads even if showAdsInSelfHosted=false (toggle is self-hosted-only).",
+  );
+
+  // A non-self-hosted PLUS user with showAdsInSelfHosted=true still gets no ads
+  assert(
+    shouldShowAds({ plan: "PLUS", status: "ACTIVE", isSelfHosted: false, showAdsInSelfHosted: true, now }) === false,
+    "Non-self-hosted Plus must not show ads even if showAdsInSelfHosted=true (toggle is self-hosted-only).",
   );
 }
 

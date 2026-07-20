@@ -75,6 +75,38 @@ export function resolveEffectivePlanFromView(
   });
 }
 
+/**
+ * Issue #188 (Plan Task 6.3): Server-derived ad display policy.
+ *
+ * Implements docs/business-model.md §14.3 `shouldShowAds`:
+ *
+ * 1. If isSelfHosted == true -> return showAdsInSelfHosted (default true).
+ *    Admins see ads by default to experience the Free user journey.
+ *    OWNER/ADMIN can opt out from a deep-fold settings toggle.
+ * 2. Otherwise derive the effective plan (stored plan + status) and show ads
+ *    only when the effective plan is FREE. PLUS / PRO / EXPIRED-paid -> FREE
+ *    degradation still shows ads because degraded == FREE.
+ *
+ * The function accepts a SubscriptionPlanView-compatible shape so that Web
+ * layout / Server Actions can call it after a single DB read without a
+ * second query. It is pure (no I/O) so it composes with the existing
+ * resolveEffectivePlanFromView pipeline.
+ */
+export function shouldShowAds(view: {
+  plan: Plan;
+  status: SubscriptionStatus | null;
+  isSelfHosted: boolean;
+  showAdsInSelfHosted?: boolean;
+  currentPeriodEnd?: string | Date | null;
+  now?: Date;
+}): boolean {
+  if (view.isSelfHosted) {
+    return view.showAdsInSelfHosted ?? true;
+  }
+  const effectivePlan = resolveEffectivePlanFromView(view, view.now);
+  return effectivePlan === "FREE";
+}
+
 export function checkInstantPushQuota(
   plan: Plan,
   isSelfHosted: boolean,

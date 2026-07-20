@@ -76,6 +76,7 @@ export {
   searchReportEvidenceItems,
   searchReportEvidenceBriefings,
   setSelfHostedMode,
+  setShowAdsInSelfHosted,
   setTelegramEnabled,
   setInstantPushEnabled,
   testTelegramCredential,

@@ -89,6 +89,40 @@ export async function setSelfHostedMode(
   return { previousValue: existing?.isSelfHosted ?? null, newValue: enabled };
 }
 
+/**
+ * Issue #188 (Plan Task 6.3): Toggle the self-hosted ad display preference.
+ *
+ * Only consulted when `isSelfHosted == true`. The default is `true` so that
+ * admins experience the Free user journey (see docs/business-model.md §14.2).
+ * OWNER/ADMIN can opt out from a deep-fold settings toggle. This function
+ * does NOT check permissions — the caller (Server Action) must verify the
+ * caller's role before invoking.
+ */
+export async function setShowAdsInSelfHosted(
+  prisma: PrismaClient,
+  scope: TenantScope,
+  enabled: boolean,
+): Promise<{ previousValue: boolean | null; newValue: boolean }> {
+  const existing = await prisma.subscription.findUnique({
+    where: { organizationId: scope.organizationId },
+    select: { showAdsInSelfHosted: true },
+  });
+
+  await prisma.subscription.upsert({
+    where: { organizationId: scope.organizationId },
+    update: { showAdsInSelfHosted: enabled },
+    create: {
+      organizationId: scope.organizationId,
+      showAdsInSelfHosted: enabled,
+    },
+  });
+
+  return {
+    previousValue: existing?.showAdsInSelfHosted ?? null,
+    newValue: enabled,
+  };
+}
+
 export async function getTodayAiCallCount(
   prisma: PrismaClient,
   scope: TenantScope,
