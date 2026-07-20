@@ -19,11 +19,13 @@ import {
 import { runDedupFixtures } from "./dedup.fixtures.js";
 import { runRenderBriefingFixtures } from "./render-briefing.fixtures.js";
 import { runBusinessWindowFixtures } from "./business-window.fixtures.js";
+import { runExportSchemaFixtures } from "./export-schema.fixtures.js";
+import { runRenderPdfFixtures } from "./render-pdf.fixtures.js";
 import { runFilteredStatsFixtures } from "./filtered-stats.fixtures.js";
 import type { AiEventExtraction } from "./index.js";
 import { checkInstantPushQuota, resolveEffectivePlan } from "./quota.js";
 
-export function runCoreFixtures(): void {
+export async function runCoreFixtures(): Promise<void> {
   testUtcDayRangeUsesStableBoundaries();
   testRuleFallbackSummaryCleansRssMetadata();
   testRuleFallbackSummaryUsesTitleWhenSummaryIsPureMetadata();
@@ -67,6 +69,9 @@ export function runCoreFixtures(): void {
   // Issue #184 (Plan Task 4.5): 业务时区窗口 + 低价值过滤统计
   runBusinessWindowFixtures();
   runFilteredStatsFixtures();
+  // Issue #186 (Plan Task 5.1): JSON export schema + PDF renderer
+  runExportSchemaFixtures();
+  await runRenderPdfFixtures();
 }
 
 function testInstantPushPlanAccess(): void {

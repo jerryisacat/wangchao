@@ -4,6 +4,15 @@
 
 ## 2026-07-18
 
+## Stage 5 / Task 5.1: JSON/PDF 导出（#186）
+
+- Phase: implementation plan Stage 5 Task 5.1。
+- Scope: 稳定版本化 JSON schema（EXPORT_JSON_SCHEMA_VERSION=1）、pdfkit PDF renderer（中文字体 fallback 链、分页、链接）、events export route 支持 ?format=json|pdf|markdown、DB recordMarkdownExport 泛化接受 format 参数。
+- Alignment: SPEC §5.7。
+- Verification: core export-schema 6 fixture + render-pdf 8 fixture + 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 5 批量 push）；未部署、未关闭 Issue。
+- Follow-up: briefings/topics export route 的 ?format= 支持留给 #187 一起补；字体资产策略用 runtime fallback（不 commit 8.3MB OTF）。
+
 ## Stage 4 / Task 4.7: 每主题 Dashboard（#185）
 
 - Phase: implementation plan Stage 4 Task 4.7。

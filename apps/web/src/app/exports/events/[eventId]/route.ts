@@ -1,12 +1,14 @@
+import type { ExportFormat } from "@wangchao/core";
+
 interface EventRouteContext {
   params: Promise<{ eventId: string }> | { eventId: string };
 }
 
-export async function GET(_request: Request, context: EventRouteContext) {
+export async function GET(request: Request, context: EventRouteContext) {
   const { eventId } = await Promise.resolve(context.params);
-  const { createContentHash, renderEventMarkdown } = await import("@wangchao/core");
-  const { buildEventDisplayFields } = await import("@/lib/event-display");
-  const { getSummaryDisplay } = await import("@/lib/summary-status");
+  const url = new URL(request.url);
+  const formatParam = (url.searchParams.get("format") ?? "markdown").toLowerCase();
+  const format: ExportFormat = formatParam === "json" ? "JSON" : formatParam === "pdf" ? "PDF" : "MARKDOWN";
   const generatedAt = new Date();
 
   if (!process.env.DATABASE_URL) {
@@ -26,7 +28,13 @@ export async function GET(_request: Request, context: EventRouteContext) {
     recordMarkdownExport,
     recordUsageEvent,
   } = await import("@wangchao/db");
-  const { checkExportQuota } = await import("@wangchao/core");
+  const {
+    checkExportQuota,
+    createContentHash,
+    renderEventMarkdown,
+    buildEventExportJson,
+    serializeExportJson,
+  } = await import("@wangchao/core");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -54,13 +62,15 @@ export async function GET(_request: Request, context: EventRouteContext) {
 
   const taskRun = await createTaskRun(prisma, {
     eventId: event.eventId,
-    input: { format: "MARKDOWN" },
+    input: { format },
     organizationId: workspace.organizationId,
     topicId: event.topicId,
     type: "EXPORT_GENERATION",
   });
 
   try {
+    const { buildEventDisplayFields } = await import("@/lib/event-display");
+    const { getSummaryDisplay } = await import("@/lib/summary-status");
     const display = buildEventDisplayFields({
       explanation: event.explanation,
       primaryItemUrl: event.url,
@@ -68,29 +78,83 @@ export async function GET(_request: Request, context: EventRouteContext) {
       title: event.title,
     });
     const summaryDisplay = getSummaryDisplay(event.summaryStatus, display.summary);
+    const slug = slugify(event.title);
 
-    const markdown = renderEventMarkdown(
-      {
+    let content: string | Uint8Array;
+    let fileName: string;
+    let contentType: string;
+
+    if (format === "JSON") {
+      const json = buildEventExportJson({
+        exportedAt: generatedAt,
+        topic: { id: event.topicId, name: event.topicName },
+        event: {
+          eventId: event.eventId,
+          title: event.title,
+          summary: summaryDisplay.text,
+          category: event.category,
+          score: event.score,
+          explanation: event.explanation,
+          followUpSuggestion: event.followUpSuggestion,
+          occurredAt: event.occurredAt,
+          entities: event.entities ?? [],
+          sourceName: event.sourceName,
+          sourceUrl: event.sourceUrl,
+          url: event.url,
+        },
+      });
+      content = serializeExportJson(json);
+      fileName = `${slug}.json`;
+      contentType = "application/json; charset=utf-8";
+    } else if (format === "PDF") {
+      const { renderEventPdf } = await import("@wangchao/core/dist/render-pdf.js");
+      content = await renderEventPdf({
+        title: event.title,
+        summary: summaryDisplay.text,
         category: event.category,
-        entities: event.entities ?? undefined,
-        explanation: event.explanation,
-        followUpSuggestion: event.followUpSuggestion ?? undefined,
-        occurredAt: event.occurredAt,
         score: event.score,
+        explanation: event.explanation,
+        followUpSuggestion: event.followUpSuggestion,
+        occurredAt: event.occurredAt ? event.occurredAt.toISOString() : null,
+        entities: event.entities ?? [],
         sourceName: event.sourceName,
         sourceUrl: event.sourceUrl,
-        summary: summaryDisplay.text,
-        title: event.title,
         url: event.url,
-      },
-      generatedAt,
-    );
-    const fileName = `${slugify(event.title)}.md`;
+        generatedAt: generatedAt.toISOString(),
+        topicName: event.topicName,
+      });
+      fileName = `${slug}.pdf`;
+      contentType = "application/pdf";
+    } else {
+      const markdown = renderEventMarkdown(
+        {
+          category: event.category,
+          entities: event.entities ?? undefined,
+          explanation: event.explanation,
+          followUpSuggestion: event.followUpSuggestion ?? undefined,
+          occurredAt: event.occurredAt,
+          score: event.score,
+          sourceName: event.sourceName,
+          sourceUrl: event.sourceUrl,
+          summary: summaryDisplay.text,
+          title: event.title,
+          url: event.url,
+        },
+        generatedAt,
+      );
+      content = markdown;
+      fileName = `${slug}.md`;
+      contentType = "text/markdown; charset=utf-8";
+    }
 
+    const contentHash = typeof content === "string"
+      ? createContentHash(content)
+      : createContentHash("");
     await recordMarkdownExport(prisma, {
-      contentHash: createContentHash(markdown),
+      contentHash,
       eventId: event.eventId,
       fileName,
+      format,
       organizationId: workspace.organizationId,
       topicId: event.topicId,
       userId: workspace.userId,
@@ -98,7 +162,8 @@ export async function GET(_request: Request, context: EventRouteContext) {
     await recordUsageEvent(prisma, {
       metadata: {
         fileName,
-        source: "event-markdown-route",
+        format,
+        source: "event-export-route",
       },
       organizationId: workspace.organizationId,
       quantity: 1,
@@ -110,24 +175,23 @@ export async function GET(_request: Request, context: EventRouteContext) {
     });
     await completeTaskRun(prisma, taskRun.id, {
       fileName,
-      format: "MARKDOWN",
+      format,
       outcome: "generated",
     });
 
-    return markdownResponse(markdown, fileName);
+    return new Response(
+      content instanceof Uint8Array ? new Uint8Array(content) : content,
+      {
+        headers: {
+          "Content-Disposition": `attachment; filename="${fileName}"`,
+          "Content-Type": contentType,
+        },
+      },
+    );
   } catch (error) {
     await failTaskRun(prisma, taskRun.id, error);
     throw error;
   }
-}
-
-function markdownResponse(markdown: string, fileName: string): Response {
-  return new Response(markdown, {
-    headers: {
-      "Content-Disposition": `attachment; filename="${fileName}"`,
-      "Content-Type": "text/markdown; charset=utf-8",
-    },
-  });
 }
 
 function slugify(value: string): string {

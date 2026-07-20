@@ -1,5 +1,20 @@
 ## 2026-07-18
 
+### Feat: Issue #186 实现 JSON 与 PDF 导出
+
+- Cause: SPEC §5.7 说"JSON 已落地"是不实契约；三条 export 路由全部硬编码 MARKDOWN。
+- Changed:
+  - `packages/core/src/export-schema.ts`：稳定版本化 JSON schema（schemaVersion=1），buildEventExportJson/buildBriefingExportJson/buildTopicExportJson/serializeExportJson/parseExportJson。
+  - `packages/core/src/render-pdf.ts`：pdfkit PDF renderer（中文字体 fallback 链 env→仓库资产→系统字体→Helvetica，分页，链接 annotation），renderEventPdf/renderBriefingPdf/renderTopicPdf。
+  - `packages/core/src/{pdf-types,export-test-helpers}.ts`：pdfkit 最小类型 shim + 测试字体路径解析。
+  - `packages/core/src/index.ts`：render-pdf 不从 index 导出（Node-only，避免浏览器 bundle 破坏）；package.json exports 加 `./dist/*` 子路径。
+  - `packages/db/src/repositories/export.ts`：recordMarkdownExport 泛化接受 format 参数（默认 MARKDOWN）。
+  - `apps/web/src/app/exports/events/[eventId]/route.ts`：支持 ?format=json|pdf|markdown query param，正确 MIME/filename/ExportEvent.format。
+  - 父 Agent 修复：runCoreFixtures 改 async、render-pdf.fixtures 直接 import render-pdf.js（不经 index）、package.json exports 加 dist 子路径。
+- Files: `packages/core/src/{export-schema,render-pdf,pdf-types,export-test-helpers,index,index.fixtures}.ts`, `packages/core/src/{export-schema,render-pdf}.fixtures.ts`, `packages/core/package.json`, `packages/db/src/repositories/{export,types}.ts`, `apps/web/src/app/exports/events/[eventId]/route.ts`, `pnpm-lock.yaml`。
+- Verification: core export-schema 6 fixture + render-pdf 8 fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: pdfkit 动态 import 仅在 server route handler（不进浏览器 bundle）；字体 8.3MB OTF 不 commit，runtime fallback；briefings/topics route ?format= 支持留给 #187。未部署、未关闭 Issue。Stage 5 批量 push。
+
 ### Feat: Issue #185 实现主题一体化 Dashboard 与趋势
 
 - Cause: 缺少每主题一体化 Dashboard（未读/收藏/趋势/信源健康/简报）。

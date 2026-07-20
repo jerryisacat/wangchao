@@ -491,6 +491,7 @@ export interface RecordMarkdownExportInput extends TenantScope {
   contentHash: string;
   eventId?: string;
   fileName: string;
+  format?: "MARKDOWN" | "JSON" | "PDF";
   metadata?: Record<string, unknown>;
   topicId: string;
   userId?: string;
