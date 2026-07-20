@@ -175,6 +175,7 @@ export {
   listItemsPendingContentCapture,
   listEligibleWorkerWorkspaces,
   listOrganizationMemberships,
+  listUserMemberships,
   listPreferenceMemoryForDashboard,
   listRecentActiveSourcePagesForDiscovery,
   listRecentFeedbackSignals,
@@ -222,6 +223,7 @@ export {
   upsertSearchCredential,
   getTopicDashboard,
   getTopicTrends,
+  resolveActiveWorkspace,
   type AttachRssSourceInput,
   type AiCredentialTestInput,
   type AiModelListInput,
@@ -293,6 +295,8 @@ export {
   type TopicDashboardSummary,
   type WorkspaceSeed,
   type WorkerWorkspaceActor,
+  type UserMembershipSummary,
+  type ResolvedWorkspace,
 } from "./repositories.js";
 export {
   getUserLifecycleStatus,

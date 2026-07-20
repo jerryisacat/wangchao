@@ -24,6 +24,28 @@ export interface OrganizationMembershipRecord {
   userId: string;
 }
 
+/**
+ * Issue #155 — 用户跨工作区 Membership 概览。
+ * 用于工作区切换 UI：列出当前用户可访问的所有 Organization 及其 role。
+ */
+export interface UserMembershipSummary {
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  role: "OWNER" | "ADMIN" | "MEMBER";
+}
+
+/**
+ * Issue #155 — 解析后的 active workspace 信息。
+ * 与 WorkspaceSeed 结构一致但不含 userEmail/userId（调用方已知）。
+ */
+export interface ResolvedWorkspace {
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  role: "OWNER" | "ADMIN" | "MEMBER";
+}
+
 export interface CreateTopicInput {
   name: string;
   description?: string;

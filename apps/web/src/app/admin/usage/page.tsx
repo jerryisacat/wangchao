@@ -18,7 +18,7 @@ export default async function WorkspaceUsagePage() {
 
   return (
     <>
-      <PageHeader eyebrow="管理后台" title="工作区成员与用量">
+      <PageHeader eyebrow="工作区设置" title="工作区成员与用量">
         <Button asChild size="sm" variant="ghost">
           <Link href="/admin/settings">
             <ArrowLeft aria-hidden="true" size={14} />

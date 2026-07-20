@@ -5,8 +5,10 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
+import type { UserMembershipSummary } from "@wangchao/db";
 
 const mainLinks = [
   { href: "/", label: "未读情报" },
@@ -19,10 +21,17 @@ const mainLinks = [
 
 interface TopNavProps {
   authEnabled?: boolean;
+  memberships?: UserMembershipSummary[];
+  activeOrganizationId?: string;
   className?: string;
 }
 
-export function TopNav({ authEnabled = false, className }: TopNavProps) {
+export function TopNav({
+  authEnabled = false,
+  memberships = [],
+  activeOrganizationId,
+  className,
+}: TopNavProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
@@ -67,6 +76,11 @@ export function TopNav({ authEnabled = false, className }: TopNavProps) {
         </nav>
 
         <div className="top-nav-actions">
+          <WorkspaceSwitcher
+            memberships={memberships}
+            activeOrganizationId={activeOrganizationId ?? memberships[0]?.organizationId ?? ""}
+            authEnabled={authEnabled}
+          />
           <Button asChild className="top-nav-action" size="sm" variant="primary">
             <Link
               aria-current={pathname === "/topics/new" ? "page" : undefined}
@@ -104,7 +118,7 @@ export function TopNav({ authEnabled = false, className }: TopNavProps) {
               href="/admin/settings"
             >
               <Settings aria-hidden="true" size={14} />
-              <span>设置</span>
+              <span>工作区设置</span>
             </Link>
           </Button>
           {authEnabled ? (

@@ -1,7 +1,11 @@
 import type { PrismaClient } from "@prisma/client";
 import { createHash } from "node:crypto";
 import { readRuntimeEnv } from "./util.js";
-import type { WorkspaceSeed } from "./types.js";
+import type {
+  ResolvedWorkspace,
+  UserMembershipSummary,
+  WorkspaceSeed,
+} from "./types.js";
 
 const DEFAULT_ORGANIZATION_SLUG = "default";
 const DEFAULT_OWNER_EMAIL = "admin@wangchao.local";
@@ -153,4 +157,71 @@ export async function listEligibleWorkerWorkspaces(
       ? [{ organizationId: organization.id, userId: actor.userId }]
       : [];
   });
+}
+
+// ---------------------------------------------------------------------------
+// Issue #155 — 工作区切换与 active workspace 解析
+// ---------------------------------------------------------------------------
+
+/**
+ * 列出用户的所有 Membership（含 Organization 信息），按 createdAt asc 排序。
+ * 用于工作区切换 UI 展示用户可访问的所有工作区。
+ */
+export async function listUserMemberships(
+  prisma: PrismaClient,
+  scope: { userId: string },
+): Promise<UserMembershipSummary[]> {
+  const memberships = await prisma.membership.findMany({
+    where: { userId: scope.userId },
+    include: {
+      organization: {
+        select: { id: true, name: true, slug: true },
+      },
+    },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+  });
+
+  return memberships.map((membership) => ({
+    organizationId: membership.organization.id,
+    organizationName: membership.organization.name,
+    organizationSlug: membership.organization.slug,
+    role: membership.role,
+  }));
+}
+
+/**
+ * 解析当前用户的 active workspace。
+ *
+ * 逻辑：
+ * 1. 如果 preferredOrganizationId 指向的 org 在用户 Membership 列表中，返回它。
+ * 2. 否则 fallback 到第一个 Membership（保持原有行为）。
+ * 3. 用户无 Membership → 返回 null（由上层 ensureUserWorkspace 创建）。
+ *
+ * 不改 schema：active workspace ID 通过 HTTP cookie 传递（见 lib/workspace-switch.ts）。
+ */
+export async function resolveActiveWorkspace(
+  prisma: PrismaClient,
+  input: { userId: string; preferredOrganizationId: string | null },
+): Promise<ResolvedWorkspace | null> {
+  const memberships = await listUserMemberships(prisma, { userId: input.userId });
+
+  if (memberships.length === 0) {
+    return null;
+  }
+
+  const preferred =
+    input.preferredOrganizationId !== null
+      ? memberships.find(
+          (m) => m.organizationId === input.preferredOrganizationId,
+        )
+      : undefined;
+
+  const active = preferred ?? memberships[0]!;
+
+  return {
+    organizationId: active.organizationId,
+    organizationName: active.organizationName,
+    organizationSlug: active.organizationSlug,
+    role: active.role,
+  };
 }

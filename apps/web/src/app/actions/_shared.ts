@@ -55,6 +55,10 @@ export function toUserActionError(error: unknown): string {
       return "AI Base URL 必须是有效的 HTTP 或 HTTPS 地址。";
     case "UNAUTHENTICATED":
       return "登录状态已失效，请刷新页面重新登录后再操作。";
+    case "WORKSPACE_SWITCH_REQUIRES_AUTH":
+      return "工作区切换需要开启认证模式。";
+    case "WORKSPACE_NOT_ACCESSIBLE":
+      return "你无权访问该工作区。";
   }
 
   if (message.startsWith("INSTANT_PUSH_TELEGRAM_MISSING")) {
