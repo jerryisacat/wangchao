@@ -357,6 +357,20 @@ export interface CreatePeriodBriefingInput extends CreateDailyBriefingInput {
 
 export type BriefingPeriod = "DAILY" | "WEEKLY" | "MONTHLY";
 
+// Issue #184 (Plan Task 4.5) — 低价值过滤统计查询输入/输出。
+// 聚合指定业务窗口内 status='FILTERED' 的 Item，按 rawMetadata.filteredReason 分组。
+// 窗口边界由 core 层 createBusinessWindowRange 计算（业务时区感知），
+// 本函数只负责按 [rangeStart, rangeEnd) 过滤 + 聚合。
+export interface CountFilteredItemsInput extends TopicScope {
+  rangeEnd: Date;
+  rangeStart: Date;
+}
+
+export interface FilteredItemsCountResult {
+  byReason: Record<string, number>;
+  count: number;
+}
+
 export interface RecordMarkdownExportInput extends TenantScope {
   briefingId?: string;
   contentHash: string;

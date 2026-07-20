@@ -1,9 +1,10 @@
 import {
   buildTopicProfileContext,
+  createBusinessWindowRange,
   createContentHash,
-  createUtcDayRange,
-  createUtcMonthRange,
-  createUtcWeekRange,
+  resolveBusinessTimezone,
+  renderFilteredStatsSection,
+  summarizeFilteredStats,
   DEFAULT_DIGEST_STYLE,
   renderDailyBriefingMarkdown,
   renderPeriodBriefingMarkdown,
@@ -11,6 +12,7 @@ import {
 import {
   createTaskRun,
   completeTaskRun,
+  countFilteredItemsInRange,
   failTaskRun,
   getPrismaClient,
   listActiveTopics,
@@ -21,6 +23,15 @@ import {
   listTimelineEvents,
 } from "@wangchao/db";
 import { isCycleShuttingDown, isCycleTimeExhausted } from "./lifecycle.js";
+
+// Issue #184 (Plan Task 4.5) - SPEC §4.2 业务时区。
+// 当前无 schema 字段承载时区（约束：本轮不做 migration），所以解析器
+// 输入留空 -> 回退 UTC，行为与旧 createUtc*Range 一致。
+// 待 Organization/User 增加 timezone 字段后，从 DB 读取传入即可，
+// 业务窗口函数已就位。这里集中入口便于后续替换。
+function resolveWorkspaceTimezone(): string {
+  return resolveBusinessTimezone({});
+}
 
 export async function runDailyBriefingCycle(
   prisma: ReturnType<typeof getPrismaClient>,
@@ -33,12 +44,14 @@ export async function runDailyBriefingCycle(
   for (const topic of topics) {
     if (isCycleShuttingDown() || isCycleTimeExhausted()) break;
     const generatedAt = new Date();
-    const { rangeEnd, rangeStart } = createUtcDayRange(generatedAt);
+    const timezone = resolveWorkspaceTimezone();
+    const { rangeEnd, rangeStart } = createBusinessWindowRange("DAILY", timezone, generatedAt);
     const taskRun = await createTaskRun(prisma, {
       input: {
         period: "DAILY",
         rangeEnd: rangeEnd.toISOString(),
         rangeStart: rangeStart.toISOString(),
+        timezone,
       },
       organizationId,
       topicId: topic.id,
@@ -102,7 +115,14 @@ export async function runDailyBriefingCycle(
         markdown,
         metadata: {
           contentHash: createContentHash(markdown),
+          filteredStats: await buildFilteredStatsMetadata(prisma, {
+            organizationId,
+            rangeEnd,
+            rangeStart,
+            topicId: topic.id,
+          }),
           mode: "explainable-rules",
+          timezone,
         },
         organizationId,
         rangeEnd,
@@ -137,16 +157,15 @@ export async function runPeriodBriefingCycle(
   for (const topic of topics) {
     if (isCycleShuttingDown() || isCycleTimeExhausted()) break;
     const generatedAt = new Date();
-    const { rangeEnd, rangeStart } =
-      period === "WEEKLY"
-        ? createUtcWeekRange(generatedAt)
-        : createUtcMonthRange(generatedAt);
+    const timezone = resolveWorkspaceTimezone();
+    const { rangeEnd, rangeStart } = createBusinessWindowRange(period, timezone, generatedAt);
 
     const taskRun = await createTaskRun(prisma, {
       input: {
         period,
         rangeEnd: rangeEnd.toISOString(),
         rangeStart: rangeStart.toISOString(),
+        timezone,
       },
       organizationId,
       topicId: topic.id,
@@ -217,8 +236,15 @@ export async function runPeriodBriefingCycle(
         markdown,
         metadata: {
           contentHash: createContentHash(markdown),
+          filteredStats: await buildFilteredStatsMetadata(prisma, {
+            organizationId,
+            rangeEnd,
+            rangeStart,
+            topicId: topic.id,
+          }),
           mode: "explainable-rules",
           period,
+          timezone,
         },
         organizationId,
         period,
@@ -241,4 +267,30 @@ export async function runPeriodBriefingCycle(
   }
 
   return generatedBriefings;
+}
+
+/**
+ * 为 Briefing.metadata 构建 filteredStats 字段。
+ * 从 DB 查询该业务窗口内 FILTERED item 的按原因统计，
+ * 直接写入 metadata 供 UI 和简报渲染使用。
+ */
+async function buildFilteredStatsMetadata(
+  prisma: ReturnType<typeof getPrismaClient>,
+  input: {
+    organizationId: string;
+    rangeEnd: Date;
+    rangeStart: Date;
+    topicId: string;
+  },
+): Promise<{ byReason: Record<string, number>; count: number }> {
+  const result = await countFilteredItemsInRange(prisma, {
+    organizationId: input.organizationId,
+    rangeEnd: input.rangeEnd,
+    rangeStart: input.rangeStart,
+    topicId: input.topicId,
+  });
+  return {
+    byReason: result.byReason,
+    count: result.count,
+  };
 }

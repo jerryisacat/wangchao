@@ -18,12 +18,14 @@ import type {
   AttachRssSourceInput,
   BatchSourceGovernanceInput,
   BatchSourceGovernanceResult,
+  CountFilteredItemsInput,
   CreateCandidateRssSourceInput,
   CreateSourceFetchTaskRunOptions,
   CreateTaskRunInput,
   CreateTopicWithRssSourceInput,
   ExpiredCandidateSourceRecord,
   FetchedSourceRecord,
+  FilteredItemsCountResult,
   NormalizedFetchedItemInput,
   PendingAnalysisItem,
   RecordSourceQualityObservationInput,
@@ -1383,4 +1385,43 @@ export async function markItemFiltered(
       status: "FILTERED",
     },
   });
+}
+
+// Issue #184 (Plan Task 4.5) - SPEC §4.2/§5.8 低价值过滤统计。
+// 聚合指定业务窗口内 status='FILTERED' 的 Item，按 rawMetadata.filteredReason 分组。
+// 窗口用 [rangeStart, rangeEnd) 半开区间，与 listEventsForDailyBriefing 一致。
+// reason 缺失/空归入 "unspecified"（与 core 层 summarizeFilteredStats 语义一致，
+// 这里在 DB 侧预先归一，避免调用方重复处理）。
+const FILTERED_REASON_UNSPECIFIED = "unspecified";
+
+export async function countFilteredItemsInRange(
+  prisma: PrismaClient,
+  input: CountFilteredItemsInput,
+): Promise<FilteredItemsCountResult> {
+  const items = await prisma.item.findMany({
+    select: { rawMetadata: true },
+    where: {
+      organizationId: input.organizationId,
+      topicId: input.topicId,
+      status: "FILTERED",
+      // SPEC §4.2：窗口按 Item.fetchedAt 落在 [rangeStart, rangeEnd) 内。
+      // 用 fetchedAt 而非 createdAt，因为 filteredReason 由 analysis 写入、
+      // fetchedAt 更贴近「该窗口内抓取并判定为低价值」的语义。
+      fetchedAt: { gte: input.rangeStart, lt: input.rangeEnd },
+    },
+  });
+
+  const byReason: Record<string, number> = {};
+  let count = 0;
+  for (const item of items) {
+    count += 1;
+    const meta = isRecord(item.rawMetadata) ? item.rawMetadata : {};
+    const rawReason = meta["filteredReason"];
+    const reason =
+      typeof rawReason === "string" && rawReason.trim() !== ""
+        ? rawReason
+        : FILTERED_REASON_UNSPECIFIED;
+    byReason[reason] = (byReason[reason] ?? 0) + 1;
+  }
+  return { byReason, count };
 }

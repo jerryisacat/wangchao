@@ -4,6 +4,8 @@ export * from "./pricing.js";
 export * from "./env.js";
 export * from "./text.js";
 export * from "./date-range.js";
+export * from "./business-window.js";
+export * from "./filtered-stats.js";
 export * from "./hashing.js";
 export * from "./topic-profile.js";
 export * from "./relevance.js";

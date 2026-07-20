@@ -18,6 +18,8 @@ import {
 } from "./index.js";
 import { runDedupFixtures } from "./dedup.fixtures.js";
 import { runRenderBriefingFixtures } from "./render-briefing.fixtures.js";
+import { runBusinessWindowFixtures } from "./business-window.fixtures.js";
+import { runFilteredStatsFixtures } from "./filtered-stats.fixtures.js";
 import type { AiEventExtraction } from "./index.js";
 import { checkInstantPushQuota, resolveEffectivePlan } from "./quota.js";
 
@@ -62,6 +64,9 @@ export function runCoreFixtures(): void {
   testRelevanceFilterWithoutSnapshotKeepsLegacyBehavior();
   runDedupFixtures();
   runRenderBriefingFixtures();
+  // Issue #184 (Plan Task 4.5): 业务时区窗口 + 低价值过滤统计
+  runBusinessWindowFixtures();
+  runFilteredStatsFixtures();
 }
 
 function testInstantPushPlanAccess(): void {

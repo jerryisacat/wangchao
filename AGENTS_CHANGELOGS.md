@@ -1,5 +1,17 @@
 ## 2026-07-18
 
+### Feat: Issue #184 简报支持业务时区与过滤统计
+
+- Cause: SPEC §4.2 可配置业务时区未实现（固定 UTC）；低价值过滤统计未在简报呈现。
+- Changed:
+  - `packages/core/src/business-window.ts`：`createBusinessWindowRange`（UTC/Asia-Shanghai/DST 日周月边界）、`resolveBusinessTimezone`（当前空=UTC）。
+  - `packages/core/src/filtered-stats.ts`：`summarizeFilteredStats`（按原因聚合）、`renderFilteredStatsSection`（zh-CN 分区渲染）。
+  - `packages/db/src/repositories/source.ts`：`countFilteredItemsInRange`（FILTERED item 按窗口+原因统计）。
+  - `apps/worker/src/modules/briefing.ts`：`buildFilteredStatsMetadata`（父 Agent 补全 subagent 半成品）；Briefing metadata 记录 filteredStats + timezone。
+- Files: `packages/core/src/{business-window,filtered-stats,index.fixtures,index}.ts`, `packages/db/src/repositories/{source,types}.ts`, `packages/db/src/index.ts`, `apps/worker/src/modules/briefing.ts`。
+- Verification: core business-window + filtered-stats fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: timezone 当前空=UTC（schema 加字段后落地）；无 schema migration。未部署、未关闭 Issue。Stage 4 批量 push。
+
 ### Refactor: Issue #183 按 SPEC 重构中文结构化简报
 
 - Cause: 简报渲染不完整消费 Topic.digestStyle，可能有英文模板残留，结构不符合 SPEC §4.2 分区展示。

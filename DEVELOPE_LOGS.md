@@ -4,6 +4,15 @@
 
 ## 2026-07-18
 
+## Stage 4 / Task 4.5: 业务时区与过滤统计（#184）
+
+- Phase: implementation plan Stage 4 Task 4.5。
+- Scope: business-window（UTC/Asia-Shanghai/DST 日周月边界）、resolveBusinessTimezone（当前空=UTC，schema 加字段后落地 org/user 级）、filtered-stats（FILTERED item 按原因统计 + 渲染分区）、Briefing metadata 记录 filteredStats + timezone。
+- Alignment: SPEC §4.2/§5.8。
+- Verification: core business-window + filtered-stats fixture + 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 4 批量 push）；未部署、未关闭 Issue。
+- Follow-up: schema 加 timezone 字段后落地 org/user 级配置。
+
 ## Stage 4 / Task 4.4: 中文结构化简报（#183）
 
 - Phase: implementation plan Stage 4 Task 4.4。

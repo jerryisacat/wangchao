@@ -199,6 +199,7 @@ export {
   recordSourceFetchFailure,
   recordMarkdownExport,
   markItemFiltered,
+  countFilteredItemsInRange,
   setSourceObserveExpiry,
   testAiCredential,
   testSearchCredential,
@@ -269,6 +270,8 @@ export {
   type UsageSummaryRecord,
   type UpsertPreferenceMemoryInput,
   type UpdateSourceGovernanceStatusInput,
+  type CountFilteredItemsInput,
+  type FilteredItemsCountResult,
   type WorkspaceSeed,
   type WorkerWorkspaceActor,
 } from "./repositories.js";
