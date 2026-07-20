@@ -42,6 +42,9 @@ interface FakeEventRow {
 
 function makeFakeEvent(over: Partial<FakeEventRow> & { id: string; topicId: string; sourceId?: string }): FakeEventRow {
   const sourceId = over.primaryItem?.sourceId ?? over.sourceId ?? `src-${over.id}`;
+  // Use a time within the 48h lookback window (1 hour ago by default).
+  const recentTime = new Date();
+  recentTime.setHours(recentTime.getHours() - 1);
   return {
     id: over.id,
     organizationId: "org-1",
@@ -52,9 +55,9 @@ function makeFakeEvent(over: Partial<FakeEventRow> & { id: string; topicId: stri
     summary: over.summary ?? "",
     summaryStatus: over.summaryStatus ?? "READY",
     entities: over.entities ?? [],
-    occurredAt: over.occurredAt ?? null,
-    createdAt: over.createdAt ?? new Date("2026-07-18T10:00:00.000Z"),
-    updatedAt: over.createdAt ?? new Date("2026-07-18T10:00:00.000Z"),
+    occurredAt: over.occurredAt ?? recentTime,
+    createdAt: over.createdAt ?? recentTime,
+    updatedAt: over.createdAt ?? recentTime,
     eventHash: over.eventHash ?? `event:${over.id}`,
     titleHash: over.titleHash ?? `title:${over.id}`,
     mergeReason: over.mergeReason ?? null,
@@ -160,8 +163,8 @@ async function testNoAiPathUsesDeterministicFallbackWithoutLlmCall(): Promise<vo
   let llmCalled = 0;
   const state: FakePrismaState = {
     events: [
-      makeFakeEvent({ id: "old", topicId: "t1", title: "OpenAI 发布 GPT-5", entities: ["OpenAI"], sourceId: "src-A", occurredAt: new Date("2026-07-18T10:00:00.000Z"), createdAt: new Date("2026-07-18T10:00:00.000Z") }),
-      makeFakeEvent({ id: "new", topicId: "t1", title: "【突发】OpenAI 发布 GPT-5", entities: ["OpenAI"], sourceId: "src-B", occurredAt: new Date("2026-07-18T11:00:00.000Z"), createdAt: new Date("2026-07-18T11:00:00.000Z") }),
+      makeFakeEvent({ id: "old", topicId: "t1", title: "OpenAI 发布 GPT-5", entities: ["OpenAI"], sourceId: "src-A", occurredAt: new Date(Date.now() - 2 * 3600 * 1000), createdAt: new Date(Date.now() - 2 * 3600 * 1000) }),
+      makeFakeEvent({ id: "new", topicId: "t1", title: "【突发】OpenAI 发布 GPT-5", entities: ["OpenAI"], sourceId: "src-B", occurredAt: new Date(Date.now() - 1 * 3600 * 1000), createdAt: new Date(Date.now() - 1 * 3600 * 1000) }),
     ],
     findManyCalls: [],
     mergeCalls: [],
@@ -190,8 +193,8 @@ async function testNoAiPathUsesDeterministicFallbackWithoutLlmCall(): Promise<vo
 async function testSameCanonicalTitleDifferentUrlMergesViaDeterministic(): Promise<void> {
   const state: FakePrismaState = {
     events: [
-      makeFakeEvent({ id: "keep", topicId: "t1", title: "某公司发布新品", entities: [], sourceId: "src-A", occurredAt: new Date("2026-07-18T10:00:00.000Z"), createdAt: new Date("2026-07-18T10:00:00.000Z") }),
-      makeFakeEvent({ id: "merge", topicId: "t1", title: "【独家】某公司发布新品", entities: [], sourceId: "src-B", occurredAt: new Date("2026-07-18T10:30:00.000Z"), createdAt: new Date("2026-07-18T10:30:00.000Z") }),
+      makeFakeEvent({ id: "keep", topicId: "t1", title: "某公司发布新品", entities: [], sourceId: "src-A", occurredAt: new Date(Date.now() - 2 * 3600 * 1000), createdAt: new Date(Date.now() - 2 * 3600 * 1000) }),
+      makeFakeEvent({ id: "merge", topicId: "t1", title: "【独家】某公司发布新品", entities: [], sourceId: "src-B", occurredAt: new Date(Date.now() - 90 * 60 * 1000), createdAt: new Date(Date.now() - 90 * 60 * 1000) }),
     ],
     findManyCalls: [],
     mergeCalls: [],
@@ -206,8 +209,8 @@ async function testSameCanonicalTitleDifferentUrlMergesViaDeterministic(): Promi
 async function testDifferentTopicNeverMerges(): Promise<void> {
   const state: FakePrismaState = {
     events: [
-      makeFakeEvent({ id: "t1-evt", topicId: "t1", title: "地震发生", entities: ["某地"], sourceId: "src-A", occurredAt: new Date("2026-07-18T10:00:00.000Z"), createdAt: new Date("2026-07-18T10:00:00.000Z") }),
-      makeFakeEvent({ id: "t2-evt", topicId: "t2", title: "地震发生", entities: ["某地"], sourceId: "src-B", occurredAt: new Date("2026-07-18T10:00:00.000Z"), createdAt: new Date("2026-07-18T10:00:00.000Z") }),
+      makeFakeEvent({ id: "t1-evt", topicId: "t1", title: "地震发生", entities: ["某地"], sourceId: "src-A", occurredAt: new Date(Date.now() - 2 * 3600 * 1000), createdAt: new Date(Date.now() - 2 * 3600 * 1000) }),
+      makeFakeEvent({ id: "t2-evt", topicId: "t2", title: "地震发生", entities: ["某地"], sourceId: "src-B", occurredAt: new Date(Date.now() - 2 * 3600 * 1000), createdAt: new Date(Date.now() - 2 * 3600 * 1000) }),
     ],
     findManyCalls: [],
     mergeCalls: [],
@@ -243,8 +246,8 @@ async function testAiPathSkipsDeterministicMatchedEventForLlm(): Promise<void> {
   let llmCalls = 0;
   const state: FakePrismaState = {
     events: [
-      makeFakeEvent({ id: "keep", topicId: "t1", title: "OpenAI 发布 GPT-5", entities: ["OpenAI"], sourceId: "src-A", occurredAt: new Date("2026-07-18T10:00:00.000Z"), createdAt: new Date("2026-07-18T10:00:00.000Z") }),
-      makeFakeEvent({ id: "dup", topicId: "t1", title: "OpenAI 发布 GPT-5", entities: ["OpenAI"], sourceId: "src-B", occurredAt: new Date("2026-07-18T11:00:00.000Z"), createdAt: new Date("2026-07-18T11:00:00.000Z") }),
+      makeFakeEvent({ id: "keep", topicId: "t1", title: "OpenAI 发布 GPT-5", entities: ["OpenAI"], sourceId: "src-A", occurredAt: new Date(Date.now() - 2 * 3600 * 1000), createdAt: new Date(Date.now() - 2 * 3600 * 1000) }),
+      makeFakeEvent({ id: "dup", topicId: "t1", title: "OpenAI 发布 GPT-5", entities: ["OpenAI"], sourceId: "src-B", occurredAt: new Date(Date.now() - 1 * 3600 * 1000), createdAt: new Date(Date.now() - 1 * 3600 * 1000) }),
     ],
     findManyCalls: [],
     mergeCalls: [],

@@ -177,6 +177,8 @@ export {
   listRecentFeedbackSignals,
   listSourceGovernanceReport,
   listTimelineEvents,
+  listTimelineEventsForExport,
+  listSavedEventsForExport,
   listTopicsForSourceDiscovery,
   listTopicSourceOverview,
   listUsageSummary,

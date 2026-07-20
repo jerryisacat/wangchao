@@ -5,9 +5,13 @@ import {
   renderEventPdf,
   renderBriefingPdf,
   renderTopicPdf,
+  renderTimelinePdf,
+  renderSavedPdf,
   type EventPdfInput,
   type BriefingPdfInput,
   type TopicPdfInput,
+  type TimelinePdfInput,
+  type SavedPdfInput,
 } from "./render-pdf.js";
 import { resolveTestFontPath } from "./export-test-helpers.js";
 
@@ -20,6 +24,8 @@ export async function runRenderPdfFixtures(): Promise<void> {
   await testTopicPdfProducesValidPdf();
   await testTopicPdfWithMultipleEvents();
   await testPdfFallbackWhenNoFont();
+  await testTimelinePdfProducesValidPdf();
+  await testSavedPdfProducesValidPdf();
 }
 
 async function testEventPdfProducesValidPdf(): Promise<void> {
@@ -216,6 +222,99 @@ async function testPdfFallbackWhenNoFont(): Promise<void> {
   const pdf = await renderEventPdf(input, { fontResolver: () => null });
   assert(pdf.length > 500, `Fallback PDF must be >500 bytes, got ${pdf.length}`);
   assert(isValidPdfHeader(pdf), "Fallback PDF must be valid");
+}
+
+// Issue #187 — Timeline PDF
+async function testTimelinePdfProducesValidPdf(): Promise<void> {
+  const events: EventPdfInput[] = [
+    {
+      title: "C919 商业运营进展",
+      summary: "C919 完成首次商业飞行。",
+      category: "商业运营",
+      score: 88,
+      explanation: "里程碑事件。",
+      followUpSuggestion: null,
+      occurredAt: "2026-07-19T00:00:00.000Z",
+      entities: ["中国商飞"],
+      sourceName: "民航局",
+      sourceUrl: null,
+      url: "https://example.com/c919",
+      generatedAt: "2026-07-20T00:00:00.000Z",
+      topicName: "中国商业航空进展",
+    },
+    {
+      title: "ARJ21 交付",
+      summary: "ARJ21 交付给成都航空。",
+      category: "交付",
+      score: 75,
+      explanation: null,
+      followUpSuggestion: null,
+      occurredAt: null,
+      entities: [],
+      sourceName: null,
+      sourceUrl: null,
+      url: null,
+      generatedAt: "2026-07-20T00:00:00.000Z",
+      topicName: "中国商业航空进展",
+    },
+  ];
+
+  const input: TimelinePdfInput = {
+    topicName: "中国商业航空进展",
+    generatedAt: "2026-07-20T00:00:00.000Z",
+    events,
+  };
+
+  const pdf = await renderTimelinePdf(input, { fontResolver: resolveTestFontPath });
+  assert(pdf.length > 1000, `Timeline PDF must be >1000 bytes, got ${pdf.length}`);
+  assert(isValidPdfHeader(pdf), "Timeline PDF must start with %PDF header");
+  assert(isValidPdfFooter(pdf), "Timeline PDF must end with %%EOF");
+}
+
+// Issue #187 — Saved collection PDF
+async function testSavedPdfProducesValidPdf(): Promise<void> {
+  const events: EventPdfInput[] = [
+    {
+      title: "收藏事件 1",
+      summary: "用户收藏的第一个事件。",
+      category: "重要",
+      score: 85,
+      explanation: "用户标记为重要。",
+      followUpSuggestion: null,
+      occurredAt: "2026-07-19T00:00:00.000Z",
+      entities: ["实体A"],
+      sourceName: "来源A",
+      sourceUrl: null,
+      url: "https://example.com/saved-1",
+      generatedAt: "2026-07-20T00:00:00.000Z",
+      topicName: "主题A",
+    },
+    {
+      title: "收藏事件 2",
+      summary: "用户收藏的第二个事件。",
+      category: null,
+      score: 60,
+      explanation: null,
+      followUpSuggestion: null,
+      occurredAt: null,
+      entities: [],
+      sourceName: null,
+      sourceUrl: null,
+      url: null,
+      generatedAt: "2026-07-20T00:00:00.000Z",
+      topicName: "主题B",
+    },
+  ];
+
+  const input: SavedPdfInput = {
+    generatedAt: "2026-07-20T00:00:00.000Z",
+    events,
+  };
+
+  const pdf = await renderSavedPdf(input, { fontResolver: resolveTestFontPath });
+  assert(pdf.length > 1000, `Saved PDF must be >1000 bytes, got ${pdf.length}`);
+  assert(isValidPdfHeader(pdf), "Saved PDF must start with %PDF header");
+  assert(isValidPdfFooter(pdf), "Saved PDF must end with %%EOF");
 }
 
 function isValidPdfHeader(buf: Buffer): boolean {

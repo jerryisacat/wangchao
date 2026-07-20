@@ -4,7 +4,7 @@
 
 export const EXPORT_JSON_SCHEMA_VERSION = 1 as const;
 
-export type ExportTarget = "event" | "briefing" | "topic";
+export type ExportTarget = "event" | "briefing" | "topic" | "timeline" | "saved";
 export type ExportFormat = "MARKDOWN" | "JSON" | "PDF";
 
 export interface ExportJsonEnvelope {
@@ -16,7 +16,7 @@ export interface ExportJsonEnvelope {
     id: string;
     name: string;
   };
-  data: ExportEventData | ExportBriefingData | ExportTopicData;
+  data: ExportEventData | ExportBriefingData | ExportTopicData | ExportTimelineData | ExportSavedData;
 }
 
 export interface ExportEventData {
@@ -54,6 +54,24 @@ export interface ExportBriefingData {
 export interface ExportTopicData {
   topicId: string;
   topicName: string;
+  eventCount: number;
+  events: ExportEventData[];
+}
+
+// Issue #187 — Timeline 全量导出。
+// Timeline 是主题级时间线（组织级视图，不按个人阅读状态过滤），
+// 与 topic 批量导出的区别：timeline 不限制 100 条上限，全量导出。
+export interface ExportTimelineData {
+  topicId: string;
+  topicName: string;
+  eventCount: number;
+  events: ExportEventData[];
+}
+
+// Issue #187 — Saved collection 导出。
+// 当前用户 saved 集合（user-scoped），跨主题，严格按 UserItemState.saved=true 过滤。
+export interface ExportSavedData {
+  userId: string;
   eventCount: number;
   events: ExportEventData[];
 }
@@ -188,6 +206,108 @@ export function buildTopicExportJson(input: {
       })),
     },
   };
+}
+
+// Issue #187 - Timeline/Saved export JSON builders.
+// 复用 ExportEventData 结构，仅 envelope target 不同。
+export function buildTimelineExportJson(input: {
+  exportedAt: Date;
+  topic: { id: string; name: string };
+  events: Array<{
+    eventId: string;
+    title: string;
+    summary: string;
+    category: string | null;
+    score: number;
+    explanation: string | null;
+    followUpSuggestion: string | null;
+    occurredAt: Date | null;
+    entities: string[];
+    sourceName: string | null;
+    sourceUrl: string | null;
+    url: string | null;
+  }>;
+}): ExportJsonEnvelope {
+  return {
+    schemaVersion: EXPORT_JSON_SCHEMA_VERSION,
+    exportedAt: input.exportedAt.toISOString(),
+    target: "timeline",
+    format: "JSON",
+    topic: input.topic,
+    data: {
+      topicId: input.topic.id,
+      topicName: input.topic.name,
+      eventCount: input.events.length,
+      events: mapEventsToExportData(input.events),
+    },
+  };
+}
+
+export function buildSavedExportJson(input: {
+  exportedAt: Date;
+  topic: { id: string; name: string };
+  userId: string;
+  events: Array<{
+    eventId: string;
+    title: string;
+    summary: string;
+    category: string | null;
+    score: number;
+    explanation: string | null;
+    followUpSuggestion: string | null;
+    occurredAt: Date | null;
+    entities: string[];
+    sourceName: string | null;
+    sourceUrl: string | null;
+    url: string | null;
+  }>;
+}): ExportJsonEnvelope {
+  return {
+    schemaVersion: EXPORT_JSON_SCHEMA_VERSION,
+    exportedAt: input.exportedAt.toISOString(),
+    target: "saved",
+    format: "JSON",
+    topic: input.topic,
+    data: {
+      userId: input.userId,
+      eventCount: input.events.length,
+      events: mapEventsToExportData(input.events),
+    },
+  };
+}
+
+function mapEventsToExportData(
+  events: Array<{
+    eventId: string;
+    title: string;
+    summary: string;
+    category: string | null;
+    score: number;
+    explanation: string | null;
+    followUpSuggestion: string | null;
+    occurredAt: Date | null;
+    entities: string[];
+    sourceName: string | null;
+    sourceUrl: string | null;
+    url: string | null;
+  }>,
+): ExportEventData[] {
+  return events.map((event) => ({
+    eventId: event.eventId,
+    title: event.title,
+    summary: event.summary,
+    category: event.category,
+    score: event.score,
+    explanation: event.explanation,
+    followUpSuggestion: event.followUpSuggestion,
+    occurredAt: event.occurredAt?.toISOString() ?? null,
+    entities: event.entities,
+    source: {
+      name: event.sourceName,
+      url: event.sourceUrl,
+    },
+    url: event.url,
+  }));
 }
 
 export function serializeExportJson(envelope: ExportJsonEnvelope): string {

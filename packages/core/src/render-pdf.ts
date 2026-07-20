@@ -127,6 +127,19 @@ export interface TopicPdfInput {
   events: Array<EventPdfInput>;
 }
 
+// Issue #187 - Timeline PDF 输入。结构与 TopicPdf 一致，语义不同（全量时间线）。
+export interface TimelinePdfInput {
+  topicName: string;
+  generatedAt: string;
+  events: Array<EventPdfInput>;
+}
+
+// Issue #187 - Saved collection PDF 输入。
+export interface SavedPdfInput {
+  generatedAt: string;
+  events: Array<EventPdfInput>;
+}
+
 export function renderEventPdf(
   event: EventPdfInput,
   options: RenderPdfOptions = {},
@@ -292,6 +305,99 @@ export function renderTopicPdf(
     doc.moveDown(0.3);
     doc.fontSize(fontSize).text(event.summary);
     doc.text(`评分：${Math.round(event.score)}`);
+    if (event.url) {
+      doc
+        .fillColor("#0066cc")
+        .text(event.url, { link: event.url, underline: true })
+        .fillColor("#000000");
+    }
+  }
+
+  return finalizePdf(doc, getBufferPromise);
+}
+
+// Issue #187 - Timeline PDF 渲染。
+// 复用 TopicPdf 的分页事件列表布局，标题区分语义。
+export function renderTimelinePdf(
+  timeline: TimelinePdfInput,
+  options: RenderPdfOptions = {},
+): Promise<Buffer> {
+  const { doc, getBufferPromise } = createPdfDocument(options);
+  const fontPath = (options.fontResolver ?? getDefaultFontResolver())();
+  registerFont(doc, fontPath);
+
+  const fontSize = options.fontSize ?? 11;
+
+  doc.fontSize(20).text(`${timeline.topicName} — 时间线导出`);
+
+  doc.moveDown(0.5);
+  doc.fontSize(9).fillColor("#666666");
+  doc.text(`生成时间：${timeline.generatedAt}`);
+  doc.text(`情报数量：${timeline.events.length}`);
+  doc.fillColor("#000000");
+
+  const margin = options.margin ?? 72;
+  doc.moveDown(0.5);
+  drawDivider(doc, margin);
+
+  for (let i = 0; i < timeline.events.length; i++) {
+    const event = timeline.events[i]!;
+    doc.moveDown(1);
+    doc.fontSize(14).text(`${i + 1}. ${event.title}`);
+    doc.moveDown(0.3);
+    doc.fontSize(fontSize).text(event.summary);
+    doc.text(`评分：${Math.round(event.score)}`);
+    if (event.occurredAt) {
+      doc.text(`发生时间：${event.occurredAt}`);
+    }
+    if (event.url) {
+      doc
+        .fillColor("#0066cc")
+        .text(event.url, { link: event.url, underline: true })
+        .fillColor("#000000");
+    }
+  }
+
+  return finalizePdf(doc, getBufferPromise);
+}
+
+// Issue #187 - Saved collection PDF 渲染。
+// 当前用户收藏集合，跨主题。
+export function renderSavedPdf(
+  saved: SavedPdfInput,
+  options: RenderPdfOptions = {},
+): Promise<Buffer> {
+  const { doc, getBufferPromise } = createPdfDocument(options);
+  const fontPath = (options.fontResolver ?? getDefaultFontResolver())();
+  registerFont(doc, fontPath);
+
+  const fontSize = options.fontSize ?? 11;
+
+  doc.fontSize(20).text("收藏集合导出");
+
+  doc.moveDown(0.5);
+  doc.fontSize(9).fillColor("#666666");
+  doc.text(`生成时间：${saved.generatedAt}`);
+  doc.text(`情报数量：${saved.events.length}`);
+  doc.fillColor("#000000");
+
+  const margin = options.margin ?? 72;
+  doc.moveDown(0.5);
+  drawDivider(doc, margin);
+
+  for (let i = 0; i < saved.events.length; i++) {
+    const event = saved.events[i]!;
+    doc.moveDown(1);
+    doc.fontSize(14).text(`${i + 1}. ${event.title}`);
+    doc.moveDown(0.3);
+    doc.fontSize(fontSize).text(event.summary);
+    doc.text(`评分：${Math.round(event.score)}`);
+    if (event.topicName) {
+      doc.text(`主题：${event.topicName}`);
+    }
+    if (event.occurredAt) {
+      doc.text(`发生时间：${event.occurredAt}`);
+    }
     if (event.url) {
       doc
         .fillColor("#0066cc")

@@ -4,6 +4,15 @@
 
 ## 2026-07-18
 
+## Stage 5 / Task 5.2: Timeline/Saved 导出 + briefings/topics route ?format=（#187）
+
+- Phase: implementation plan Stage 5 Task 5.2。
+- Scope: briefings/topics export route ?format=json|pdf|markdown 补全、Timeline 全量导出（>100 不截断，>500 deferred to Worker）、Saved collection 导出（user-scoped，三格式复用 snapshot）、dedup fixture 时间依赖修复（固定时间改相对时间）。
+- Alignment: SPEC §5.7。
+- Verification: core export-schema + render-pdf fixture + 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后 Stage 5 全部完成，批量 push。
+- Follow-up: >500 条 deferred 的 Worker EXPORT_GENERATION handler 待后续实现；saved 路由 topicId fallback 语义待优化。
+
 ## Stage 5 / Task 5.1: JSON/PDF 导出（#186）
 
 - Phase: implementation plan Stage 5 Task 5.1。

@@ -4,6 +4,8 @@ import {
   buildEventExportJson,
   buildBriefingExportJson,
   buildTopicExportJson,
+  buildTimelineExportJson,
+  buildSavedExportJson,
   serializeExportJson,
   parseExportJson,
   EXPORT_JSON_SCHEMA_VERSION,
@@ -17,6 +19,8 @@ export function runExportSchemaFixtures(): void {
   testSerializeAndParseRoundTrip();
   testParseRejectsWrongSchemaVersion();
   testEventJsonPreservesNullFields();
+  testTimelineJsonIncludesAllEvents();
+  testSavedJsonIncludesAllEvents();
 }
 
 function testEventJsonEnvelopeHasSchemaVersion(): void {
@@ -202,6 +206,100 @@ function testEventJsonPreservesNullFields(): void {
   assert(data.url === null, "url null must be preserved");
   assert(data.source.name === null, "source.name null must be preserved");
   assert(data.source.url === null, "source.url null must be preserved");
+}
+
+// Issue #187 — Timeline export JSON
+function testTimelineJsonIncludesAllEvents(): void {
+  const json = buildTimelineExportJson({
+    exportedAt: new Date("2026-07-20T00:00:00.000Z"),
+    topic: { id: "topic-1", name: "中国商业航空" },
+    events: [
+      {
+        eventId: "evt-1",
+        title: "C919 首飞",
+        summary: "C919 完成首飞。",
+        category: "商业运营",
+        score: 90,
+        explanation: "里程碑",
+        followUpSuggestion: null,
+        occurredAt: new Date("2026-07-18T00:00:00.000Z"),
+        entities: ["中国商飞"],
+        sourceName: "民航局",
+        sourceUrl: "https://caac.gov.cn",
+        url: "https://example.com/c919",
+      },
+      {
+        eventId: "evt-2",
+        title: "ARJ21 交付",
+        summary: "ARJ21 交付给成都航空。",
+        category: "交付",
+        score: 75,
+        explanation: null,
+        followUpSuggestion: null,
+        occurredAt: null,
+        entities: [],
+        sourceName: null,
+        sourceUrl: null,
+        url: null,
+      },
+    ],
+  });
+
+  assert(json.target === "timeline", "Target must be 'timeline'");
+  assert(json.format === "JSON", "Format must be 'JSON'");
+  const data = json.data as { topicId: string; topicName: string; eventCount: number; events: { eventId: string }[] };
+  assert(data.topicId === "topic-1", "Timeline topicId must be preserved");
+  assert(data.topicName === "中国商业航空", "Timeline topicName must be preserved");
+  assert(data.eventCount === 2, "Timeline eventCount must be 2");
+  assert(data.events.length === 2, "Timeline events array must have 2 entries");
+  assert(data.events[1]!.eventId === "evt-2", "Second event ID must be evt-2");
+}
+
+// Issue #187 — Saved collection export JSON
+function testSavedJsonIncludesAllEvents(): void {
+  const json = buildSavedExportJson({
+    exportedAt: new Date("2026-07-20T00:00:00.000Z"),
+    topic: { id: "saved-collection", name: "收藏集合" },
+    userId: "user-1",
+    events: [
+      {
+        eventId: "evt-saved-1",
+        title: "收藏事件 1",
+        summary: "用户收藏的第一个事件。",
+        category: "重要",
+        score: 85,
+        explanation: "用户标记为重要。",
+        followUpSuggestion: null,
+        occurredAt: new Date("2026-07-19T00:00:00.000Z"),
+        entities: ["实体A"],
+        sourceName: "来源A",
+        sourceUrl: "https://source-a.com",
+        url: "https://example.com/saved-1",
+      },
+      {
+        eventId: "evt-saved-2",
+        title: "收藏事件 2",
+        summary: "用户收藏的第二个事件。",
+        category: null,
+        score: 60,
+        explanation: null,
+        followUpSuggestion: null,
+        occurredAt: null,
+        entities: [],
+        sourceName: null,
+        sourceUrl: null,
+        url: null,
+      },
+    ],
+  });
+
+  assert(json.target === "saved", "Target must be 'saved'");
+  assert(json.format === "JSON", "Format must be 'JSON'");
+  const data = json.data as { userId: string; eventCount: number; events: { eventId: string }[] };
+  assert(data.userId === "user-1", "Saved userId must be preserved");
+  assert(data.eventCount === 2, "Saved eventCount must be 2");
+  assert(data.events.length === 2, "Saved events array must have 2 entries");
+  assert(data.events[0]!.eventId === "evt-saved-1", "First saved event ID must be evt-saved-1");
 }
 
 function assert(condition: unknown, message: string): void {

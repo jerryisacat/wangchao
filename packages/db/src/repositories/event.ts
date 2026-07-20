@@ -839,6 +839,111 @@ export async function listTimelineEvents(
   };
 }
 
+// Issue #187 — Timeline 全量导出查询。
+// 与 listTimelineEvents 的区别：不限制分页，全量拉取用于导出。
+// 同样按 organization + topic fenced，summaryStatus=READY，排除 ARCHIVED，
+// primaryItem.source.status=ACTIVE。
+// 安全：take 上限 10000，防止超大集合 OOM。
+export async function listTimelineEventsForExport(
+  prisma: PrismaClient,
+  scope: TenantScope & { topicId: string },
+): Promise<TimelineEventRecord[]> {
+  const events = await prisma.intelligenceEvent.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      topicId: scope.topicId,
+      summaryStatus: "READY",
+      status: { notIn: ["ARCHIVED"] },
+      primaryItem: { source: { status: "ACTIVE" } },
+    },
+    include: {
+      topic: { select: { name: true } },
+      eventItems: { select: { itemId: true, role: true } },
+      primaryItem: {
+        select: {
+          url: true,
+          source: { select: { name: true, url: true } },
+        },
+      },
+    },
+    orderBy: [{ occurredAt: "desc" }, { gravityScore: "desc" }],
+    take: 10_000,
+  });
+
+  const secondarySourceMap = await resolveSecondarySources(prisma, events);
+
+  return events.map((event) => {
+    const secondarySources: Array<{ sourceName: string; url: string | null }> = [];
+    for (const ei of (event.eventItems ?? []).filter((ei) => ei.role === "SECONDARY")) {
+      const info = secondarySourceMap.get(ei.itemId);
+      if (info) secondarySources.push(info);
+    }
+    return {
+      eventId: event.id,
+      title: event.title,
+      summary: event.summary,
+      summaryStatus: event.summaryStatus,
+      category: event.category,
+      entities: event.entities ?? [],
+      explanation: event.explanation,
+      followUpSuggestion: event.followUpSuggestion,
+      mergeReason: event.mergeReason,
+      occurredAt: event.occurredAt,
+      score: event.score,
+      secondarySources,
+      sourceName: event.primaryItem?.source.name ?? null,
+      sourceUrl: event.primaryItem?.source.url ?? null,
+      topicId: event.topicId,
+      topicName: event.topic.name,
+      url: event.primaryItem?.url ?? null,
+    };
+  });
+}
+
+// Issue #187 — Saved collection 全量导出查询。
+// 当前用户 saved 集合（user-scoped），跨主题。
+// 严格按 UserItemState.saved=true + userId 过滤，organization fenced。
+// 安全：take 上限 10000。
+export async function listSavedEventsForExport(
+  prisma: PrismaClient,
+  scope: TenantScope & { userId: string },
+): Promise<DashboardEventRecord[]> {
+  const events = await prisma.intelligenceEvent.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      userStates: {
+        some: {
+          saved: true,
+          userId: scope.userId,
+        },
+      },
+    },
+    include: {
+      topic: { select: { name: true } },
+      primaryItem: {
+        select: {
+          sourceId: true,
+          url: true,
+          source: {
+            select: { name: true, url: true },
+          },
+        },
+      },
+      eventItems: {
+        select: { itemId: true, role: true },
+      },
+      userStates: {
+        where: { userId: scope.userId },
+        take: 1,
+      },
+    },
+    orderBy: [{ updatedAt: "desc" }, { gravityScore: "desc" }],
+    take: 10_000,
+  });
+
+  return events.map(mapDashboardEventRecord);
+}
+
 export async function createDailyBriefing(
   prisma: PrismaClient,
   input: CreateDailyBriefingInput,

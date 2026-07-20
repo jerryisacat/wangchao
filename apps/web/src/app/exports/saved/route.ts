@@ -1,14 +1,11 @@
-// Issue #187 - Topic batch export route with ?format=json|pdf|markdown support.
-// 参考 events route 模式：复用同一 snapshot 生成三格式输出。
-// 不再静默截断 100 条（take: 100 移除），全量导出上限 10000。
+// Issue #187 - Saved collection export route.
+// 当前用户 saved 集合导出（Markdown/JSON/PDF 三格式复用同一 snapshot）。
+// 严格 user scoped（UserItemState.saved=true + userId）。大集合（>500）进入 Worker。
 import type { ExportFormat } from "@wangchao/core";
 
-interface TopicExportContext {
-  params: Promise<{ topicId: string }> | { topicId: string };
-}
+const LARGE_COLLECTION_THRESHOLD = 500;
 
-export async function GET(request: Request, context: TopicExportContext) {
-  const { topicId } = await Promise.resolve(context.params);
+export async function GET(request: Request) {
   const url = new URL(request.url);
   const formatParam = (url.searchParams.get("format") ?? "markdown").toLowerCase();
   const format: ExportFormat = formatParam === "json" ? "JSON" : formatParam === "pdf" ? "PDF" : "MARKDOWN";
@@ -27,15 +24,15 @@ export async function GET(request: Request, context: TopicExportContext) {
     getMonthExportCount,
     getPrismaClient,
     getSubscriptionPlanView,
+    listSavedEventsForExport,
     recordMarkdownExport,
     recordUsageEvent,
   } = await import("@wangchao/db");
   const {
     checkExportQuota,
     createContentHash,
-    buildTopicExportJson,
+    buildSavedExportJson,
     serializeExportJson,
-    renderEventMarkdown,
   } = await import("@wangchao/core");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
@@ -54,41 +51,29 @@ export async function GET(request: Request, context: TopicExportContext) {
   const exportQuota = checkExportQuota(subscription.plan, monthExports, subscription.isSelfHosted);
   if (!exportQuota.allowed) return new Response(exportQuota.reason ?? "Export limit reached.", { status: 429 });
 
-  const topic = await prisma.topic.findFirst({
-    where: { id: topicId, organizationId: workspace.organizationId },
+  // Saved collection 不绑定具体 topic，使用 organization 级别的占位 topic。
+  // 需要一个 topicId 来满足 recordMarkdownExport 的 NOT NULL 约束。
+  // 取用户第一个 topic 作为 fallback；如果没有 topic 则返回 404。
+  const firstTopic = await prisma.topic.findFirst({
+    where: { organizationId: workspace.organizationId },
     select: { id: true, name: true },
   });
 
-  if (!topic) {
-    return new Response("Topic not found.", { status: 404 });
+  if (!firstTopic) {
+    return new Response("No topics found in workspace.", { status: 404 });
   }
 
   const taskRun = await createTaskRun(prisma, {
-    input: { format, mode: "batch-topic" },
+    input: { format, mode: "saved-export", userId: workspace.userId },
     organizationId: workspace.organizationId,
-    topicId: topic.id,
+    topicId: firstTopic.id,
     type: "EXPORT_GENERATION",
   });
 
   try {
-    // Issue #187: 不再静默截断 100 条。全量导出上限 10000。
-    const events = await prisma.intelligenceEvent.findMany({
-      where: {
-        organizationId: workspace.organizationId,
-        topicId: topic.id,
-        status: { in: ["UNREAD", "READ", "SAVED"] },
-        primaryItem: { source: { status: "ACTIVE" } },
-      },
-      include: {
-        primaryItem: {
-          select: {
-            url: true,
-            source: { select: { name: true, url: true } },
-          },
-        },
-      },
-      orderBy: [{ occurredAt: "desc" }, { gravityScore: "desc" }],
-      take: 10_000,
+    const events = await listSavedEventsForExport(prisma, {
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
     });
 
     if (events.length === 0) {
@@ -96,11 +81,35 @@ export async function GET(request: Request, context: TopicExportContext) {
         eventCount: 0,
         outcome: "skipped-no-events",
       });
-      return new Response("No events available for export.", { status: 404 });
+      return new Response("No saved events available for export.", { status: 404 });
+    }
+
+    // 大集合：标记 deferred，进入 Worker 处理。
+    if (events.length > LARGE_COLLECTION_THRESHOLD) {
+      await completeTaskRun(prisma, taskRun.id, {
+        eventCount: events.length,
+        format,
+        outcome: "deferred-large-collection",
+      });
+      return new Response(
+        JSON.stringify({
+          status: "deferred",
+          taskRunId: taskRun.id,
+          eventCount: events.length,
+          message: "Collection exceeds threshold, generation deferred to worker.",
+        }),
+        {
+          status: 202,
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Location": `/api/exports/saved/status?taskRunId=${taskRun.id}`,
+          },
+        },
+      );
     }
 
     const exportEvents = events.map((event) => ({
-      eventId: event.id,
+      eventId: event.eventId,
       title: event.title,
       summary: event.summary,
       category: event.category,
@@ -108,30 +117,30 @@ export async function GET(request: Request, context: TopicExportContext) {
       explanation: event.explanation,
       followUpSuggestion: event.followUpSuggestion,
       occurredAt: event.occurredAt,
-      entities: event.entities ?? [],
-      sourceName: event.primaryItem?.source.name ?? null,
-      sourceUrl: event.primaryItem?.source.url ?? null,
-      url: event.primaryItem?.url ?? null,
+      entities: event.entities,
+      sourceName: event.sourceName,
+      sourceUrl: event.sourceUrl,
+      url: event.primaryItemUrl,
     }));
 
     let content: string | Uint8Array;
     let fileName: string;
     let contentType: string;
 
-    const slug = slugify(topic.name);
     const datePrefix = generatedAt.toISOString().slice(0, 10);
 
     if (format === "JSON") {
-      const json = buildTopicExportJson({
+      const json = buildSavedExportJson({
         exportedAt: generatedAt,
-        topic: { id: topic.id, name: topic.name },
+        topic: { id: "saved-collection", name: "收藏集合" },
+        userId: workspace.userId,
         events: exportEvents,
       });
       content = serializeExportJson(json);
-      fileName = `${datePrefix}-batch-${slug}.json`;
+      fileName = `${datePrefix}-saved-collection.json`;
       contentType = "application/json; charset=utf-8";
     } else if (format === "PDF") {
-      const { renderTopicPdf } = await import("@wangchao/core/dist/render-pdf.js");
+      const { renderSavedPdf } = await import("@wangchao/core/dist/render-pdf.js");
       const pdfEvents = exportEvents.map((e) => ({
         title: e.title,
         summary: e.summary,
@@ -145,18 +154,17 @@ export async function GET(request: Request, context: TopicExportContext) {
         sourceUrl: e.sourceUrl,
         url: e.url,
         generatedAt: generatedAt.toISOString(),
-        topicName: topic.name,
+        topicName: events.find((ev) => ev.eventId === e.eventId)?.topicName ?? "",
       }));
-      content = await renderTopicPdf({
-        topicName: topic.name,
+      content = await renderSavedPdf({
         generatedAt: generatedAt.toISOString(),
         events: pdfEvents,
       });
-      fileName = `${datePrefix}-batch-${slug}.pdf`;
+      fileName = `${datePrefix}-saved-collection.pdf`;
       contentType = "application/pdf";
     } else {
-      content = buildBatchMarkdown(topic.name, exportEvents, generatedAt);
-      fileName = `${datePrefix}-batch-${slug}.md`;
+      content = buildSavedMarkdown(exportEvents, generatedAt);
+      fileName = `${datePrefix}-saved-collection.md`;
       contentType = "text/markdown; charset=utf-8";
     }
 
@@ -167,17 +175,17 @@ export async function GET(request: Request, context: TopicExportContext) {
       contentHash,
       fileName,
       format,
-      metadata: { eventCount: events.length, mode: "batch-topic", source: "topic-batch-route" },
+      metadata: { eventCount: events.length, mode: "saved-export", source: "saved-export-route" },
       organizationId: workspace.organizationId,
-      topicId: topic.id,
+      topicId: firstTopic.id,
       userId: workspace.userId,
     });
     await recordUsageEvent(prisma, {
-      metadata: { eventCount: events.length, fileName, format, source: "topic-batch-route" },
+      metadata: { eventCount: events.length, fileName, format, source: "saved-export-route" },
       organizationId: workspace.organizationId,
       quantity: events.length,
-      subjectId: topic.id,
-      subjectType: "topic",
+      subjectId: workspace.userId,
+      subjectType: "user",
       type: "EXPORT",
       unit: "event",
       userId: workspace.userId,
@@ -204,8 +212,7 @@ export async function GET(request: Request, context: TopicExportContext) {
   }
 }
 
-function buildBatchMarkdown(
-  topicName: string,
+function buildSavedMarkdown(
   events: Array<{
     eventId: string;
     title: string;
@@ -224,14 +231,13 @@ function buildBatchMarkdown(
 ): string {
   const lines: Array<string | undefined> = [
     "---",
-    `title: ${JSON.stringify(`${topicName} Batch Export`)}`,
+    `title: ${JSON.stringify("Saved Collection Export")}`,
     `created: ${generatedAt.toISOString()}`,
-    `topic: ${JSON.stringify(topicName)}`,
-    "format: wangchao-batch-export",
+    "format: wangchao-saved-export",
     `event_count: ${events.length}`,
     "---",
     "",
-    `# ${topicName} - Batch Export`,
+    "# Saved Collection Export",
     "",
     `Generated at ${generatedAt.toISOString()}. Contains ${events.length} events.`,
     "",
@@ -260,14 +266,4 @@ function buildBatchMarkdown(
   }
 
   return `${lines.filter((line): line is string => line !== undefined).join("\n")}\n`;
-}
-
-function slugify(value: string): string {
-  return (
-    value
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 60) || "wangchao-topic"
-  );
 }

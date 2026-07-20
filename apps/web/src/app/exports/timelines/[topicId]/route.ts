@@ -1,13 +1,15 @@
-// Issue #187 - Topic batch export route with ?format=json|pdf|markdown support.
-// 参考 events route 模式：复用同一 snapshot 生成三格式输出。
-// 不再静默截断 100 条（take: 100 移除），全量导出上限 10000。
+// Issue #187 - Timeline 全量导出 route.
+// 主题时间线全量导出（Markdown/JSON/PDF 三格式复用同一 snapshot）。
+// 超过 100 条不静默截断（上限 10000）。大集合（>500）进入 Worker。
 import type { ExportFormat } from "@wangchao/core";
 
-interface TopicExportContext {
+interface TimelineExportContext {
   params: Promise<{ topicId: string }> | { topicId: string };
 }
 
-export async function GET(request: Request, context: TopicExportContext) {
+const LARGE_COLLECTION_THRESHOLD = 500;
+
+export async function GET(request: Request, context: TimelineExportContext) {
   const { topicId } = await Promise.resolve(context.params);
   const url = new URL(request.url);
   const formatParam = (url.searchParams.get("format") ?? "markdown").toLowerCase();
@@ -27,13 +29,14 @@ export async function GET(request: Request, context: TopicExportContext) {
     getMonthExportCount,
     getPrismaClient,
     getSubscriptionPlanView,
+    listTimelineEventsForExport,
     recordMarkdownExport,
     recordUsageEvent,
   } = await import("@wangchao/db");
   const {
     checkExportQuota,
     createContentHash,
-    buildTopicExportJson,
+    buildTimelineExportJson,
     serializeExportJson,
     renderEventMarkdown,
   } = await import("@wangchao/core");
@@ -64,31 +67,16 @@ export async function GET(request: Request, context: TopicExportContext) {
   }
 
   const taskRun = await createTaskRun(prisma, {
-    input: { format, mode: "batch-topic" },
+    input: { format, mode: "timeline-export" },
     organizationId: workspace.organizationId,
     topicId: topic.id,
     type: "EXPORT_GENERATION",
   });
 
   try {
-    // Issue #187: 不再静默截断 100 条。全量导出上限 10000。
-    const events = await prisma.intelligenceEvent.findMany({
-      where: {
-        organizationId: workspace.organizationId,
-        topicId: topic.id,
-        status: { in: ["UNREAD", "READ", "SAVED"] },
-        primaryItem: { source: { status: "ACTIVE" } },
-      },
-      include: {
-        primaryItem: {
-          select: {
-            url: true,
-            source: { select: { name: true, url: true } },
-          },
-        },
-      },
-      orderBy: [{ occurredAt: "desc" }, { gravityScore: "desc" }],
-      take: 10_000,
+    const events = await listTimelineEventsForExport(prisma, {
+      organizationId: workspace.organizationId,
+      topicId: topic.id,
     });
 
     if (events.length === 0) {
@@ -96,11 +84,36 @@ export async function GET(request: Request, context: TopicExportContext) {
         eventCount: 0,
         outcome: "skipped-no-events",
       });
-      return new Response("No events available for export.", { status: 404 });
+      return new Response("No timeline events available for export.", { status: 404 });
+    }
+
+    // 大集合：标记为 deferred，实际生成进入 Worker。
+    // 当前同步返回 202 + taskRunId，客户端轮询状态。
+    if (events.length > LARGE_COLLECTION_THRESHOLD) {
+      await completeTaskRun(prisma, taskRun.id, {
+        eventCount: events.length,
+        format,
+        outcome: "deferred-large-collection",
+      });
+      return new Response(
+        JSON.stringify({
+          status: "deferred",
+          taskRunId: taskRun.id,
+          eventCount: events.length,
+          message: "Collection exceeds threshold, generation deferred to worker.",
+        }),
+        {
+          status: 202,
+          headers: {
+            "Content-Type": "application/json; charset=utf-8",
+            "Location": `/api/exports/timeline/${topic.id}/status?taskRunId=${taskRun.id}`,
+          },
+        },
+      );
     }
 
     const exportEvents = events.map((event) => ({
-      eventId: event.id,
+      eventId: event.eventId,
       title: event.title,
       summary: event.summary,
       category: event.category,
@@ -108,10 +121,10 @@ export async function GET(request: Request, context: TopicExportContext) {
       explanation: event.explanation,
       followUpSuggestion: event.followUpSuggestion,
       occurredAt: event.occurredAt,
-      entities: event.entities ?? [],
-      sourceName: event.primaryItem?.source.name ?? null,
-      sourceUrl: event.primaryItem?.source.url ?? null,
-      url: event.primaryItem?.url ?? null,
+      entities: event.entities,
+      sourceName: event.sourceName,
+      sourceUrl: event.sourceUrl,
+      url: event.url,
     }));
 
     let content: string | Uint8Array;
@@ -122,16 +135,16 @@ export async function GET(request: Request, context: TopicExportContext) {
     const datePrefix = generatedAt.toISOString().slice(0, 10);
 
     if (format === "JSON") {
-      const json = buildTopicExportJson({
+      const json = buildTimelineExportJson({
         exportedAt: generatedAt,
         topic: { id: topic.id, name: topic.name },
         events: exportEvents,
       });
       content = serializeExportJson(json);
-      fileName = `${datePrefix}-batch-${slug}.json`;
+      fileName = `${datePrefix}-timeline-${slug}.json`;
       contentType = "application/json; charset=utf-8";
     } else if (format === "PDF") {
-      const { renderTopicPdf } = await import("@wangchao/core/dist/render-pdf.js");
+      const { renderTimelinePdf } = await import("@wangchao/core/dist/render-pdf.js");
       const pdfEvents = exportEvents.map((e) => ({
         title: e.title,
         summary: e.summary,
@@ -147,16 +160,16 @@ export async function GET(request: Request, context: TopicExportContext) {
         generatedAt: generatedAt.toISOString(),
         topicName: topic.name,
       }));
-      content = await renderTopicPdf({
+      content = await renderTimelinePdf({
         topicName: topic.name,
         generatedAt: generatedAt.toISOString(),
         events: pdfEvents,
       });
-      fileName = `${datePrefix}-batch-${slug}.pdf`;
+      fileName = `${datePrefix}-timeline-${slug}.pdf`;
       contentType = "application/pdf";
     } else {
-      content = buildBatchMarkdown(topic.name, exportEvents, generatedAt);
-      fileName = `${datePrefix}-batch-${slug}.md`;
+      content = buildTimelineMarkdown(topic.name, exportEvents, generatedAt);
+      fileName = `${datePrefix}-timeline-${slug}.md`;
       contentType = "text/markdown; charset=utf-8";
     }
 
@@ -167,13 +180,13 @@ export async function GET(request: Request, context: TopicExportContext) {
       contentHash,
       fileName,
       format,
-      metadata: { eventCount: events.length, mode: "batch-topic", source: "topic-batch-route" },
+      metadata: { eventCount: events.length, mode: "timeline-export", source: "timeline-export-route" },
       organizationId: workspace.organizationId,
       topicId: topic.id,
       userId: workspace.userId,
     });
     await recordUsageEvent(prisma, {
-      metadata: { eventCount: events.length, fileName, format, source: "topic-batch-route" },
+      metadata: { eventCount: events.length, fileName, format, source: "timeline-export-route" },
       organizationId: workspace.organizationId,
       quantity: events.length,
       subjectId: topic.id,
@@ -204,7 +217,7 @@ export async function GET(request: Request, context: TopicExportContext) {
   }
 }
 
-function buildBatchMarkdown(
+function buildTimelineMarkdown(
   topicName: string,
   events: Array<{
     eventId: string;
@@ -224,14 +237,14 @@ function buildBatchMarkdown(
 ): string {
   const lines: Array<string | undefined> = [
     "---",
-    `title: ${JSON.stringify(`${topicName} Batch Export`)}`,
+    `title: ${JSON.stringify(`${topicName} Timeline Export`)}`,
     `created: ${generatedAt.toISOString()}`,
     `topic: ${JSON.stringify(topicName)}`,
-    "format: wangchao-batch-export",
+    "format: wangchao-timeline-export",
     `event_count: ${events.length}`,
     "---",
     "",
-    `# ${topicName} - Batch Export`,
+    `# ${topicName} - Timeline Export`,
     "",
     `Generated at ${generatedAt.toISOString()}. Contains ${events.length} events.`,
     "",
@@ -268,6 +281,6 @@ function slugify(value: string): string {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
-      .slice(0, 60) || "wangchao-topic"
+      .slice(0, 60) || "wangchao-timeline"
   );
 }

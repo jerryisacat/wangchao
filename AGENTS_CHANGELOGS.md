@@ -1,5 +1,20 @@
 ## 2026-07-18
 
+### Feat: Issue #187 支持完整时间线与收藏集合导出
+
+- Cause: briefings/topics export route 缺 ?format= 支持；Timeline >100 截断；无 Saved collection 导出。
+- Changed:
+  - `apps/web/src/app/exports/briefings/[briefingId]/route.ts`：补 ?format=json|pdf|markdown 三格式。
+  - `apps/web/src/app/exports/topics/[topicId]/route.ts`：补 ?format= + take:10000 消除截断。
+  - `apps/web/src/app/exports/timelines/[topicId]/route.ts`：新建，Timeline 全量导出，>500 返回 202+TaskRun。
+  - `apps/web/src/app/exports/saved/route.ts`：新建，user-scoped saved 三格式。
+  - `packages/core/src/{export-schema,render-pdf}.ts`：新增 buildTimelineExportJson/buildSavedExportJson + renderTimelinePdf/renderSavedPdf。
+  - `packages/db/src/repositories/event.ts`：新增 listTimelineEventsForExport（take 10000）/ listSavedEventsForExport（user-scoped）。
+  - `apps/worker/src/modules/dedup.fixtures.ts`：修复时间依赖（固定 2026-07-18 改相对 now-Xh，#171 引入的 fixture bug）。
+- Files: `apps/web/src/app/exports/{briefings,topics,timelines,saved}/*`, `packages/core/src/{export-schema,render-pdf,index.fixtures}.ts`, `packages/db/src/repositories/{event,types}.ts`, `packages/db/src/index.ts`, `apps/worker/src/modules/dedup.fixtures.ts`。
+- Verification: core export-schema + render-pdf fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: >500 deferred 的 Worker EXPORT_GENERATION handler 待补；saved topicId fallback。未部署、未关闭 Issue。Stage 5 批量 push。
+
 ### Feat: Issue #186 实现 JSON 与 PDF 导出
 
 - Cause: SPEC §5.7 说"JSON 已落地"是不实契约；三条 export 路由全部硬编码 MARKDOWN。
