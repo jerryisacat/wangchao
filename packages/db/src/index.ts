@@ -344,3 +344,18 @@ export {
   countUserSessions,
   type RevokedSessionsResult,
 } from "./repositories/session-revocation.js";
+export {
+  createPlatformNote,
+  getPlatformNoteById,
+  listPlatformNotes,
+  grantTempPlanOverride,
+  revokeTempPlanOverride,
+  getTempPlanOverrideView,
+  PlatformOpsError,
+  type Plan as PlatformOpsPlan,
+  type PlatformNoteTargetType,
+  type PlatformNoteRecord,
+  type CreatePlatformNoteInput,
+  type TempPlanOverrideView,
+  type PlatformOpsErrorCode,
+} from "./repositories/platform-ops.js";

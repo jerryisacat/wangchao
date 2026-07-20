@@ -265,6 +265,14 @@ model Subscription {
   canceledAt         DateTime?
   metadata           Json?
 
+  // Issue #159: temporary plan override (限时权益).
+  // When non-null, the effective plan is tempPlanOverride instead of `plan`.
+  // tempPlanExpiresAt controls auto-revert: once passed, the override is stale
+  // and the base `plan` takes effect again. Both are nullable: null = no override.
+  tempPlanOverride  Plan?
+  tempPlanExpiresAt DateTime?
+  tempPlanReason    String?
+
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
@@ -859,4 +867,16 @@ model AuditLog {
   @@index([actorType, actorId, createdAt])
   @@index([targetType, targetId, createdAt])
   @@index([action, createdAt])
+}
+
+model PlatformNote {
+  id         String   @id @default(cuid())
+  targetType String
+  targetId   String
+  authorId   String
+  content    String
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId, createdAt])
+  @@index([authorId, createdAt])
 }
