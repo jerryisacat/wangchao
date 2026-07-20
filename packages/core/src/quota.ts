@@ -31,8 +31,18 @@ export function resolveEffectivePlan(input: {
   status: SubscriptionStatus;
   isSelfHosted: boolean;
   currentPeriodEnd?: string | Date | null;
+  /** #159: temporary plan override from platform admin (highest priority). */
+  tempPlanOverride?: Plan | null;
+  tempPlanExpiresAt?: string | Date | null;
   now?: Date;
 }): Plan {
+  // #159: temp plan override takes highest priority (platform admin grant).
+  if (input.tempPlanOverride) {
+    const now = input.now ?? new Date();
+    if (!input.tempPlanExpiresAt || new Date(input.tempPlanExpiresAt).getTime() > now.getTime()) {
+      return input.tempPlanOverride;
+    }
+  }
   if (input.isSelfHosted) return input.plan;
   if (input.status === "EXPIRED") return "FREE";
   if (input.status !== "CANCELED") return input.plan;
@@ -63,6 +73,8 @@ export function resolveEffectivePlanFromView(
     status: SubscriptionStatus | null;
     isSelfHosted: boolean;
     currentPeriodEnd?: string | Date | null;
+    tempPlanOverride?: Plan | null;
+    tempPlanExpiresAt?: string | Date | null;
   },
   now?: Date,
 ): Plan {
@@ -71,6 +83,8 @@ export function resolveEffectivePlanFromView(
     status: view.status ?? "ACTIVE",
     isSelfHosted: view.isSelfHosted,
     currentPeriodEnd: view.currentPeriodEnd,
+    tempPlanOverride: view.tempPlanOverride,
+    tempPlanExpiresAt: view.tempPlanExpiresAt,
     now,
   });
 }

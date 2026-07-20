@@ -8,6 +8,9 @@ export interface SubscriptionPlanView {
   showAdsInSelfHosted: boolean;
   currentPeriodStart: string | null;
   currentPeriodEnd: string | null;
+  /** #159: temporary plan override from platform admin. */
+  tempPlanOverride?: "FREE" | "PLUS" | "PRO" | null;
+  tempPlanExpiresAt?: string | null;
 }
 
 export async function getSubscriptionPlanView(
@@ -23,6 +26,8 @@ export async function getSubscriptionPlanView(
       showAdsInSelfHosted: true,
       currentPeriodStart: true,
       currentPeriodEnd: true,
+      tempPlanOverride: true,
+      tempPlanExpiresAt: true,
     },
   });
 
@@ -34,6 +39,8 @@ export async function getSubscriptionPlanView(
       showAdsInSelfHosted: true,
       currentPeriodStart: null,
       currentPeriodEnd: null,
+      tempPlanOverride: null,
+      tempPlanExpiresAt: null,
     };
   }
 
