@@ -91,9 +91,9 @@ export default async function AdminSettingsPage({
   const ccpaymentCredential = await getCcpaymentCredentialView(prisma, {
     organizationId: workspace.organizationId,
   });
-  const { checkInstantPushQuota, resolveEffectivePlan } = await import("@wangchao/core");
+  const { checkInstantPushQuota, resolveEffectivePlanFromView } = await import("@wangchao/core");
   const instantPushAllowed = checkInstantPushQuota(
-    resolveEffectivePlan(instantPushSettings),
+    resolveEffectivePlanFromView(instantPushSettings),
     instantPushSettings.isSelfHosted,
   ).allowed;
 

@@ -50,7 +50,7 @@ async function createCandidateSource(formData: FormData) {
     recordUsageEvent,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
-  const { checkSourceQuota } = await import("@wangchao/core");
+  const { checkSourceQuota, resolveEffectivePlanFromView } = await import("@wangchao/core");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -65,7 +65,7 @@ async function createCandidateSource(formData: FormData) {
 
   const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
   const sourceCount = await getActiveSourceCount(prisma, { organizationId: workspace.organizationId });
-  const sourceQuota = checkSourceQuota(subscription.plan, sourceCount, subscription.isSelfHosted);
+  const sourceQuota = checkSourceQuota(resolveEffectivePlanFromView(subscription), sourceCount, subscription.isSelfHosted);
   if (!sourceQuota.allowed) throw new Error(sourceQuota.reason ?? "Source limit reached.");
 
   const source = await createCandidateRssSource(prisma, {

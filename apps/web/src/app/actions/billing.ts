@@ -82,13 +82,13 @@ export async function setInstantPushEnabledAction(formData: FormData): Promise<v
     if (!process.env.DATABASE_URL) throw new Error("Database connection is required.");
     const enabled = readOptionalField(formData, "enabled") === "true";
     const { assertMembershipRole, getInstantPushSettings, getPrismaClient, recordUsageEvent, setInstantPushEnabled } = await import("@wangchao/db");
-    const { checkInstantPushQuota, resolveEffectivePlan } = await import("@wangchao/core");
+    const { checkInstantPushQuota, resolveEffectivePlanFromView } = await import("@wangchao/core");
     const { getSessionWorkspace } = await import("@/lib/session");
     const prisma = getPrismaClient();
     const workspace = await getSessionWorkspace();
     await assertMembershipRole(prisma, { organizationId: workspace.organizationId, userId: workspace.userId }, ["OWNER", "ADMIN"]);
     const settings = await getInstantPushSettings(prisma, { organizationId: workspace.organizationId });
-    const effectivePlan = resolveEffectivePlan(settings);
+    const effectivePlan = resolveEffectivePlanFromView(settings);
     if (enabled && !checkInstantPushQuota(effectivePlan, settings.isSelfHosted).allowed) throw new Error("INSTANT_PUSH_PLAN_BLOCKED");
     if (enabled && !settings.hasTelegramCredential) throw new Error("INSTANT_PUSH_TELEGRAM_MISSING: 请先前往「管理 -> Telegram」配置机器人凭据后再开启即时推送。");
     await setInstantPushEnabled(prisma, { organizationId: workspace.organizationId }, enabled);

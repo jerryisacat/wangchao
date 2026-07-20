@@ -60,7 +60,7 @@ async function createTopicWithCandidateDiscovery(formData: FormData) {
     recordUsageEvent,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
-  const { buildTopicProfile, checkTopicQuota } = await import("@wangchao/core");
+  const { buildTopicProfile, checkTopicQuota, resolveEffectivePlanFromView } = await import("@wangchao/core");
   const { validateRssFeedUrl } = await import("@wangchao/sources");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
@@ -76,7 +76,7 @@ async function createTopicWithCandidateDiscovery(formData: FormData) {
 
   const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
   const topicCount = await getTopicCount(prisma, { organizationId: workspace.organizationId });
-  const quota = checkTopicQuota(subscription.plan, topicCount, subscription.isSelfHosted);
+  const quota = checkTopicQuota(resolveEffectivePlanFromView(subscription), topicCount, subscription.isSelfHosted);
   if (!quota.allowed) throw new Error(quota.reason ?? "Topic limit reached.");
 
   const profile = buildTopicProfile({ description, name });
@@ -217,7 +217,7 @@ async function createTopicWithSource(formData: FormData) {
     recordUsageEvent,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
-  const { checkSourceQuota, checkTopicQuota } = await import("@wangchao/core");
+  const { checkSourceQuota, checkTopicQuota, resolveEffectivePlanFromView } = await import("@wangchao/core");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -232,11 +232,11 @@ async function createTopicWithSource(formData: FormData) {
 
   const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
   const topicCount = await getTopicCount(prisma, { organizationId: workspace.organizationId });
-  const topicQuota = checkTopicQuota(subscription.plan, topicCount, subscription.isSelfHosted);
+  const topicQuota = checkTopicQuota(resolveEffectivePlanFromView(subscription), topicCount, subscription.isSelfHosted);
   if (!topicQuota.allowed) throw new Error(topicQuota.reason ?? "Topic limit reached.");
 
   const sourceCount = await getActiveSourceCount(prisma, { organizationId: workspace.organizationId });
-  const sourceQuota = checkSourceQuota(subscription.plan, sourceCount, subscription.isSelfHosted);
+  const sourceQuota = checkSourceQuota(resolveEffectivePlanFromView(subscription), sourceCount, subscription.isSelfHosted);
   if (!sourceQuota.allowed) throw new Error(sourceQuota.reason ?? "Source limit reached.");
 
   const { source, topic } = await createTopicWithActiveRssSource(prisma, {
@@ -691,7 +691,7 @@ async function createTopicFromConfirmedDraft(formData: FormData) {
     recordUsageEvent,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
-  const { checkTopicQuota } = await import("@wangchao/core");
+  const { checkTopicQuota, resolveEffectivePlanFromView } = await import("@wangchao/core");
   const { validateRssFeedUrl } = await import("@wangchao/sources");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
@@ -712,7 +712,7 @@ async function createTopicFromConfirmedDraft(formData: FormData) {
     organizationId: workspace.organizationId,
   });
   const quota = checkTopicQuota(
-    subscription.plan,
+    resolveEffectivePlanFromView(subscription),
     topicCount,
     subscription.isSelfHosted,
   );

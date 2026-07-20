@@ -23,7 +23,7 @@ import { runExportSchemaFixtures } from "./export-schema.fixtures.js";
 import { runRenderPdfFixtures } from "./render-pdf.fixtures.js";
 import { runFilteredStatsFixtures } from "./filtered-stats.fixtures.js";
 import type { AiEventExtraction } from "./index.js";
-import { checkInstantPushQuota, resolveEffectivePlan } from "./quota.js";
+import { checkInstantPushQuota, resolveEffectivePlan, resolveEffectivePlanFromView } from "./quota.js";
 
 export async function runCoreFixtures(): Promise<void> {
   testUtcDayRangeUsesStableBoundaries();
@@ -46,6 +46,7 @@ export async function runCoreFixtures(): Promise<void> {
   testMoreLikeThisDoesNotDuplicateCategoryKey();
   testTopicProfileContextUsesTopicIdentityAndSanitizesLists();
   testInstantPushPlanAccess();
+  testEffectivePlanEntitlementContext();
   testGravityScoreSeparatesRelevanceAndImportance();
   testGravityScoreSeparatesSourceQualityFactor();
   testGravityScoreAppliesPreferenceAdjustment();
@@ -83,6 +84,67 @@ function testInstantPushPlanAccess(): void {
   assert(resolveEffectivePlan({ plan: "PRO", status: "EXPIRED", isSelfHosted: false, now }) === "FREE", "Expired plans must resolve to Free.");
   assert(resolveEffectivePlan({ plan: "PLUS", status: "CANCELED", isSelfHosted: false, currentPeriodEnd: "2026-07-12T00:00:00.000Z", now }) === "PLUS", "Canceled plans remain active through their period.");
   assert(resolveEffectivePlan({ plan: "PLUS", status: "CANCELED", isSelfHosted: false, currentPeriodEnd: "2026-07-10T00:00:00.000Z", now }) === "FREE", "Ended canceled plans must resolve to Free.");
+}
+
+/**
+ * Issue #180 (Plan Task 6.1): All Web/Worker entitlement checks must go through
+ * the unified effective-plan context, never the raw stored plan.
+ *
+ * resolveEffectivePlanFromView is the single entry point that accepts a
+ * SubscriptionPlanView-compatible shape (status nullable, as returned by
+ * getSubscriptionPlanView) and normalises it before delegating to
+ * resolveEffectivePlan. This test proves every status branch is handled.
+ */
+function testEffectivePlanEntitlementContext(): void {
+  const now = new Date("2026-07-11T00:00:00.000Z");
+
+  // self-hosted always keeps the stored plan regardless of status
+  assert(
+    resolveEffectivePlanFromView({ plan: "PRO", status: "EXPIRED", isSelfHosted: true, currentPeriodEnd: null }, now) === "PRO",
+    "Self-hosted must keep the stored plan even when expired.",
+  );
+
+  // ACTIVE keeps the stored plan
+  assert(
+    resolveEffectivePlanFromView({ plan: "PLUS", status: "ACTIVE", isSelfHosted: false, currentPeriodEnd: null }, now) === "PLUS",
+    "Active subscriptions must keep their plan.",
+  );
+
+  // PAST_DUE keeps the stored plan (grace — retain access to encourage recovery)
+  assert(
+    resolveEffectivePlanFromView({ plan: "PRO", status: "PAST_DUE", isSelfHosted: false, currentPeriodEnd: null }, now) === "PRO",
+    "Past-due subscriptions must retain plan access during the grace window.",
+  );
+
+  // EXPIRED degrades to FREE
+  assert(
+    resolveEffectivePlanFromView({ plan: "PRO", status: "EXPIRED", isSelfHosted: false, currentPeriodEnd: null }, now) === "FREE",
+    "Expired subscriptions must degrade to Free.",
+  );
+
+  // CANCELED before period end keeps the plan
+  assert(
+    resolveEffectivePlanFromView({ plan: "PLUS", status: "CANCELED", isSelfHosted: false, currentPeriodEnd: "2026-07-12T00:00:00.000Z" }, now) === "PLUS",
+    "Canceled subscriptions must remain active through their current period.",
+  );
+
+  // CANCELED after period end degrades to FREE
+  assert(
+    resolveEffectivePlanFromView({ plan: "PLUS", status: "CANCELED", isSelfHosted: false, currentPeriodEnd: "2026-07-10T00:00:00.000Z" }, now) === "FREE",
+    "Canceled subscriptions past their period end must degrade to Free.",
+  );
+
+  // null status (no subscription record found) normalises to ACTIVE → stored plan
+  assert(
+    resolveEffectivePlanFromView({ plan: "FREE", status: null, isSelfHosted: false, currentPeriodEnd: null }, now) === "FREE",
+    "A null status (missing subscription record) must normalise to ACTIVE and keep the plan.",
+  );
+
+  // null status with a paid plan still resolves correctly
+  assert(
+    resolveEffectivePlanFromView({ plan: "PRO", status: null, isSelfHosted: false, currentPeriodEnd: null }, now) === "PRO",
+    "A null status with a paid plan must normalise to ACTIVE and keep the plan.",
+  );
 }
 
 function testExcludedScopeOverridesPositiveSignals(): void {

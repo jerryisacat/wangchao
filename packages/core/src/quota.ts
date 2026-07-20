@@ -44,6 +44,37 @@ export function resolveEffectivePlan(input: {
     : "FREE";
 }
 
+/**
+ * Issue #180 (Plan Task 6.1): Unified entitlement context for all Web/Worker
+ * quota checks.
+ *
+ * Accepts a shape compatible with `SubscriptionPlanView` (as returned by
+ * `getSubscriptionPlanView` from `@wangchao/db`), where `status` is nullable
+ * (null when no subscription record exists). Normalises null → "ACTIVE" and
+ * delegates to `resolveEffectivePlan`.
+ *
+ * Every Web/Worker entry point that performs a quota check must call this
+ * function — never pass the raw stored `plan` directly to a `check*Quota`
+ * function.
+ */
+export function resolveEffectivePlanFromView(
+  view: {
+    plan: Plan;
+    status: SubscriptionStatus | null;
+    isSelfHosted: boolean;
+    currentPeriodEnd?: string | Date | null;
+  },
+  now?: Date,
+): Plan {
+  return resolveEffectivePlan({
+    plan: view.plan,
+    status: view.status ?? "ACTIVE",
+    isSelfHosted: view.isSelfHosted,
+    currentPeriodEnd: view.currentPeriodEnd,
+    now,
+  });
+}
+
 export function checkInstantPushQuota(
   plan: Plan,
   isSelfHosted: boolean,

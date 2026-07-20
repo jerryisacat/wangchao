@@ -35,6 +35,7 @@ export async function GET(request: Request, context: BriefingRouteContext) {
     createContentHash,
     buildBriefingExportJson,
     serializeExportJson,
+    resolveEffectivePlanFromView,
   } = await import("@wangchao/core");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
@@ -50,7 +51,7 @@ export async function GET(request: Request, context: BriefingRouteContext) {
 
   const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
   const monthExports = await getMonthExportCount(prisma, { organizationId: workspace.organizationId });
-  const exportQuota = checkExportQuota(subscription.plan, monthExports, subscription.isSelfHosted);
+  const exportQuota = checkExportQuota(resolveEffectivePlanFromView(subscription), monthExports, subscription.isSelfHosted);
   if (!exportQuota.allowed) return new Response(exportQuota.reason ?? "Export limit reached.", { status: 429 });
   const briefing = await getBriefingMarkdownForDownload(prisma, {
     briefingId,
