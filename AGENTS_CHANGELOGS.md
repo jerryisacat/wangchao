@@ -9,8 +9,9 @@
   - 简报列表新增标题详情链接与“阅读”主行动，Markdown 降为次级行动；周期、主题、覆盖日期与生成时间重新分层。
   - 主题主入口补足 44px，元数据提升到可读字号，移动端操作左对齐；删除改为危险文字态并保留既有永久删除确认。
   - Railway 响应式冒烟复查定位到首页搜索框保留 intrinsic min-width，导致 320px 下刷新按钮向右溢出 6px；搜索框补 `min-w-0`，输入本体补足 44px 高，兼顾正常收缩与真实触达范围。
+  - 工作区设置的 6 个凭证 tab 改为移动端 2 列、`sm` 3 列、`lg` 6 列；窄屏隐藏装饰图标并保留文字，消除 320px 横向滚动与屏外标签。
   - `FRONTEND.md` 与 `docs/L3-modules.md` 固化二级页面视觉与交互要求。
-- Files: `apps/web/src/app/page.tsx`、`apps/web/src/app/{history,preferences,topics,briefings}/page.tsx`、`apps/web/src/components/topics/delete-topic-button.tsx`、`FRONTEND.md`、`docs/L3-modules.md`。
+- Files: `apps/web/src/app/page.tsx`、`apps/web/src/app/{history,preferences,topics,briefings}/page.tsx`、`apps/web/src/app/admin/settings/page.tsx`、`apps/web/src/components/topics/delete-topic-button.tsx`、`FRONTEND.md`、`docs/L3-modules.md`。
 - Verification: 本地 `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`git diff --check` 已通过（构建仅保留既有 PDF NFT tracing warnings）；Railway 部署后的 320 / 375 / 414 / 768 / 1024 / 1440px 真实数据复查待完成。
 - Notes / Risk: 仅调整展示与交互层，不改变查询、Server Action、状态机、权限或数据库结构；偏好原始 key 继续作为隐藏表单值提交，UI 只隐藏内部实现语言。
 

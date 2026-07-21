@@ -45,6 +45,9 @@ import { InstantPushToggleForm } from "./instant-push-form";
 
 export const dynamic = "force-dynamic";
 
+const settingsTabClassName =
+  "min-w-0 px-2 text-xs [&_svg]:hidden sm:px-4 sm:text-sm sm:[&_svg]:block";
+
 interface AdminSettingsPageProps {
   searchParams?:
     | Promise<Record<string, string | string[] | undefined>>
@@ -149,28 +152,28 @@ export default async function AdminSettingsPage({
       </p>
 
       <Tabs defaultValue="ai">
-        <TabsList>
-          <TabsTrigger value="ai">
+        <TabsList className="!grid !h-auto !w-full !max-w-none grid-cols-2 gap-1.5 !overflow-visible rounded-[24px] sm:grid-cols-3 lg:grid-cols-6">
+          <TabsTrigger className={settingsTabClassName} value="ai">
             <KeyRound aria-hidden="true" size={14} />
             AI 凭证
           </TabsTrigger>
-          <TabsTrigger value="search">
+          <TabsTrigger className={settingsTabClassName} value="search">
             <Search aria-hidden="true" size={14} />
             搜索凭证
           </TabsTrigger>
-          <TabsTrigger value="telegram">
+          <TabsTrigger className={settingsTabClassName} value="telegram">
             <MessageCircle aria-hidden="true" size={14} />
             Telegram 投递
           </TabsTrigger>
-          <TabsTrigger value="byok">
+          <TabsTrigger className={settingsTabClassName} value="byok">
             <KeyRound aria-hidden="true" size={14} />
             BYOK
           </TabsTrigger>
-          <TabsTrigger value="ccpayment">
+          <TabsTrigger className={settingsTabClassName} value="ccpayment">
             <Coins aria-hidden="true" size={14} />
             CCPayment
           </TabsTrigger>
-          <TabsTrigger value="advanced">
+          <TabsTrigger className={settingsTabClassName} value="advanced">
             <Server aria-hidden="true" size={14} />
             高级
           </TabsTrigger>

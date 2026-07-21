@@ -304,7 +304,7 @@ apps/web/src/
 │   │   ├── billing.ts                # self-hosted 模式 / instant push actions
 │   │   ├── reports.ts                # 报告创建 action
 │   │   └── preferences.ts             # 偏好记忆删除/权重调整 actions
-│   ├── admin/settings/page.tsx       # Admin API Key 配置页（Tabs 布局，OWNER/ADMIN）
+│   ├── admin/settings/page.tsx       # Admin API Key 配置页（2/3/6 列响应式 Tabs，OWNER/ADMIN）
 │   ├── admin/usage/page.tsx          # OWNER/ADMIN 成员与近 30 天用量审计
 │   ├── admin/settings/credential-form.tsx  # 凭证表单客户端组件（密码显隐/Provider 下拉/loading）
 │   ├── admin/settings/telegram-form.tsx  # Telegram 凭证表单客户端组件（Bot Token/Chat ID/测试连接）
@@ -390,7 +390,7 @@ apps/web/src/
 | `apps/web/src/app/reports/[reportId]/page.tsx` | 专题报告详情页：展示报告 Markdown 内容、事件/主题/信源统计、覆盖说明和状态；PENDING/GENERATING 显示"生成中"提示。 |
 | `apps/web/src/lib/report-data.ts` | 报告数据读取 helper：`getReportsPage()` 分页列表、`getReportDetail()` 单条详情；使用 `getSessionWorkspace()` 获取 workspace scope；`DATABASE_URL` 未配置时抛错。 |
 | `apps/web/src/app/admin/settings/telegram-form.tsx` | `"use client"` Telegram 凭证表单组件：Bot Token 密码显隐、Chat ID 输入、测试当前配置（`testTelegramCredentialAction`）、测试通过后可保存（`upsertTelegramCredentialAction`）。 |
-| `apps/web/src/app/admin/settings/page.tsx` | Admin API Key 配置页（`/admin/settings`）：Tabs 布局（AI 凭证 / 搜索凭证 / Telegram 投递 / BYOK / CCPayment / 自用模式）；展示 AI/search/Telegram 凭证状态（脱敏 hint + key-value 布局 + 更新时间）；AI tab 提供新增/覆盖 AI Key（`aiApiKey`/`aiBaseUrl`/`aiProvider`/`aiModel`）、测试连接、清除凭证操作；Search tab 提供新增/覆盖搜索 Key（`searchApiKey`/`searchProvider`）、测试连接、清除凭证操作；Telegram tab 提供 Bot Token + Chat ID 配置、测试连接、清除凭证操作；BYOK tab 提供 per-user BYOK 凭证管理（加密存储、脱敏展示、Plus 必填/Pro 可选）；CCPayment tab 配置加密支付；自用模式开关跳过所有配额检查。OWNER/ADMIN 可访问，不展示完整 Key。 |
+| `apps/web/src/app/admin/settings/page.tsx` | Admin API Key 配置页（`/admin/settings`）：2/3/6 列响应式 Tabs（AI 凭证 / 搜索凭证 / Telegram 投递 / BYOK / CCPayment / 自用模式），移动端不依赖横向滚动；展示 AI/search/Telegram 凭证状态（脱敏 hint + key-value 布局 + 更新时间）；AI tab 提供新增/覆盖 AI Key（`aiApiKey`/`aiBaseUrl`/`aiProvider`/`aiModel`）、测试连接、清除凭证操作；Search tab 提供新增/覆盖搜索 Key（`searchApiKey`/`searchProvider`）、测试连接、清除凭证操作；Telegram tab 提供 Bot Token + Chat ID 配置、测试连接、清除凭证操作；BYOK tab 提供 per-user BYOK 凭证管理（加密存储、脱敏展示、Plus 必填/Pro 可选）；CCPayment tab 配置加密支付；自用模式开关跳过所有配额检查。OWNER/ADMIN 可访问，不展示完整 Key。 |
 | `apps/web/src/app/admin/usage/page.tsx` | OWNER/ADMIN 工作区审计页：成员角色、近 30 天 UsageEvent 分类型/单位汇总；数量不跨单位相加。 |
 | `apps/web/src/app/admin/settings/credential-form.tsx` | `"use client"` 凭证表单组件：密码显隐切换（Eye/EyeOff）、Provider 下拉选择（AI: OpenAI/Azure/Anthropic/Groq/DeepSeek/自定义；Search: Brave/SerpAPI/Tavily/自定义）+ 已知 Provider 自动填充 Base URL（ref 实现）、帮助链接、必填/可选标记、`useFormStatus` 提交 loading 态；`onSubmit` 客户端前置校验（API Key 非空 + 红色错误提示 + 自动聚焦）；AI 凭证表单支持"刷新模型列表"嗅探 OpenAI-compatible 端点可用模型并填充下拉选择；自定义 provider 支持"手动确认" checkbox 跳过自动测试；计费提示文案。 |
 | `apps/web/src/app/admin/settings/providers.ts` | Provider 常量集中定义：`AI_PROVIDERS`（AI provider 选项 + defaultBaseUrl）、`SEARCH_PROVIDERS`（搜索 provider 选项）、`defaultAiBaseUrl(provider)` 函数。替代前端 credential-form 内联常量与后端 actions.ts 独立函数，确保前后端使用同一份 Provider 元数据。 |

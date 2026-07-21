@@ -233,6 +233,7 @@ App Shell 使用顶部导航（`components/layout/app-shell.tsx` + `top-nav.tsx`
 
 `app/admin/settings/page.tsx`（OWNER / ADMIN）用 `Tabs`（pill）分 6 个凭证 tab，每个 tab 内容用 `Card` 包裹表单。
 
+- 凭证分类不依赖横向滚动：移动端 2 列、`sm` 起 3 列、`lg` 起 6 列，每个 tab ≥44px；窄屏隐藏装饰图标但保留完整文字标签。
 - 模型嗅探：AI 凭证表单“刷新模型列表”调 `listAiModelsAction`，嗅探 OpenAI-compatible 端点可用模型，`<select>` 展示模型 ID 及 `ownedBy`，支持“自定义…”回退到自由 `<Input>`。嗅探结果不持久化。
 - 自定义 Provider 手动确认：选“自定义”且自动测试失败时显示“我已确认此 Key 有效” checkbox，勾选跳过自动测试门控；取消勾选清空测试状态。
 - 计费提示：测试按钮下显示“测试将发送一次最小 API 请求，可能产生极少量费用”。
