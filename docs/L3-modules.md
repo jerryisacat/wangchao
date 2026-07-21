@@ -360,6 +360,7 @@ apps/web/src/
 │       └── textarea.tsx              # Textarea
 └── lib/
     ├── briefing-markdown.ts          # 简报安全 Markdown 白名单渲染与固定解释模板本地化
+    ├── display-text.ts               # 浏览器展示文本的常见 HTML 实体解码
     ├── event-display.ts              # 前端展示清洗：HTML/RSS 摘要转用户文案、实体解码、原文链接提取、解释文案本地化；re-export sanitize 函数
     ├── sanitize.ts                   # 安全净化：sanitizeForDisplay（HTML 逃逸）、sanitizeMarkdownSource（剥离危险标签）
     ├── report-data.ts                # 专题报告数据读取：`getReportsPage()`（分页列表）、`getReportDetail()`（单条详情）
@@ -389,6 +390,7 @@ apps/web/src/
 | `apps/web/src/app/briefings/page.tsx` | organization-scoped 完整简报历史分页：总数、周期（DAILY/WEEKLY/MONTHLY 筛选 tabs）、UTC 日期窗口、更新时间、上一页/下一页和 Markdown 导出。 |
 | `apps/web/src/app/briefings/[briefingId]/page.tsx` | 简报详情页：72ch editorial 正文、安全 Markdown、固定生成解释本地化、Markdown 下载、批量已读与 44px Event 入口。 |
 | `apps/web/src/lib/briefing-markdown.ts` | 简报 Markdown 白名单 renderer：转义不可信文本、仅允许 HTTP/HTTPS 外链，并在浏览器显示层本地化已知相关性解释模板。 |
+| `apps/web/src/lib/display-text.ts` | 纯显示 helper：解码常见命名、零填充十进制和十六进制 HTML 实体；结果仍交给 React 文本节点或安全 renderer 转义。 |
 | `apps/web/src/app/topics/[topicId]/timeline/page.tsx` | 主题时间线页：按 `occurredAt` 倒序分页展示主题全部正式事件（含 merged sources、score、source link），提供上一页/下一页。 |
 | `apps/web/src/app/saved/page.tsx` | 已收藏情报页：通过 dedicated user-scoped repository 分页读取完整收藏集合，显示总数和上一页/下一页；标题可进入详情，已读、取消收藏、原文动作保留在当前页面，取消收藏不写负反馈。 |
 | `apps/web/src/app/preferences/page.tsx` | 偏好记忆页：权重、置信度、解释；置信度条提供 `progressbar` 语义；支持权重调整（`updatePreferenceWeightAction`）和删除偏好（`deletePreferenceAction`）。 |

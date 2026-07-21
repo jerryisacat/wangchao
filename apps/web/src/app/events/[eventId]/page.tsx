@@ -31,7 +31,7 @@ import { StatusBanner } from "@/components/common/status-banner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { decodeHtmlEntities } from "@/lib/event-display";
+import { decodeHtmlEntities } from "@/lib/display-text";
 import { getDashboardEventDetail } from "@/lib/topic-source-data";
 import { isHttpUrl } from "@wangchao/core";
 

@@ -10,8 +10,9 @@
   - 信源治理与信源健康显示层统一解码常见 HTML 实体后交给 React 转义；页面头动作允许自然换行，主题编辑页 eyebrow 改为简体中文且表单回归稳定的 `work` Card。
   - 响应式 smoke 改用稳定 href 发现 Event / Topic / Briefing / Report 详情并纳入 history、reports、pricing、usage、topic timeline，避免视觉迁移后深层页面漏测。
   - Railway 首轮复查发现长简报会把 Card 内部撑到 518px、再被根节点 `clip` 掩盖；Card 原语补 `min-w-0`，正文补长词 / URL 换行，并给 smoke 新增内部 `scrollWidth > clientWidth` 裁切检测。
+  - Railway 二轮定点复查发现 RSS 实际使用零填充 `&#039;`；展示层补齐常见命名、零填充十进制与十六进制实体解码，并加入 fixture 锁定。
   - `FRONTEND.md` 与 `docs/L3-modules.md` 固化详情页阅读宽度、动作层级、触达尺寸、实体解码和动态路由回归要求。
-- Files: `apps/web/src/app/{events/[eventId],briefings/[briefingId],sources,topics/[topicId],topics/[topicId]/edit}/page.tsx`、`apps/web/src/components/{common/page-header,intelligence/topic-dashboard-view,intelligence/trend-chart}.tsx`、`apps/web/src/lib/{briefing-markdown,event-display}.ts`、`apps/web/scripts/briefing-detail.fixture.mjs`、`tests/smoke/responsive.spec.ts`、`FRONTEND.md`、`docs/L3-modules.md`。
+- Files: `apps/web/src/app/{events/[eventId],briefings/[briefingId],sources,topics/[topicId],topics/[topicId]/edit}/page.tsx`、`apps/web/src/components/{common/page-header,intelligence/topic-dashboard-view,intelligence/trend-chart,ui/card}.tsx`、`apps/web/src/lib/{briefing-markdown,display-text,event-display}.ts`、`apps/web/scripts/{briefing-detail,summary-status}.fixture.mjs`、`tests/smoke/responsive.spec.ts`、`CODEGUIDE.md`、`FRONTEND.md`、`docs/L3-modules.md`。
 - Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过；本地 production server 的 320 / 375 / 414 / 768 / 1024 / 1440px 响应式矩阵通过（1 passed）。本地未配置 `DATABASE_URL`，真实数据详情页在 Railway 部署后补全矩阵与实图复查。
 - Notes / Risk: 仅调整浏览器显示层、布局和测试发现器，不改变查询、Server Action、权限、数据库、Worker、原始简报或导出内容；HTML 实体解码后仍由 React 安全转义，Markdown renderer 保持先 escape 再白名单渲染的安全边界。
 

@@ -4,7 +4,7 @@
 // FRONTEND §4.4：移动端单列阅读，无横向滚动，点击区 ≥44px。
 
 import { Badge } from "@/components/ui/badge";
-import { decodeHtmlEntities } from "@/lib/event-display";
+import { decodeHtmlEntities } from "@/lib/display-text";
 
 interface TrendBarChartProps {
   buckets: Array<{ label: string; value: number }>;

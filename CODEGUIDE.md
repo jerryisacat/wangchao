@@ -236,6 +236,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 | `apps/web/src/app/admin/settings/providers.ts` | Provider 常量集中定义（`AI_PROVIDERS`/`SEARCH_PROVIDERS`/`defaultAiBaseUrl`），前后端统一数据源。 |
 | `apps/web/src/app/reports/page.tsx` | 专题报告列表页，提交自然语言问题触发异步报告生成。 |
 | `apps/web/src/app/reports/[reportId]/page.tsx` | 专题报告详情页，展示 Markdown 内容和覆盖说明。 |
+| `apps/web/src/lib/display-text.ts` | 浏览器展示文本的常见命名、十进制与十六进制 HTML 实体解码。 |
 | `apps/web/src/lib/report-data.ts` | 报告数据读取 helper（`getReportsPage`/`getReportDetail`）。 |
 | `apps/web/src/proxy.ts` | Next.js 16 request proxy：真实 Better Auth Session 认证门、页面安全重定向、API/Action 401、每请求 nonce CSP 与 Web 安全响应头。 |
 | `apps/web/src/lib/auth-access.ts` | 公开路由 allowlist、站内 `next` 归一化、登录路径与 API path 纯策略。 |

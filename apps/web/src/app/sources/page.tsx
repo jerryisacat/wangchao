@@ -24,7 +24,7 @@ import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBanner } from "@/components/common/status-banner";
-import { decodeHtmlEntities } from "@/lib/event-display";
+import { decodeHtmlEntities } from "@/lib/display-text";
 import { getTopicSourceWorkspace } from "@/lib/topic-source-data";
 
 export const dynamic = "force-dynamic";

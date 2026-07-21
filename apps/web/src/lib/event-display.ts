@@ -1,5 +1,8 @@
 export { sanitizeForDisplay, sanitizeMarkdownSource } from "./sanitize";
 import { isHttpUrl, stripHtml } from "@wangchao/core";
+import { decodeHtmlEntities } from "./display-text";
+
+export { decodeHtmlEntities } from "./display-text";
 
 export interface EventDisplayFields {
   explanation: string;
@@ -118,16 +121,6 @@ function extractLabeledUrl(rawSummary: string, label: string): string {
   }
 
   return "";
-}
-
-export function decodeHtmlEntities(value: string): string {
-  return value
-    .replaceAll("&amp;", "&")
-    .replaceAll("&lt;", "<")
-    .replaceAll("&gt;", ">")
-    .replaceAll("&quot;", '"')
-    .replaceAll("&#39;", "'")
-    .replaceAll("&apos;", "'");
 }
 
 function truncateText(value: string, maxLength: number): string {
