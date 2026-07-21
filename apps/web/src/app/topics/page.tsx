@@ -48,7 +48,7 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
 
   return (
     <>
-      <PageHeader eyebrow="TOPIC MANAGEMENT" title="主题管理">
+      <PageHeader eyebrow="主题" title="主题管理">
         <Button asChild size="sm" variant="ghost">
           <Link href="/">← 返回情报流</Link>
         </Button>
@@ -90,12 +90,12 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
       ) : (
         <div className="grid gap-3">
           {topics.map((topic) => (
-            <Card key={topic.id} className="grid grid-cols-1 gap-4 p-5 transition-colors hover:bg-primary/5 md:grid-cols-[minmax(0,1fr)_auto] md:items-start" variant="kinetic">
+            <Card key={topic.id} className="grid grid-cols-1 gap-4 p-5 transition-colors hover:bg-primary/5 md:grid-cols-[minmax(0,1fr)_auto] md:items-start" variant="work">
               <div className="grid min-w-0 gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <Link
                     href={`/topics/${topic.id}`}
-                    className="text-base font-bold text-foreground transition-colors hover:text-accent [overflow-wrap:anywhere]"
+                    className="inline-flex min-h-11 min-w-0 items-center text-base font-bold text-foreground transition-colors hover:text-accent [overflow-wrap:anywhere]"
                   >
                     {topic.name}
                   </Link>
@@ -106,13 +106,13 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
                     {topic.description}
                   </p>
                 ) : null}
-                <div className="flex flex-wrap gap-3 font-mono text-[11px] text-muted-foreground">
+                <div className="flex flex-wrap gap-3 font-mono text-sm text-muted-foreground tabular-nums">
                   <span>{topic.sourceCount} 个信源</span>
                   <span>{topic.eventCount} 条情报</span>
                   <span>更新于 {topic.updatedAt.toLocaleDateString("zh-CN")}</span>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 md:justify-end">
                 <Button asChild size="sm" variant="ghost">
                   <Link href={`/topics/${topic.id}/edit`}>编辑</Link>
                 </Button>

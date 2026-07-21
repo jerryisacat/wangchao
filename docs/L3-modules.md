@@ -319,14 +319,15 @@ apps/web/src/
 │   ├── api/billing/stripe/checkout/route.ts            # Stripe checkout session 创建（骨架）
 │   ├── api/billing/stripe/webhook/route.ts             # Stripe webhook（骨架，未配置时返回 placeholder）
 │   ├── topics/new/page.tsx           # 新建主题页
-│   ├── topics/page.tsx              # 主题管理列表页（含 PAUSED/ARCHIVED）
+│   ├── topics/page.tsx              # 主题管理列表页（含 PAUSED/ARCHIVED；44px 主入口与低权重危险操作）
 │   ├── topics/[topicId]/page.tsx    # 主题详情页（状态、统计、管理操作、时间线/批量导出入口）
 │   ├── topics/[topicId]/edit/page.tsx # 主题编辑页（name/description/profile）
 │   ├── topics/[topicId]/timeline/page.tsx # 主题时间线页（按 occurredAt 倒序）
 │   ├── sources/page.tsx              # 信源治理页
-│   ├── briefings/page.tsx            # 简报列表页（DAILY/WEEKLY/MONTHLY 筛选）
+│   ├── briefings/page.tsx            # 简报列表页（DAILY/WEEKLY/MONTHLY 筛选；阅读详情 + Markdown 导出双入口）
 │   ├── saved/page.tsx                # 已收藏情报页
-│   ├── preferences/page.tsx          # 偏好记忆页（含权重调整/删除）
+│   ├── preferences/page.tsx          # 偏好记忆页（内部 key 人类化、中文解释、权重调整/删除）
+│   ├── history/page.tsx              # 阅读历史与归档（2×2/4 列状态筛选、分页与恢复操作）
 │   ├── reports/page.tsx              # 专题报告列表页（提交问题、历史报告）
 │   ├── reports/[reportId]/page.tsx   # 专题报告详情页（Markdown 内容、覆盖说明）
 │   ├── events/[eventId]/page.tsx     # 单条情报详情页（含增强反馈按钮）

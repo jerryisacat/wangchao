@@ -15,9 +15,10 @@ export function DeleteTopicButton({ topicId, topicName }: DeleteTopicButtonProps
 
   return (
     <Button
+      className="text-destructive hover:bg-destructive/10"
       type="button"
       size="sm"
-      variant="danger"
+      variant="ghost"
       disabled={pending}
       onClick={() => {
         if (

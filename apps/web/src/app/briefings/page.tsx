@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, FileText } from "lucide-react";
+import { ArrowLeft, BookOpen, Download, FileText } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -86,28 +86,43 @@ export default async function BriefingsPage({ searchParams }: BriefingsPageProps
               <div className="divide-y divide-border">
                 {briefingPage.briefings.map((briefing) => (
                   <article
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-4 transition-colors hover:bg-primary/5 first:pt-0 last:pb-0"
+                    className="grid grid-cols-1 items-center gap-3 py-5 transition-colors hover:bg-primary/5 first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_auto]"
                     key={briefing.briefingId}
                   >
                     <div className="min-w-0">
-                      <div className="flex min-w-0 flex-wrap items-center gap-2">
-                        <h3 className="m-0 break-words text-base font-medium leading-snug">
-                          {briefing.title}
-                        </h3>
+                      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                         <Badge variant="outline">{periodLabel(briefing.period)}</Badge>
+                        <h3 className="m-0 min-w-0 text-base font-medium leading-snug">
+                          <Link
+                            className="inline-flex min-h-11 min-w-0 items-center [overflow-wrap:anywhere] transition-colors hover:text-primary"
+                            href={`/briefings/${briefing.briefingId}`}
+                          >
+                            {briefing.title}
+                          </Link>
+                        </h3>
                       </div>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {briefing.topicName} · {formatDateRange(briefing.rangeStart, briefing.rangeEnd)}
-                        {" · 更新于 "}
-                        {formatDateTime(briefing.generatedAt)}
+                      <p className="m-0 text-sm leading-relaxed text-muted-foreground">
+                        <span className="font-medium text-foreground">{briefing.topicName}</span>
+                        {" · "}
+                        {formatDateRange(briefing.rangeStart, briefing.rangeEnd)}
+                        {" · "}
+                        生成于 {formatDateTime(briefing.generatedAt)}
                       </p>
                     </div>
-                    <Button asChild size="sm" variant="ghost">
-                      <a href={`/exports/briefings/${briefing.briefingId}`}>
-                        <Download aria-hidden="true" size={14} />
-                        Markdown
-                      </a>
-                    </Button>
+                    <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-end">
+                      <Button asChild className="w-full" size="sm" variant="secondary">
+                        <Link href={`/briefings/${briefing.briefingId}`}>
+                          <BookOpen aria-hidden="true" size={14} />
+                          阅读
+                        </Link>
+                      </Button>
+                      <Button asChild className="w-full" size="sm" variant="ghost">
+                        <a href={`/exports/briefings/${briefing.briefingId}`}>
+                          <Download aria-hidden="true" size={14} />
+                          Markdown
+                        </a>
+                      </Button>
+                    </div>
                   </article>
                 ))}
               </div>

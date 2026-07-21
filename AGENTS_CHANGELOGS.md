@@ -1,5 +1,18 @@
 ## 2026-07-21
 
+### Fix: 第二轮视觉检查收束二级页面层级与可读性
+
+- Cause: Railway 真实数据巡检发现 `/history` 状态筛选缺少布局样式，在桌面和移动端均退化为纵向整列；`/preferences` 直接暴露内部 key 与英文 explanation；`/topics` 主题主链接仅 24px 高且永久删除抢主视觉；`/briefings` 缺少进入简报详情的明确行动，标题、周期、元数据和导出层级混杂。
+- Changed:
+  - 历史状态筛选改为移动端 2×2、`sm` 起 4 列的 44px MD3 pills；历史事件行与操作区下沉到 Tailwind + Button 原语。
+  - 偏好 key 映射为“信源 / 关键词 / 内容方向”，英文 explanation 转为中文反馈说明；权重、置信度和带文字的调整动作分层呈现。
+  - 简报列表新增标题详情链接与“阅读”主行动，Markdown 降为次级行动；周期、主题、覆盖日期与生成时间重新分层。
+  - 主题主入口补足 44px，元数据提升到可读字号，移动端操作左对齐；删除改为危险文字态并保留既有永久删除确认。
+  - `FRONTEND.md` 与 `docs/L3-modules.md` 固化二级页面视觉与交互要求。
+- Files: `apps/web/src/app/{history,preferences,topics,briefings}/page.tsx`、`apps/web/src/components/topics/delete-topic-button.tsx`、`FRONTEND.md`、`docs/L3-modules.md`。
+- Verification: 本地 `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`git diff --check` 已通过（构建仅保留既有 PDF NFT tracing warnings）；Railway 部署后的 320 / 375 / 414 / 768 / 1024 / 1440px 真实数据复查待完成。
+- Notes / Risk: 仅调整展示与交互层，不改变查询、Server Action、状态机、权限或数据库结构；偏好原始 key 继续作为隐藏表单值提交，UI 只隐藏内部实现语言。
+
 ### Fix: 第一轮视觉检查恢复 Material You 设计系统并收束导航
 
 - Cause: Railway 线上视觉检查确认 `globals.css` 与 `top-nav.tsx` 在大合并后退回暗色 / 酸黄 Kinetic 实现，和 `FRONTEND.md` 已锁定的暖白 / 紫色 Material You（MD3）体系不一致；1440px 导航多项折行、移动端操作区层级拥挤，情报卡片五个动作在桌面产生孤行。

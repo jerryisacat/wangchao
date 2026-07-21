@@ -216,11 +216,15 @@ App Shell 使用顶部导航（`components/layout/app-shell.tsx` + `top-nav.tsx`
 
 展示规则：权重增加用正向色和上升标记，权重降低用警示 / 低对比标记；置信度用 meter 条（track `bg-muted`、fill `bg-primary`，`role=progressbar` + aria）或数字；解释明确来自哪些反馈信号。权重 +/- 用 `Button icon`，数值 `font-medium tabular-nums`。
 
+- 页面不得直接展示 `source:<id>`、`category:keyword:<value>` 等内部 key，也不得把数据库中的英文 explanation 原样交给用户；应转换为“信源 / 关键词 / 内容方向”及简体中文反馈说明。
+- 调整权重使用带文字的“降低 / 提高”按钮，删除保持低视觉权重；当前方向、权重和置信度分别呈现，不挤成一组工程数字。
+
 ### 5.8 简报和导出
 
 简报页面（`app/briefings/page.tsx`）更接近 editorial / intelligence report：标题清楚、生成时间明确、来源链接保留、Markdown 导出入口显著、正文不全大写、不巨型 typography。
 
 - 周期筛选：顶部 DAILY / WEEKLY / MONTHLY 周期 pill tabs（≥44px，`data-active` 标识当前项，URL 参数服务端筛选）。
+- 列表标题必须可进入简报详情；“阅读”是主要行动，“Markdown”是次级导出行动。周期、主题、覆盖日期、生成时间分层展示，不把它们压成同一行元数据。
 - Obsidian-friendly 文件名：简报导出 `{date}-{period}-{slug}.md`（如 `2026-07-11-weekly-ai-infrastructure.md`）。
 - 主题批量导出：主题详情页“批量导出”下载 Top 100 事件为单个 Markdown（`{date}-batch-{slug}.md`）。
 - 主题时间线：主题详情页“时间线”入口，按 `occurredAt` 倒序展示全部正式事件，含 merged sources。
@@ -234,6 +238,11 @@ App Shell 使用顶部导航（`components/layout/app-shell.tsx` + `top-nav.tsx`
 - 计费提示：测试按钮下显示“测试将发送一次最小 API 请求，可能产生极少量费用”。
 - 独立性说明：页面顶部显示“AI 凭证与搜索凭证相互独立，可分别保存与清除。”
 - Telegram 即时推送：Telegram tab 分开展示凭证和即时推送开关；Free 显示升级提示，未配置凭证不可开启，服务端重复执行权限与计划校验。
+
+### 5.10 历史与主题管理
+
+- 阅读历史的“已读 / 忽略 / 收藏 / 归档”是横向分段筛选：移动端 2×2、`sm` 起 4 列，每项 ≥44px；图标、标签和当前数量保持同一行，不允许退化为整列文字。
+- 主题标题是卡片的主要入口，触达高度 ≥44px；编辑、暂停/恢复、归档为次级操作。永久删除保留二次确认，但使用危险文字态，不与主行动争夺视觉优先级。
 
 ## 6. 组件规范
 

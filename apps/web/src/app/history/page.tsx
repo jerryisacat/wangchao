@@ -53,29 +53,39 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
 
       <div>
         <Card variant="work">
-          <CardHeader>
-            <div className="history-tabs">
+          <CardHeader className="pb-0">
+            <nav
+              aria-label="历史状态筛选"
+              className="grid grid-cols-2 gap-2 sm:grid-cols-4"
+            >
               {HISTORY_TABS.map((tab) => {
                 const Icon = tab.icon;
                 const active = tab.status === status;
                 return (
                   <Link
                     aria-current={active ? "page" : undefined}
-                    className={active ? "history-tab history-tab-active" : "history-tab"}
+                    className={
+                      active
+                        ? "inline-flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-secondary px-3 text-sm font-medium text-secondary-foreground"
+                        : "inline-flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-primary/5 hover:text-foreground"
+                    }
                     href={historyTabHref(tab.status)}
                     key={tab.status}
                   >
-                    <Icon aria-hidden="true" size={14} />
+                    <Icon aria-hidden="true" size={16} />
                     <span>{tab.label}</span>
                     {active ? (
-                      <span aria-label="当前筛选" className="history-tab-count">
-                        · {historyPage.total}
+                      <span
+                        aria-label={`当前筛选共 ${historyPage.total} 条`}
+                        className="font-mono text-xs tabular-nums"
+                      >
+                        {historyPage.total}
                       </span>
                     ) : null}
                   </Link>
                 );
               })}
-            </div>
+            </nav>
           </CardHeader>
           <CardContent>
             {events.length === 0 ? (
@@ -85,128 +95,144 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
                 title={emptyTitle(status)}
               />
             ) : (
-              <div className="event-list">
+              <div className="divide-y divide-border">
                 {events.map((event) => (
-                  <article className="event-row history-event-row" key={event.eventId}>
-                    <div className="event-copy">
-                      <div className="event-copy-header">
-                        <Badge className="event-topic-badge" variant="default">
+                  <article
+                    className="grid min-w-0 gap-4 py-5 first:pt-0 last:pb-0 md:grid-cols-[minmax(0,1fr)_auto] md:items-start"
+                    key={event.eventId}
+                  >
+                    <div className="grid min-w-0 gap-2.5">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <Badge className="max-w-full truncate" variant="default">
                           {event.topicName}
                         </Badge>
-                        <span className="event-copy-meta">
+                        <span className="text-sm text-muted-foreground">
                           {event.sourceName} · {formatDateTime(event.occurredAt)}
                         </span>
                       </div>
-                      <h3>
-                        <Link href={`/events/${event.eventId}`}>{event.title}</Link>
+                      <h3 className="m-0 text-lg font-medium leading-snug">
+                        <Link
+                          className="inline-flex min-h-11 min-w-0 items-center [overflow-wrap:anywhere] transition-colors hover:text-primary"
+                          href={`/events/${event.eventId}`}
+                        >
+                          {event.title}
+                        </Link>
                       </h3>
-                      <div className="event-summary">{event.summary}</div>
+                      <p className="m-0 text-base leading-relaxed [overflow-wrap:anywhere]">
+                        {event.summary}
+                      </p>
                       {event.explanation ? (
-                        <div className="event-reason">
-                          <Sparkles aria-hidden="true" size={13} />
-                          {event.explanation}
+                        <div className="flex items-start gap-2 rounded-[16px] bg-muted p-3 text-sm leading-relaxed text-muted-foreground">
+                          <Sparkles aria-hidden="true" className="mt-0.5 shrink-0" size={14} />
+                          <span className="min-w-0 break-words">{event.explanation}</span>
                         </div>
                       ) : null}
                     </div>
-                    <div className="event-actions">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2 md:max-w-64 md:justify-end">
                       <Badge variant="accent">{statusLabel(status)}</Badge>
                       {status === "ARCHIVED" ? (
                         <form action={updateDashboardEventStateAction}>
                           <input name="eventId" type="hidden" value={event.eventId} />
                           <input name="returnTo" type="hidden" value={historyTabHref("ARCHIVED", page)} />
-                          <button
+                          <Button
                             aria-label="恢复到已读"
-                            className="icon-action"
                             name="action"
+                            size="sm"
                             title="恢复到已读"
                             type="submit"
                             value="restore"
+                            variant="secondary"
                           >
                             <ArchiveRestore aria-hidden="true" size={14} />
                             <span>恢复</span>
-                          </button>
+                          </Button>
                         </form>
                       ) : null}
                       {status !== "ARCHIVED" ? (
                         <form action={updateDashboardEventStateAction}>
                           <input name="eventId" type="hidden" value={event.eventId} />
                           <input name="returnTo" type="hidden" value={historyTabHref(status, page)} />
-                          <button
+                          <Button
                             aria-label="归档"
-                            className="icon-action"
                             name="action"
+                            size="sm"
                             title="归档"
                             type="submit"
                             value="archive"
+                            variant="ghost"
                           >
                             <Archive aria-hidden="true" size={14} />
                             <span>归档</span>
-                          </button>
+                          </Button>
                         </form>
                       ) : null}
                       {status === "SAVED" ? (
                         <form action={updateDashboardEventStateAction}>
                           <input name="eventId" type="hidden" value={event.eventId} />
                           <input name="returnTo" type="hidden" value={historyTabHref("SAVED", page)} />
-                          <button
+                          <Button
                             aria-label="取消收藏"
-                            className="icon-action"
                             name="action"
+                            size="sm"
                             title="取消收藏"
                             type="submit"
                             value="unsave"
+                            variant="ghost"
                           >
                             <X aria-hidden="true" size={14} />
                             <span>取消收藏</span>
-                          </button>
+                          </Button>
                         </form>
                       ) : null}
                       {status !== "SAVED" ? (
                         <form action={updateDashboardEventStateAction}>
                           <input name="eventId" type="hidden" value={event.eventId} />
                           <input name="returnTo" type="hidden" value={historyTabHref(status, page)} />
-                          <button
+                          <Button
                             aria-label="收藏"
-                            className="icon-action"
                             name="action"
+                            size="sm"
                             title="收藏"
                             type="submit"
                             value="save"
+                            variant="ghost"
                           >
                             <Bookmark aria-hidden="true" size={14} />
                             <span>收藏</span>
-                          </button>
+                          </Button>
                         </form>
                       ) : null}
                       {status === "DISMISSED" ? (
                         <form action={updateDashboardEventStateAction}>
                           <input name="eventId" type="hidden" value={event.eventId} />
                           <input name="returnTo" type="hidden" value={historyTabHref("DISMISSED", page)} />
-                          <button
+                          <Button
                             aria-label="标记已读"
-                            className="icon-action"
                             name="action"
+                            size="sm"
                             title="标记已读"
                             type="submit"
                             value="read"
+                            variant="secondary"
                           >
                             <Check aria-hidden="true" size={14} />
                             <span>已读</span>
-                          </button>
+                          </Button>
                         </form>
                       ) : null}
                       {event.primaryItemUrl ? (
-                        <a
-                          aria-label="查看原文"
-                          className="icon-action"
-                          href={event.primaryItemUrl}
-                          rel="noreferrer"
-                          target="_blank"
-                          title="查看原文"
-                        >
-                          <ExternalLink aria-hidden="true" size={14} />
-                          <span>原文</span>
-                        </a>
+                        <Button asChild size="sm" variant="ghost">
+                          <a
+                            aria-label="查看原文"
+                            href={event.primaryItemUrl}
+                            rel="noreferrer"
+                            target="_blank"
+                            title="查看原文"
+                          >
+                            <ExternalLink aria-hidden="true" size={14} />
+                            <span>原文</span>
+                          </a>
+                        </Button>
                       ) : null}
                     </div>
                   </article>
@@ -214,11 +240,14 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
               </div>
             )}
             {historyPage.total > 0 ? (
-              <nav aria-label="历史分页" className="history-pagination">
-                <span>
+              <nav
+                aria-label="历史分页"
+                className="mt-4 flex min-h-11 flex-wrap items-center justify-between gap-3 border-t border-border pt-3 text-sm text-muted-foreground"
+              >
+                <span className="font-medium tabular-nums">
                   第 {historyPage.page} / {historyPage.pageCount} 页 · 共 {historyPage.total}
                 </span>
-                <div className="history-pagination-actions">
+                <div className="flex flex-wrap justify-end gap-2">
                   {historyPage.page > 1 ? (
                     <Button asChild size="sm" variant="ghost">
                       <Link href={historyTabHref(status, historyPage.page - 1)}>上一页</Link>

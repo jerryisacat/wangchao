@@ -38,123 +38,121 @@ export default async function PreferencesPage() {
               />
             ) : (
               <div className="divide-y divide-border">
-                {workspace.preferences.map((preference) => (
-                  <article
-                    className="grid gap-3 py-4"
-                    key={`${preference.topicName}-${preference.key}`}
-                  >
-                    <div className="grid grid-cols-1 items-start gap-2.5 sm:grid-cols-[1fr_auto]">
-                      <div className="min-w-0">
-                        <h3 className="text-sm font-medium leading-tight">
-                          {preference.key}
-                        </h3>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {preference.explanation}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          主题：{preference.topicName}
-                        </p>
-                      </div>
-                      <div className="grid justify-items-start gap-1.5 sm:justify-items-end">
-                        <Badge
-                          variant={
-                            preference.weight > 0
-                              ? "success"
-                              : preference.weight < 0
-                                ? "warning"
-                                : "muted"
-                          }
-                        >
-                          {preference.weight > 0 ? (
-                            <ArrowUp aria-hidden="true" size={10} />
-                          ) : preference.weight < 0 ? (
-                            <ArrowDown aria-hidden="true" size={10} />
-                          ) : null}
-                          {preference.weight > 0 ? "+" : ""}
-                          {preference.weight}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground tabular-nums">
-                          {Math.round(preference.confidence * 100)}%
-                        </span>
-                        <div
-                          aria-label={`置信度 ${Math.round(preference.confidence * 100)}%`}
-                          aria-valuemax={100}
-                          aria-valuemin={0}
-                          aria-valuenow={Math.round(preference.confidence * 100)}
-                          className="h-1.5 w-24 overflow-hidden rounded-full bg-muted"
-                          role="progressbar"
-                        >
-                          <span
-                            className="block h-full rounded-full bg-primary"
-                            style={{
-                              inlineSize: `${Math.round(preference.confidence * 100)}%`,
-                            }}
-                          />
+                {workspace.preferences.map((preference) => {
+                  const presentation = describePreference(preference.key, workspace);
+                  const confidence = Math.round(preference.confidence * 100);
+
+                  return (
+                    <article
+                      className="grid gap-4 py-5 first:pt-0 last:pb-0"
+                      key={`${preference.topicName}-${preference.key}`}
+                    >
+                      <div className="grid grid-cols-1 items-start gap-4 sm:grid-cols-[minmax(0,1fr)_auto]">
+                        <div className="grid min-w-0 gap-2">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
+                            <Badge variant="outline">{presentation.kind}</Badge>
+                            <h3 className="m-0 min-w-0 text-base font-medium leading-snug [overflow-wrap:anywhere]">
+                              {presentation.label}
+                            </h3>
+                          </div>
+                          <p className="m-0 max-w-[65ch] text-sm leading-relaxed text-muted-foreground">
+                            {preferenceExplanation(preference.explanation, preference.weight)}
+                          </p>
+                          <p className="m-0 text-sm text-muted-foreground">
+                            适用主题：
+                            <span className="font-medium text-foreground">
+                              {preference.topicName}
+                            </span>
+                          </p>
+                        </div>
+                        <div className="grid min-w-36 gap-2 sm:justify-items-end">
+                          <Badge
+                            variant={
+                              preference.weight > 0
+                                ? "success"
+                                : preference.weight < 0
+                                  ? "warning"
+                                  : "muted"
+                            }
+                          >
+                            {preference.weight > 0 ? (
+                              <ArrowUp aria-hidden="true" size={12} />
+                            ) : preference.weight < 0 ? (
+                              <ArrowDown aria-hidden="true" size={12} />
+                            ) : null}
+                            {weightLabel(preference.weight)}
+                          </Badge>
+                          <div className="grid w-full gap-1 sm:w-32">
+                            <span className="text-sm text-muted-foreground tabular-nums">
+                              置信度 {confidence}%
+                            </span>
+                            <div
+                              aria-label={`置信度 ${confidence}%`}
+                              aria-valuemax={100}
+                              aria-valuemin={0}
+                              aria-valuenow={confidence}
+                              className="h-2 w-full overflow-hidden rounded-full bg-muted"
+                              role="progressbar"
+                            >
+                              <span
+                                className="block h-full rounded-full bg-primary"
+                                style={{ inlineSize: `${confidence}%` }}
+                              />
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <form action={updatePreferenceWeightAction}>
-                        <input type="hidden" name="preferenceKey" value={preference.key} />
-                        <input
-                          type="hidden"
-                          name="topicId"
-                          value={getTopicId(workspace, preference.topicName)}
-                        />
-                        <input
-                          type="hidden"
-                          name="weight"
-                          value={Math.max(-4, preference.weight - 0.5).toFixed(2)}
-                        />
-                        <Button
-                          aria-label="降低权重"
-                          size="icon-xs"
-                          type="submit"
-                          variant="ghost"
-                        >
-                          <Minus aria-hidden="true" size={12} />
-                        </Button>
-                      </form>
-                      <form action={updatePreferenceWeightAction}>
-                        <input type="hidden" name="preferenceKey" value={preference.key} />
-                        <input
-                          type="hidden"
-                          name="topicId"
-                          value={getTopicId(workspace, preference.topicName)}
-                        />
-                        <input
-                          type="hidden"
-                          name="weight"
-                          value={Math.min(4, preference.weight + 0.5).toFixed(2)}
-                        />
-                        <Button
-                          aria-label="提升权重"
-                          size="icon-xs"
-                          type="submit"
-                          variant="ghost"
-                        >
-                          <Plus aria-hidden="true" size={12} />
-                        </Button>
-                      </form>
-                      <form action={deletePreferenceAction}>
-                        <input type="hidden" name="preferenceKey" value={preference.key} />
-                        <input
-                          type="hidden"
-                          name="topicId"
-                          value={getTopicId(workspace, preference.topicName)}
-                        />
-                        <Button
-                          aria-label="删除偏好"
-                          size="icon-xs"
-                          type="submit"
-                          variant="danger"
-                        >
-                          <Trash2 aria-hidden="true" size={12} />
-                        </Button>
-                      </form>
-                    </div>
-                  </article>
-                ))}
+                      <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap">
+                        <form action={updatePreferenceWeightAction}>
+                          <input type="hidden" name="preferenceKey" value={preference.key} />
+                          <input
+                            type="hidden"
+                            name="topicId"
+                            value={getTopicId(workspace, preference.topicName)}
+                          />
+                          <input
+                            type="hidden"
+                            name="weight"
+                            value={Math.max(-4, preference.weight - 0.5).toFixed(2)}
+                          />
+                          <Button className="w-full" size="sm" type="submit" variant="ghost">
+                            <Minus aria-hidden="true" size={14} />
+                            <span>降低</span>
+                          </Button>
+                        </form>
+                        <form action={updatePreferenceWeightAction}>
+                          <input type="hidden" name="preferenceKey" value={preference.key} />
+                          <input
+                            type="hidden"
+                            name="topicId"
+                            value={getTopicId(workspace, preference.topicName)}
+                          />
+                          <input
+                            type="hidden"
+                            name="weight"
+                            value={Math.min(4, preference.weight + 0.5).toFixed(2)}
+                          />
+                          <Button className="w-full" size="sm" type="submit" variant="secondary">
+                            <Plus aria-hidden="true" size={14} />
+                            <span>提高</span>
+                          </Button>
+                        </form>
+                        <form action={deletePreferenceAction}>
+                          <input type="hidden" name="preferenceKey" value={preference.key} />
+                          <input
+                            type="hidden"
+                            name="topicId"
+                            value={getTopicId(workspace, preference.topicName)}
+                          />
+                          <Button className="w-full" size="sm" type="submit" variant="ghost">
+                            <Trash2 aria-hidden="true" size={14} />
+                            <span>删除</span>
+                          </Button>
+                        </form>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             )}
           </CardContent>
@@ -169,4 +167,50 @@ function getTopicId(
   topicName: string,
 ): string {
   return workspace.topics.find((t) => t.name === topicName)?.id ?? "";
+}
+
+function describePreference(
+  key: string,
+  workspace: {
+    topics: Array<{
+      sources: Array<{ id: string; name: string }>;
+    }>;
+  },
+): { kind: string; label: string } {
+  if (key.startsWith("source:")) {
+    const sourceId = key.slice("source:".length);
+    const source = workspace.topics
+      .flatMap((topic) => topic.sources)
+      .find((candidate) => candidate.id === sourceId);
+    return { kind: "信源", label: source?.name ?? "已记录的信源" };
+  }
+
+  if (key.startsWith("category:keyword:")) {
+    return {
+      kind: "关键词",
+      label: key.slice("category:keyword:".length) || "未命名关键词",
+    };
+  }
+
+  if (key.startsWith("category:")) {
+    return {
+      kind: "内容方向",
+      label: key.slice("category:".length) || "未命名方向",
+    };
+  }
+
+  return { kind: "内容偏好", label: "系统识别的内容方向" };
+}
+
+function preferenceExplanation(explanation: string, weight: number): string {
+  const signalCount = explanation.match(/^(\d+)\s+feedback signals?/i)?.[1];
+  const signalLabel = signalCount ? `${signalCount} 次反馈后` : "根据近期反馈";
+  const direction = weight > 0 ? "提高" : weight < 0 ? "降低" : "保持";
+  return `${signalLabel}，系统${direction}了这一项在当前主题中的排序权重。`;
+}
+
+function weightLabel(weight: number): string {
+  if (weight > 0) return `提高 +${weight}`;
+  if (weight < 0) return `降低 ${Math.abs(weight)}`;
+  return "保持中性";
 }
