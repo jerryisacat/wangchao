@@ -9,8 +9,8 @@
   - 自用模式后果与手动确认说明提升到 14px，checkbox 方框提升到 20px，整行标签提供 ≥44px 点击区和状态层。
   - 全仓 CSS selector / TSX class 引用交叉扫描确认运行页面只保留文档允许的 `.topic-lab` 与无障碍 `.sr-only`，无未定义 bespoke class；`FRONTEND.md` 与 `docs/L3-modules.md` 固化最终规则。
 - Files: `apps/web/src/components/{layout/app-shell,layout/workspace-switcher,intelligence/trend-chart}.tsx`、`apps/web/src/app/admin/settings/{self-hosted-form,credential-form}.tsx`、`FRONTEND.md`、`docs/L3-modules.md`。
-- Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过（构建仅保留既有 PDF NFT tracing warnings）；本地 320 / 375 / 414 / 768 / 1024 / 1440px 完整响应式矩阵通过（1 passed）；静态残留扫描确认无硬编码明暗色、页面 `transition-all`、未授权 hover scale、低于 12px 正文或未定义页面类。
-- Notes / Risk: 仅调整壳层、组件展示与菜单/checkbox 交互，不改变工作区切换 Action、权限、趋势数据、信源质量计算、凭证门控、数据库或 Worker；`globals.css` 中历史未引用规则按追加式样式治理约束保留，但运行 TSX 不再引用。Railway 真实数据、工作区菜单、趋势/信源健康与后台 checkbox 将在部署后完成最终复查。
+- Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过（构建仅保留既有 PDF NFT tracing warnings）；本地与 Railway 真实数据 320 / 375 / 414 / 768 / 1024 / 1440px 完整响应式矩阵均通过（各 1 passed）。Railway 375px 定点复查确认：真实主题页旧趋势/信源类计数归零，14 张 Card 均 `scrollWidth = clientWidth = 343px`，信源健康 51 个指标块按 2 列呈现且实体编码已解码；后台“高级”页 checkbox 20×20px、整行标签 44px；静态残留扫描确认无硬编码明暗色、页面 `transition-all`、未授权 hover scale、低于 12px 正文或未定义页面类。
+- Notes / Risk: 仅调整壳层、组件展示与菜单/checkbox 交互，不改变工作区切换 Action、权限、趋势数据、信源质量计算、凭证门控、数据库或 Worker；`globals.css` 中历史未引用规则按追加式样式治理约束保留，但运行 TSX 不再引用。当前 Railway 为无认证模式，工作区切换器不渲染；该分支的 ≥44px 触发器、Radix 焦点/Esc 行为、长名称截断由组件原语、类型测试和生产构建覆盖。
 
 ### Fix: 第五轮视觉检查收束草案确认、已保存与账户入口
 
