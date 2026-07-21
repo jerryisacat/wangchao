@@ -269,7 +269,7 @@ function UsageMeter({
           role="progressbar"
         >
           <span
-            className={`block h-full rounded-full transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)] ${isOverage ? "bg-destructive" : "bg-primary"}`}
+            className={`block h-full rounded-full ${isOverage ? "bg-destructive" : "bg-primary"}`}
             style={{ inlineSize: `${percentage}%` }}
           />
         </div>

@@ -85,7 +85,7 @@ export default async function PreferencesPage() {
                           role="progressbar"
                         >
                           <span
-                            className="block h-full rounded-full bg-primary transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)]"
+                            className="block h-full rounded-full bg-primary"
                             style={{
                               inlineSize: `${Math.round(preference.confidence * 100)}%`,
                             }}

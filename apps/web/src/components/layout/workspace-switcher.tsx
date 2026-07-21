@@ -42,7 +42,7 @@ export function WorkspaceSwitcher({
         onClick={() => setOpen((prev) => !prev)}
         type="button"
       >
-        <span className="workspace-switcher-label">{label}</span>
+        <span className="workspace-switcher-label hidden sm:inline">{label}</span>
         <ChevronsUpDown aria-hidden="true" size={14} />
       </button>
 

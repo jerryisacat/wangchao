@@ -45,28 +45,28 @@ export default async function BriefingsPage({ searchParams }: BriefingsPageProps
                 className="inline-flex w-fit items-center justify-center gap-1 rounded-full bg-muted p-1"
               >
                 <Link
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-transparent px-4 py-1 text-sm font-medium text-muted-foreground transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-primary/5 hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-transparent px-4 py-1 text-sm font-medium text-muted-foreground transition-colors duration-300 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-primary/5 hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm"
                   data-active={(!periodFilter).toString()}
                   href="/briefings"
                 >
                   全部
                 </Link>
                 <Link
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-transparent px-4 py-1 text-sm font-medium text-muted-foreground transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-primary/5 hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-transparent px-4 py-1 text-sm font-medium text-muted-foreground transition-colors duration-300 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-primary/5 hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm"
                   data-active={(periodFilter === "DAILY").toString()}
                   href="/briefings?period=DAILY"
                 >
                   每日
                 </Link>
                 <Link
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-transparent px-4 py-1 text-sm font-medium text-muted-foreground transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-primary/5 hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-transparent px-4 py-1 text-sm font-medium text-muted-foreground transition-colors duration-300 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-primary/5 hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm"
                   data-active={(periodFilter === "WEEKLY").toString()}
                   href="/briefings?period=WEEKLY"
                 >
                   每周
                 </Link>
                 <Link
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-transparent px-4 py-1 text-sm font-medium text-muted-foreground transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-primary/5 hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm"
+                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-transparent px-4 py-1 text-sm font-medium text-muted-foreground transition-colors duration-300 ease-[cubic-bezier(0.2,0,0,1)] hover:bg-primary/5 hover:text-foreground data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-sm"
                   data-active={(periodFilter === "MONTHLY").toString()}
                   href="/briefings?period=MONTHLY"
                 >

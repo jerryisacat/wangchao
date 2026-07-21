@@ -38,7 +38,10 @@ export function IntelligenceCard({
   const sourceLinkUrl = sourceUrl ?? itemUrl;
 
   return (
-    <Card className="px-6 gap-5" variant="default">
+    <Card
+      className="min-w-0 gap-4 px-4 py-5 sm:gap-5 sm:px-6 sm:py-6"
+      variant="default"
+    >
       <div className="flex flex-wrap items-center gap-2">
         <Badge className="max-w-full min-w-0 truncate" variant="default">
           {event.topicName}
@@ -53,7 +56,7 @@ export function IntelligenceCard({
         <span className="min-w-0 flex-1 text-sm text-muted-foreground break-words">
           {sourceLinkUrl ? (
             <a
-              className="text-primary hover:underline"
+              className="inline-flex min-h-11 items-center text-primary hover:underline"
               href={sourceLinkUrl}
               rel="noreferrer"
               target="_blank"
@@ -80,7 +83,7 @@ export function IntelligenceCard({
 
       <h3 className="text-lg font-medium leading-snug break-words">
         <Link
-          className="text-foreground decoration-none transition-colors hover:text-primary"
+          className="inline-flex min-h-11 min-w-0 items-center text-foreground decoration-none [overflow-wrap:anywhere] transition-colors hover:text-primary"
           href={`/events/${event.eventId}`}
         >
           {event.title}
@@ -97,11 +100,11 @@ export function IntelligenceCard({
       {event.explanation ? (
         <div className="flex items-start gap-1.5 rounded-[16px] bg-muted p-3 text-sm text-muted-foreground">
           <Sparkles aria-hidden="true" className="mt-0.5 shrink-0" size={13} />
-          <span className="min-w-0">{event.explanation}</span>
+          <span className="min-w-0 break-words">{event.explanation}</span>
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         <form action={eventStateAction} className="min-w-0">
           <input name="eventId" type="hidden" value={event.eventId} />
           <input name="returnTo" type="hidden" value="/" />
@@ -153,26 +156,28 @@ export function IntelligenceCard({
             <span>忽略</span>
           </Button>
         </form>
-        <form action={eventStateAction}>
+        <form action={eventStateAction} className="min-w-0">
           <input name="eventId" type="hidden" value={event.eventId} />
           <input name="returnTo" type="hidden" value="/" />
-          <button
+          <Button
             aria-label="归档此条"
-            className="icon-action"
+            className="w-full justify-center"
             name="action"
+            size="sm"
             title="归档此条（可从历史页恢复）"
             type="submit"
             value="archive"
+            variant="ghost"
           >
             <Archive aria-hidden="true" size={14} />
             <span>归档</span>
-          </button>
+          </Button>
         </form>
         {itemUrl ? (
           <Button
             aria-label="查看原文"
             asChild
-            className="w-full justify-center"
+            className="col-span-2 w-full justify-center sm:col-span-1"
             size="sm"
             title="查看原文"
             variant="ghost"
@@ -186,7 +191,7 @@ export function IntelligenceCard({
           <Button
             aria-label="查看来源"
             asChild
-            className="w-full justify-center"
+            className="col-span-2 w-full justify-center sm:col-span-1"
             size="sm"
             title="查看来源"
             variant="ghost"

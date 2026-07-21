@@ -62,7 +62,7 @@ Postgres
 | 前端 | `apps/web` Next.js App Router |
 | 后台任务 | `apps/worker` Node.js worker |
 | 包管理 | `pnpm` workspace |
-| Web app | `apps/web`，Next.js App Router，提供顶部导航产品壳、首页未读情报流、创建主题、信源管理、简报、已收藏、偏好记忆、`/api/health`、loading/error 状态和 shadcn/Radix/Tailwind v4 组件链。按 `FRONTEND.md` 重构为 Kinetic Intelligence 风格。 |
+| Web app | `apps/web`，Next.js App Router，提供顶部导航产品壳、首页未读情报流、创建主题、信源管理、简报、已收藏、偏好记忆、`/api/health`、loading/error 状态和 shadcn/Radix/Tailwind v4 组件链。按 `FRONTEND.md` 采用 Material You（MD3）视觉体系。 |
 | Worker | `apps/worker`，Node.js TypeScript worker；默认 cycle 在单一总预算内先消费 durable SOURCE_FETCH/SOURCE_DISCOVERY TaskRun，再按稳定顺序与动态公平预算串行执行全部 eligible Organization 的 fetch pipeline；支持独立 `--task-runs`、source discovery、instant push 与 `--health`。 |
 | 共享包 | `packages/core`, `packages/ai`, `packages/db`, `packages/sources` |
 | DB 基础 | `packages/db`，Prisma/Postgres schema、migration、seed、lazy client、tenant/member role guard、usage event 与查询 helper |

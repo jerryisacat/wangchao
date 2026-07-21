@@ -218,7 +218,7 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                             aria-hidden="true"
                           >
                             <div
-                              className="h-full rounded-full bg-primary transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)]"
+                              className="h-full rounded-full bg-primary"
                               style={{
                                 width: `${Math.max(0, Math.min(100, Math.round(source.qualityScore)))}%`,
                               }}
