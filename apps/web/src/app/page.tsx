@@ -79,7 +79,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
           ) : null}
           <input
             aria-label="搜索情报"
-            className="min-w-0 flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+            className="min-h-11 min-w-0 flex-1 border-0 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
             defaultValue={query}
             name="q"
             placeholder="搜索主题、来源、事件"
