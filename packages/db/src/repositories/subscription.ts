@@ -270,8 +270,27 @@ export async function reserveSourceSlot(
     return { reserved: true, currentCount, limit: null };
   }
 
+  // Codex P2-1: Use a database-level atomic check-and-reserve.
+  // Count current non-REJECTED sources, then atomically decide.
+  // The Serializable transaction ensures concurrent reservations conflict.
   const result = await prisma.$transaction(
     async (tx) => {
+      // Lock the organization's subscription row to serialize concurrent source reservations.
+      // SELECT ... FOR UPDATE equivalent: findUnique on subscription with optimistic lock.
+      const sub = await tx.subscription.findUnique({
+        where: { organizationId: scope.organizationId },
+        select: { id: true },
+      });
+      if (!sub) {
+        return { reserved: false, currentCount: 0, limit };
+      }
+      // Touch the subscription row (version increment) to force concurrent
+      // Serializable transactions to detect a write-write conflict.
+      await tx.subscription.update({
+        where: { id: sub.id },
+        data: { updatedAt: new Date() },
+      });
+
       const currentCount = await tx.source.count({
         where: {
           organizationId: scope.organizationId,
