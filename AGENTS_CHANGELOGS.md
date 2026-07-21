@@ -12,7 +12,7 @@
   - 工作区设置的 6 个凭证 tab 改为移动端 2 列、`sm` 3 列、`lg` 6 列；窄屏隐藏装饰图标并保留文字，消除 320px 横向滚动与屏外标签。
   - `FRONTEND.md` 与 `docs/L3-modules.md` 固化二级页面视觉与交互要求。
 - Files: `apps/web/src/app/page.tsx`、`apps/web/src/app/{history,preferences,topics,briefings}/page.tsx`、`apps/web/src/app/admin/settings/page.tsx`、`apps/web/src/components/topics/delete-topic-button.tsx`、`FRONTEND.md`、`docs/L3-modules.md`。
-- Verification: 本地 `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`git diff --check` 已通过（构建仅保留既有 PDF NFT tracing warnings）；Railway 部署后的 320 / 375 / 414 / 768 / 1024 / 1440px 真实数据复查待完成。
+- Verification: 本地 `pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`git diff --check` 通过（构建仅保留既有 PDF NFT tracing warnings）；Railway 真实数据完成 `/history`、`/preferences`、`/briefings`、`/topics` 的 375px 实图复查；生产响应式矩阵覆盖自动发现的应用页面，在 320 / 375 / 414 / 768 / 1024 / 1440px 下无横向超框、屏外元素、小于 44px 的受测控件或主行动对比度问题（1 passed，mobile project 按矩阵设计 skipped）。
 - Notes / Risk: 仅调整展示与交互层，不改变查询、Server Action、状态机、权限或数据库结构；偏好原始 key 继续作为隐藏表单值提交，UI 只隐藏内部实现语言。
 
 ### Fix: 第一轮视觉检查恢复 Material You 设计系统并收束导航
