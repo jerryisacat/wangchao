@@ -16,7 +16,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/empty-state";
 import { getBriefingDetail } from "@/lib/topic-source-data";
-import { renderBriefingMarkdown, sanitizeBriefingBody } from "@/lib/briefing-markdown";
+import {
+  normalizeBriefingDisplayText,
+  renderBriefingMarkdown,
+  sanitizeBriefingBody,
+} from "@/lib/briefing-markdown";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +51,7 @@ export default async function BriefingDetailPage({
   const hasBody = renderedHtml.length > 0;
   // content fallback 如果 markdown 渲染为空但 content 有值，用 sanitize 后的 content 作为纯文本兜底。
   const fallbackText = !hasBody && briefing.content
-    ? sanitizeBriefingBody(briefing.content)
+    ? normalizeBriefingDisplayText(sanitizeBriefingBody(briefing.content))
     : "";
 
   return (
@@ -77,29 +81,28 @@ export default async function BriefingDetailPage({
       ) : null}
 
       <div className="grid gap-3">
-        <Card variant="work">
-          <CardHeader>
-            <div className="briefing-detail-kicker">
+        <Card className="gap-4" variant="work">
+          <CardContent className="grid gap-4">
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <Badge variant="outline">{periodLabel(briefing.period)}</Badge>
-              <span className="briefing-detail-meta">
-                {briefing.topicName} · {formatDateRange(briefing.rangeStart, briefing.rangeEnd)} · 生成于 {formatDateTime(briefing.generatedAt)}
+              <span className="leading-relaxed">
+                {briefing.topicName} · {formatDateRange(briefing.rangeStart, briefing.rangeEnd)}
+              </span>
+              <span className="leading-relaxed">
+                生成于 {formatDateTime(briefing.generatedAt)}
               </span>
             </div>
-            <CardTitle>{briefing.title}</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="briefing-detail-actions">
-              <a
-                className="briefing-detail-download"
-                href={`/exports/briefings/${briefing.briefingId}`}
-              >
-                <Download aria-hidden="true" size={14} />
-                Markdown 下载
-              </a>
+            <div className="grid grid-cols-1 gap-2 border-t border-border pt-4 sm:flex sm:flex-wrap">
+              <Button asChild className="w-full sm:w-auto" size="sm" variant="secondary">
+                <a href={`/exports/briefings/${briefing.briefingId}`}>
+                  <Download aria-hidden="true" size={14} />
+                  Markdown 下载
+                </a>
+              </Button>
               <form action={markBriefingAsReadAction}>
                 <input name="briefingId" type="hidden" value={briefing.briefingId} />
                 <input name="returnTo" type="hidden" value={`/briefings/${briefing.briefingId}`} />
-                <Button name="action" size="sm" type="submit" variant="secondary">
+                <Button className="w-full sm:w-auto" name="action" size="sm" type="submit" variant="primary">
                   <Check aria-hidden="true" size={14} />
                   全部标记已读
                 </Button>
@@ -111,11 +114,11 @@ export default async function BriefingDetailPage({
         {hasBody ? (
           <Card variant="work">
             <CardHeader>
-              <CardTitle>简报正文</CardTitle>
+              <CardTitle><h2>简报正文</h2></CardTitle>
             </CardHeader>
             <CardContent>
               <div
-                className="briefing-content"
+                className="mx-auto max-w-[72ch] text-base leading-7 text-foreground [&_a]:inline-flex [&_a]:min-h-11 [&_a]:items-center [&_a]:font-medium [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4 [&_h1]:mb-5 [&_h1]:mt-2 [&_h1]:text-2xl [&_h1]:font-medium [&_h1]:leading-tight [&_h2]:mb-3 [&_h2]:mt-8 [&_h2]:text-xl [&_h2]:font-medium [&_h2]:leading-tight [&_hr]:my-8 [&_hr]:border-border [&_li]:my-2 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-6 [&_p]:my-4 [&_strong]:font-medium [&_ul]:my-3 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-6"
                 dangerouslySetInnerHTML={{ __html: renderedHtml }}
               />
             </CardContent>
@@ -123,10 +126,10 @@ export default async function BriefingDetailPage({
         ) : fallbackText ? (
           <Card variant="work">
             <CardHeader>
-              <CardTitle>简报正文</CardTitle>
+              <CardTitle><h2>简报正文</h2></CardTitle>
             </CardHeader>
             <CardContent>
-              <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+              <pre className="mx-auto max-w-[72ch] whitespace-pre-wrap break-words font-sans text-base leading-7">
                 {fallbackText}
               </pre>
             </CardContent>
@@ -146,20 +149,22 @@ export default async function BriefingDetailPage({
         {briefing.events.length > 0 ? (
           <Card variant="work">
             <CardHeader>
-              <CardTitle>简报内情报（{briefing.events.length}）</CardTitle>
+              <CardTitle><h2>简报内情报（{briefing.events.length}）</h2></CardTitle>
             </CardHeader>
             <CardContent>
-              <ul className="briefing-detail-events">
+              <ul className="grid gap-1">
                 {briefing.events.map((event) => (
                   <li key={event.eventId}>
                     <Link
                       href={`/events/${event.eventId}`}
-                      className="briefing-detail-event-link"
+                      className="grid min-h-11 min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 rounded-[12px] px-3 py-2 text-sm text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:grid-cols-[auto_minmax(0,1fr)_auto]"
                     >
-                      <ExternalLink aria-hidden="true" size={12} />
-                      <span>{event.title}</span>
+                      <ExternalLink aria-hidden="true" size={14} />
+                      <span className="min-w-0 [overflow-wrap:anywhere] font-medium">
+                        {event.title}
+                      </span>
                       {event.occurredAt ? (
-                        <span className="briefing-detail-event-date">
+                        <span className="col-start-2 text-xs tabular-nums text-muted-foreground sm:col-start-3">
                           {formatDateTime(event.occurredAt)}
                         </span>
                       ) : null}

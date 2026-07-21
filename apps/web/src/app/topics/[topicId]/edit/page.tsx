@@ -61,7 +61,7 @@ export default async function TopicEditPage({
 
   return (
     <>
-      <PageHeader eyebrow="EDIT TOPIC" title="编辑主题">
+      <PageHeader eyebrow="调整观察范围与输出偏好" title="编辑主题">
         <Button asChild size="sm" variant="ghost">
           <Link href={`/topics/${topic.id}`}>
             <ArrowLeft aria-hidden="true" size={14} />
@@ -78,7 +78,7 @@ export default async function TopicEditPage({
         />
       ) : null}
 
-      <Card variant="kinetic" className="px-5 pb-5">
+      <Card variant="work" className="px-5 pb-5">
           <form action={updateTopicAction} className="grid gap-3">
             <input type="hidden" name="topicId" value={topic.id} />
             <input

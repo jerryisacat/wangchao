@@ -2,7 +2,7 @@
 
 // Issue #185 (Plan Task 4.7) — 主题 Dashboard 客户端组件。
 // SPEC §5.8 Dashboard：每主题一个页面，整合未读 Top、已读/收藏、趋势、信源健康、最近简报。
-// 7/30 天趋势切换 tabs（移动端可横向滚动，≥44px touch target）。
+// 7/30 天趋势切换 tabs（移动端自然换行，≥44px touch target）。
 
 import { FileText, Inbox, TrendingUp } from "lucide-react";
 import Link from "next/link";
@@ -37,119 +37,111 @@ export function TopicDashboardView({
   const trend = dashboard.trends[trendRange];
 
   return (
-    <div className="topic-dashboard">
+    <div className="grid gap-4">
       {/* 未读 Top */}
-      <section className="topic-dashboard-section">
-        <Card variant="work">
-          <CardHeader>
-            <CardTitle>
-              <Inbox aria-hidden="true" size={16} />
-              <span>未读 Top · {dashboard.unreadTop.length}</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {dashboard.unreadTop.length === 0 ? (
-              <EmptyState
-                description="所有未读情报已处理完毕。"
-                icon={<Inbox aria-hidden="true" size={18} />}
-                title="暂无未读情报"
+      <section className="grid gap-3" aria-labelledby="topic-unread-heading">
+        <h2 id="topic-unread-heading" className="flex items-center gap-2 px-1 text-lg font-medium">
+          <Inbox aria-hidden="true" size={18} />
+          <span>未读 Top · {dashboard.unreadTop.length}</span>
+        </h2>
+        {dashboard.unreadTop.length === 0 ? (
+          <EmptyState
+            description="所有未读情报已处理完毕。"
+            icon={<Inbox aria-hidden="true" size={18} />}
+            title="暂无未读情报"
+          />
+        ) : (
+          <div className="grid gap-3">
+            {dashboard.unreadTop.map((event) => (
+              <IntelligenceCard
+                event={event}
+                eventStateAction={eventStateAction}
+                key={event.eventId}
               />
-            ) : (
-              <div className="intelligence-feed">
-                {dashboard.unreadTop.map((event) => (
-                  <IntelligenceCard
-                    event={event}
-                    eventStateAction={eventStateAction}
-                    key={event.eventId}
-                  />
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* 收藏事件 */}
-      <section className="topic-dashboard-section">
-        <Card variant="work">
-          <CardHeader>
-            <CardTitle>
-              <span>收藏 · {dashboard.savedTotal}</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {dashboard.savedEvents.length === 0 ? (
-              <EmptyState
-                description="收藏的情报会出现在这里。"
-                icon={<Inbox aria-hidden="true" size={18} />}
-                title="暂无收藏"
+      <section className="grid gap-3" aria-labelledby="topic-saved-heading">
+        <h2 id="topic-saved-heading" className="px-1 text-lg font-medium">
+          收藏 · {dashboard.savedTotal}
+        </h2>
+        {dashboard.savedEvents.length === 0 ? (
+          <EmptyState
+            description="收藏的情报会出现在这里。"
+            icon={<Inbox aria-hidden="true" size={18} />}
+            title="暂无收藏"
+          />
+        ) : (
+          <div className="grid gap-3">
+            {dashboard.savedEvents.map((event) => (
+              <IntelligenceCard
+                event={event}
+                eventStateAction={eventStateAction}
+                key={event.eventId}
               />
-            ) : (
-              <div className="intelligence-feed">
-                {dashboard.savedEvents.map((event) => (
-                  <IntelligenceCard
-                    event={event}
-                    eventStateAction={eventStateAction}
-                    key={event.eventId}
-                  />
-                ))}
-              </div>
-            )}
-            {dashboard.savedTotal > dashboard.savedEvents.length ? (
-              <p className="topic-dashboard-more">
-                共 {dashboard.savedTotal} 条收藏，显示前 {dashboard.savedEvents.length} 条。
-              </p>
-            ) : null}
-          </CardContent>
-        </Card>
+            ))}
+          </div>
+        )}
+        {dashboard.savedTotal > dashboard.savedEvents.length ? (
+          <p className="px-1 text-sm leading-relaxed text-muted-foreground">
+            共 {dashboard.savedTotal} 条收藏，当前显示前 {dashboard.savedEvents.length} 条。
+          </p>
+        ) : null}
       </section>
 
       {/* 趋势 */}
-      <section className="topic-dashboard-section">
+      <section aria-labelledby="topic-trend-heading">
         <Card variant="work">
-          <CardHeader>
+          <CardHeader className="gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:grid-rows-1 sm:items-center">
             <CardTitle>
-              <TrendingUp aria-hidden="true" size={16} />
-              <span>趋势分析</span>
+              <h2 className="flex items-center gap-2" id="topic-trend-heading">
+                <TrendingUp aria-hidden="true" size={16} />
+                <span>趋势分析</span>
+              </h2>
             </CardTitle>
-            <div className="trend-range-tabs" role="tablist" aria-label="趋势时间范围">
-              <button
-                type="button"
+            <div className="flex flex-wrap gap-1 sm:justify-end" role="tablist" aria-label="趋势时间范围">
+              <Button
                 role="tab"
                 aria-selected={trendRange === "7"}
                 data-active={trendRange === "7"}
-                className="trend-range-tab"
                 onClick={() => setTrendRange("7")}
+                size="sm"
+                type="button"
+                variant={trendRange === "7" ? "secondary" : "ghost"}
               >
                 7 天
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
                 role="tab"
                 aria-selected={trendRange === "30"}
                 data-active={trendRange === "30"}
-                className="trend-range-tab"
                 onClick={() => setTrendRange("30")}
+                size="sm"
+                type="button"
+                variant={trendRange === "30" ? "secondary" : "ghost"}
               >
                 30 天
-              </button>
+              </Button>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="trend-summary">
-              <span>总事件数：{trend.totalEvents}</span>
+          <CardContent className="grid gap-6">
+            <div className="rounded-[16px] bg-muted px-4 py-3 text-sm text-muted-foreground">
+              总事件数：<strong className="font-medium tabular-nums text-foreground">{trend.totalEvents}</strong>
             </div>
 
-            <div className="trend-subsection">
-              <h4 className="trend-subsection-title">每日事件趋势</h4>
+            <div className="grid gap-3">
+              <h3 className="text-sm font-medium">每日事件趋势</h3>
               <DailyTrendChart
                 buckets={trend.dailyBuckets}
                 ariaLabel={`${trendRange} 天每日事件趋势`}
               />
             </div>
 
-            <div className="trend-subsection">
-              <h4 className="trend-subsection-title">类别分布</h4>
+            <div className="grid gap-3">
+              <h3 className="text-sm font-medium">类别分布</h3>
               <TrendBarChart
                 buckets={trend.categoryBuckets.map((b) => ({
                   label: b.category,
@@ -160,8 +152,8 @@ export function TopicDashboardView({
               />
             </div>
 
-            <div className="trend-subsection">
-              <h4 className="trend-subsection-title">实体热度</h4>
+            <div className="grid gap-3">
+              <h3 className="text-sm font-medium">实体热度</h3>
               <TrendBarChart
                 buckets={trend.entityBuckets.map((b) => ({
                   label: b.entity,
@@ -173,8 +165,8 @@ export function TopicDashboardView({
             </div>
 
             {trend.sourceQuality.length > 0 ? (
-              <div className="trend-subsection">
-                <h4 className="trend-subsection-title">来源质量趋势</h4>
+              <div className="grid gap-3">
+                <h3 className="text-sm font-medium">来源质量趋势</h3>
                 <TrendBarChart
                   buckets={trend.sourceQuality.map((s) => ({
                     label: s.sourceName,
@@ -190,10 +182,12 @@ export function TopicDashboardView({
       </section>
 
       {/* 信源健康 */}
-      <section className="topic-dashboard-section">
+      <section aria-labelledby="topic-source-health-heading">
         <Card variant="work">
           <CardHeader>
-            <CardTitle>信源健康</CardTitle>
+            <CardTitle>
+              <h2 id="topic-source-health-heading">信源健康</h2>
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <SourceHealthList sources={dashboard.sourceHealth} />
@@ -202,12 +196,14 @@ export function TopicDashboardView({
       </section>
 
       {/* 最近简报 */}
-      <section className="topic-dashboard-section">
+      <section aria-labelledby="topic-briefings-heading">
         <Card variant="work">
           <CardHeader>
             <CardTitle>
-              <FileText aria-hidden="true" size={16} />
-              <span>最近简报 · {dashboard.recentBriefings.length}</span>
+              <h2 className="flex items-center gap-2" id="topic-briefings-heading">
+                <FileText aria-hidden="true" size={16} />
+                <span>最近简报 · {dashboard.recentBriefings.length}</span>
+              </h2>
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -218,16 +214,17 @@ export function TopicDashboardView({
                 title="暂无简报"
               />
             ) : (
-              <div className="topic-dashboard-briefings">
+              <div className="grid gap-2">
                 {dashboard.recentBriefings.map((briefing) => (
-                  <div className="topic-dashboard-briefing-row" key={briefing.briefingId}>
-                    <div className="topic-dashboard-briefing-info">
-                      <Link href={`/briefings/${briefing.briefingId}`}>
-                        <span className="topic-dashboard-briefing-title">
-                          {briefing.title}
-                        </span>
+                  <div className="grid min-w-0 gap-2 rounded-[16px] bg-muted p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center" key={briefing.briefingId}>
+                    <div className="min-w-0">
+                      <Link
+                        className="flex min-h-11 min-w-0 items-center rounded-[12px] px-2 font-medium text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        href={`/briefings/${briefing.briefingId}`}
+                      >
+                        <span className="min-w-0 [overflow-wrap:anywhere]">{briefing.title}</span>
                       </Link>
-                      <div className="topic-dashboard-briefing-meta">
+                      <div className="mt-1 flex flex-wrap items-center gap-2 px-2 text-xs text-muted-foreground">
                         <Badge variant="outline">
                           {briefing.period === "DAILY"
                             ? "日报"
@@ -245,7 +242,7 @@ export function TopicDashboardView({
                         </time>
                       </div>
                     </div>
-                    <Button asChild size="sm" variant="ghost">
+                    <Button asChild className="w-full sm:w-auto" size="sm" variant="ghost">
                       <Link href={`/briefings/${briefing.briefingId}`}>
                         查看
                       </Link>

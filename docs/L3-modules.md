@@ -325,6 +325,7 @@ apps/web/src/
 │   ├── topics/[topicId]/timeline/page.tsx # 主题时间线页（按 occurredAt 倒序）
 │   ├── sources/page.tsx              # 信源治理页
 │   ├── briefings/page.tsx            # 简报列表页（DAILY/WEEKLY/MONTHLY 筛选；阅读详情 + Markdown 导出双入口）
+│   ├── briefings/[briefingId]/page.tsx # 简报详情页（安全 Markdown、editorial 正文、44px 情报入口）
 │   ├── saved/page.tsx                # 已收藏情报页
 │   ├── preferences/page.tsx          # 偏好记忆页（内部 key 人类化、中文解释、权重调整/删除）
 │   ├── history/page.tsx              # 阅读历史与归档（2×2/4 列状态筛选、分页与恢复操作）
@@ -342,6 +343,8 @@ apps/web/src/
 │   ├── intelligence/
 │   │   ├── intelligence-card.tsx     # 情报卡片 client 组件
 │   │   ├── intelligence-feed.tsx     # 情报流 client 组件
+│   │   ├── topic-dashboard-view.tsx  # 主题工作台（未读/收藏/趋势/信源健康/最近简报）
+│   │   ├── trend-chart.tsx           # 纯 CSS 趋势与信源健康图表
 │   │   └── topic-filter.tsx          # 主题筛选标签条
 │   ├── common/
 │   │   ├── empty-state.tsx           # 通用空状态
@@ -356,7 +359,8 @@ apps/web/src/
 │       ├── label.tsx                 # Label 基于 Radix
 │       └── textarea.tsx              # Textarea
 └── lib/
-    ├── event-display.ts              # 前端展示清洗：HTML/RSS 摘要转用户文案、原文链接提取、解释文案本地化；re-export sanitize 函数
+    ├── briefing-markdown.ts          # 简报安全 Markdown 白名单渲染与固定解释模板本地化
+    ├── event-display.ts              # 前端展示清洗：HTML/RSS 摘要转用户文案、实体解码、原文链接提取、解释文案本地化；re-export sanitize 函数
     ├── sanitize.ts                   # 安全净化：sanitizeForDisplay（HTML 逃逸）、sanitizeMarkdownSource（剥离危险标签）
     ├── report-data.ts                # 专题报告数据读取：`getReportsPage()`（分页列表）、`getReportDetail()`（单条详情）
     ├── auth.ts                       # Better Auth 服务端配置；Promise 单例 + ESM 动态加载 DB
@@ -373,16 +377,18 @@ apps/web/src/
 | `apps/web/components.json` | shadcn/ui v4 配置入口（radix 库、zinc baseColor、cssVariables）。 |
 | `apps/web/postcss.config.mjs` | Tailwind v4 PostCSS 插件配置。 |
 | `apps/web/src/app/page.tsx` | 首页：未读情报流，顶部搜索、主题筛选、`view=all\|high\|saved` 视图、情报卡片列表、已读/收藏/减少动作；卡片来源名称链接到 Source URL，“原文”动作只链接到清洗后的 Item/Article URL，无原文时降级显示“来源”。 |
-| `apps/web/src/app/events/[eventId]/page.tsx` | 单条情报详情页：稳定 URL、摘要状态提示、来源/时间/解释、反馈、异步重新采集、Markdown 导出和原文链接。 |
+| `apps/web/src/app/events/[eventId]/page.tsx` | 单条情报详情页：稳定 URL、摘要状态提示、来源/时间/解释、类别人类化、分组反馈、异步重新采集、Markdown 导出和原文链接。 |
 | `apps/web/src/app/topics/new/page.tsx` | 新建主题页：只填写主题名称和描述，提交后自动生成 topic profile 并尝试发现候选信源。 |
-| `apps/web/src/app/sources/page.tsx` | 信源治理页：候选源表单、手动触发 source discovery、LLM/兜底推荐理由展示、质量报告、批准/观察/静音/拒绝动作、批量治理工具栏、过期候选源复审卡片。 |
+| `apps/web/src/app/sources/page.tsx` | 信源治理页：候选源表单、手动触发 source discovery、解码后的 LLM/兜底推荐理由、质量报告、批准/观察/静音/拒绝动作、批量治理工具栏、过期候选源复审卡片。 |
 | `apps/web/src/app/actions/sources.ts` | 信源相关 Server Actions。手动抓取/发现只做角色校验并通过 `enqueueTaskRun()` 写入 PENDING durable task，不在 request lifecycle 执行长任务。 |
 | `apps/web/src/lib/task-run-enqueue.ts` | 手动 SOURCE_FETCH/SOURCE_DISCOVERY 的 60 秒 UTC 时间桶 idempotency key；校验 exact type/userId，抑制双击和并发请求重试。 |
 | `apps/web/src/app/topics/page.tsx` | 主题管理列表页：展示所有主题（含 PAUSED/ARCHIVED），每行带状态 Badge、编辑/暂停/恢复/归档/删除操作。 |
-| `apps/web/src/app/topics/[topicId]/page.tsx` | 主题详情页：展示主题信息、关联统计（信源数/事件数/简报数）、状态管理操作入口。 |
+| `apps/web/src/app/topics/[topicId]/page.tsx` | 主题详情页：展示主题信息、2/4 列关联统计（信源数/事件数/简报数）、可换行状态管理操作与一体化 Dashboard。 |
 | `apps/web/src/app/topics/[topicId]/edit/page.tsx` | 主题编辑页：编辑 name/description 与 keywords/entities/includeScope/excludeScope/importanceRules；摘要语言在 i18n 前只读显示为简体中文，术语规则仍可编辑；每项有长度/条数边界，保存后重定向回详情页。 |
 | `apps/web/src/components/topics/delete-topic-button.tsx` | 删除主题客户端按钮组件，带 `confirm()` 二次确认。 |
 | `apps/web/src/app/briefings/page.tsx` | organization-scoped 完整简报历史分页：总数、周期（DAILY/WEEKLY/MONTHLY 筛选 tabs）、UTC 日期窗口、更新时间、上一页/下一页和 Markdown 导出。 |
+| `apps/web/src/app/briefings/[briefingId]/page.tsx` | 简报详情页：72ch editorial 正文、安全 Markdown、固定生成解释本地化、Markdown 下载、批量已读与 44px Event 入口。 |
+| `apps/web/src/lib/briefing-markdown.ts` | 简报 Markdown 白名单 renderer：转义不可信文本、仅允许 HTTP/HTTPS 外链，并在浏览器显示层本地化已知相关性解释模板。 |
 | `apps/web/src/app/topics/[topicId]/timeline/page.tsx` | 主题时间线页：按 `occurredAt` 倒序分页展示主题全部正式事件（含 merged sources、score、source link），提供上一页/下一页。 |
 | `apps/web/src/app/saved/page.tsx` | 已收藏情报页：通过 dedicated user-scoped repository 分页读取完整收藏集合，显示总数和上一页/下一页；标题可进入详情，已读、取消收藏、原文动作保留在当前页面，取消收藏不写负反馈。 |
 | `apps/web/src/app/preferences/page.tsx` | 偏好记忆页：权重、置信度、解释；置信度条提供 `progressbar` 语义；支持权重调整（`updatePreferenceWeightAction`）和删除偏好（`deletePreferenceAction`）。 |
@@ -407,14 +413,14 @@ apps/web/src/
 | `apps/web/src/app/pricing/page.tsx` | 定价页。FREE/PLUS/PRO 三层对比，展示各层配额限制和价格。 |
 | `apps/web/src/app/usage/page.tsx` | 用量仪表盘。展示当前周期配额使用进度条（主题/信源/AI 调用/导出），按 `getSubscriptionPlanView()` + `getTodayAiCallCount()`/`getMonthAiCallCount()`/`getMonthExportCount()`/`getTopicCount()`/`getActiveSourceCount()` 读取。 |
 | `apps/web/src/app/actions.ts` | Server Action 入口；创建主题并自动匹配候选源、更新事件状态、创建候选源、手动 source discovery、信源治理、主题管理（`updateTopicAction`/`updateTopicStatusAction`/`deleteTopicAction`，OWNER/ADMIN 守卫）、批量信源治理（`batchUpdateSourceGovernanceAction`）、`upsertAiCredentialAction` / `upsertSearchCredentialAction`（OWNER/ADMIN 守卫，加密存储 API Key）、`deleteAiCredentialAction` / `deleteSearchCredentialAction`（清除凭证）、`testAiCredentialAction`（测试 AI 连接，含 chat/completions 兜底）、`listAiModelsAction`（嗅探可用模型列表，不写 DB）、`testSearchCredentialAction`（测试搜索连接）、`upsertTelegramCredentialAction`/`deleteTelegramCredentialAction`/`testTelegramCredentialAction`（Telegram 凭证管理）、`createReportAction`（提交报告问题，异步调用 `runReportGeneration`）、`deletePreferenceAction`/`updatePreferenceWeightAction`（偏好编辑）、`recordEnhancedFeedbackAction`（增强反馈：MORE/LESS_LIKE_THIS、SOURCE_QUALITY_UP/DOWN、SCORE_UP/DOWN）。失败通过 stderr 记录，成功/失败通过 redirect URL 参数反馈。 |
-| `apps/web/src/lib/event-display.ts` | 前端展示清洗 helper：把 RSS/HTML 摘要清洗为可读正文（去除 Article URL/Points/# Comments 等元数据标记，用 title 作为 fallback），提取 Article URL 作为原文链接，并本地化解释文案。From `./sanitize` re-exports `sanitizeForDisplay` / `sanitizeMarkdownSource`。 |
+| `apps/web/src/lib/event-display.ts` | 前端展示清洗 helper：把 RSS/HTML 摘要清洗为可读正文（去除 Article URL/Points/# Comments 等元数据标记，用 title 作为 fallback），提取 Article URL、解码常见 HTML 实体，并本地化解释文案。From `./sanitize` re-exports `sanitizeForDisplay` / `sanitizeMarkdownSource`。 |
 | `apps/web/src/lib/summary-status.ts` | 摘要状态到用户提示的纯函数；首页与详情共用，不把失败提示写入数据库 summary。 |
 | `apps/web/src/lib/sanitize.ts` | 安全净化工具：`sanitizeForDisplay`（HTML entity 逃逸，用于 AI 生成内容的防御性渲染）；`sanitizeMarkdownSource`（入库前剥离危险标签/URL scheme/event handler）。 |
 | `apps/web/src/lib/topic-source-data.ts` | 读取工作台、完整收藏/简报分页、单条情报详情和 dedicated workspace audit。所有数据函数使用 `getSessionWorkspace()` 获取 session-based workspace（`BETTER_AUTH_SECRET` 未配置时内部 fallback 到 `ensureDefaultWorkspace()`）。`DATABASE_URL` 未配置时抛出错误，不再静默降级为预览模式。 |
 | `apps/web/src/app/exports/briefings/[briefingId]/route.ts` | 简报 Markdown 下载 route。 |
 | `apps/web/src/app/exports/events/[eventId]/route.ts` | 单条情报 Markdown 下载 route。 |
 | `apps/web/src/app/globals.css` | 全局 MD3 token、兼容布局样式、motion/reduced-motion、焦点状态、safe-area padding 和响应式规则；颜色与字体语义以 `FRONTEND.md` 为准，根节点使用 `overflow-x: clip` 保留 sticky 并阻止页面横向滚动。 |
-| `tests/smoke/responsive.spec.ts` | 全站响应式回归：逐页验证 320/375/414/768/1024/1440px 无横向滚动/超框，主要控件不少于 44px，主按钮对比度不少于 4.5:1。 |
+| `tests/smoke/responsive.spec.ts` | 全站响应式回归：自动发现 Event / Topic / Briefing / Report 动态详情路由，逐页验证 320/375/414/768/1024/1440px 无横向滚动/超框，主要控件不少于 44px，主按钮对比度不少于 4.5:1。 |
 | `tests/smoke/auth.spec.ts` | 条件性 auth E2E：注册/自动登录、reload session 恢复、登出/重登录、OWNER Membership 和两用户 Organization 隔离，并自动清理 fixture。统一受保护路由门属于 #166，当前对应用例明确 `fixme`，Task 1.3 完成时解除。 |
 | `FRONTEND.md` | `apps/web` 前端设计规范，定义 Material You（MD3）风格、token、组件变体、页面组合、动效、响应式和可访问性边界。 |
 

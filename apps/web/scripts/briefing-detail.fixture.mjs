@@ -6,7 +6,11 @@
 //   - 裸 URL 在列表项里保留为文本（不自动 <a>），跳转由页面 Event 链接承载。
 // 不引入 react-markdown/remark/rehype 等第三方依赖（schema 不变约束 + bundle 体积）。
 import assert from "node:assert/strict";
-import { renderBriefingMarkdown, sanitizeBriefingBody } from "../src/lib/briefing-markdown.ts";
+import {
+  normalizeBriefingDisplayText,
+  renderBriefingMarkdown,
+  sanitizeBriefingBody,
+} from "../src/lib/briefing-markdown.ts";
 
 // 1. 基本 Markdown 子集渲染
 {
@@ -82,6 +86,16 @@ import { renderBriefingMarkdown, sanitizeBriefingBody } from "../src/lib/briefin
   assert.equal(renderBriefingMarkdown(""), "");
   assert.equal(renderBriefingMarkdown("   \n\n  "), "");
   assert.equal(sanitizeBriefingBody(""), "");
+}
+
+// 9. 工程化相关性解释转换为读者可理解的简体中文
+{
+  const raw = "Matched topic keywords: AI. Matched include scope: infrastructure.";
+  const normalized = normalizeBriefingDisplayText(raw);
+  assert.equal(normalized, "命中主题关键词：AI。 命中覆盖范围：infrastructure。");
+  const html = renderBriefingMarkdown(raw);
+  assert.ok(!html.includes("Matched topic"), `internal wording must not render, got: ${html}`);
+  assert.ok(html.includes("命中主题关键词：AI。"), `localized explanation must render, got: ${html}`);
 }
 
 process.stdout.write("Briefing markdown renderer fixture passed.\n");

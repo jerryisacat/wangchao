@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBanner } from "@/components/common/status-banner";
+import { decodeHtmlEntities } from "@/lib/event-display";
 import { getTopicSourceWorkspace } from "@/lib/topic-source-data";
 
 export const dynamic = "force-dynamic";
@@ -204,7 +205,9 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                     >
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h3 className="text-sm font-medium">{source.name}</h3>
+                          <h3 className="text-sm font-medium">
+                            {decodeHtmlEntities(source.name)}
+                          </h3>
                           <Badge variant={sourceTone(source.status)}>
                             {formatSourceStatus(source.status)}
                           </Badge>
@@ -227,7 +230,7 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                         </div>
                         {source.recommendationReason ? (
                           <p className="mt-1 max-w-[62ch] text-sm text-foreground">
-                            {source.recommendationReason}
+                            {decodeHtmlEntities(source.recommendationReason)}
                           </p>
                         ) : null}
                         <div className="mt-2.5 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
@@ -255,7 +258,9 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                             {source.lastErrorAt
                               ? formatDateTime(source.lastErrorAt)
                               : "时间未知"}
-                            {source.lastError ? `: ${source.lastError}` : ""}
+                            {source.lastError
+                              ? `：${decodeHtmlEntities(source.lastError)}`
+                              : ""}
                           </p>
                         ) : null}
                         <p className="mt-1 text-xs text-muted-foreground">
@@ -390,7 +395,7 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="text-sm font-medium">
-                          {candidate.name}
+                          {decodeHtmlEntities(candidate.name)}
                         </h3>
                         <Badge variant="warning">待复审</Badge>
                       </div>
@@ -405,12 +410,12 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                       </p>
                       {candidate.recommendationReason ? (
                         <p className="mt-1 max-w-[62ch] text-sm text-foreground">
-                          {candidate.recommendationReason}
+                          {decodeHtmlEntities(candidate.recommendationReason)}
                         </p>
                       ) : null}
                       {candidate.lastError ? (
                         <p className="mt-1.5 text-xs leading-relaxed text-destructive">
-                          错误: {candidate.lastError}
+                          错误：{decodeHtmlEntities(candidate.lastError)}
                         </p>
                       ) : null}
                     </div>

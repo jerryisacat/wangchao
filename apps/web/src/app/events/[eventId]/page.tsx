@@ -31,6 +31,7 @@ import { StatusBanner } from "@/components/common/status-banner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { decodeHtmlEntities } from "@/lib/event-display";
 import { getDashboardEventDetail } from "@/lib/topic-source-data";
 import { isHttpUrl } from "@wangchao/core";
 
@@ -67,7 +68,7 @@ export default async function EventDetailPage({
         eyebrow={event.topicName}
         meta={
           <span>
-            {event.sourceName} · {formatDateTime(event.occurredAt)}
+            {decodeHtmlEntities(event.sourceName)} · {formatDateTime(event.occurredAt)}
           </span>
         }
         title="情报详情"
@@ -97,64 +98,78 @@ export default async function EventDetailPage({
 
       <Card variant="work">
         <CardHeader>
-          <div className="event-detail-kicker">
-            <Badge variant="default">{event.category}</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="default">{formatCategoryLabel(event.category)}</Badge>
             {event.entities && event.entities.length > 0
               ? event.entities.map((entity) => (
                   <Badge key={entity} variant="outline">
-                    {entity}
+                    {decodeHtmlEntities(entity)}
                   </Badge>
                 ))
               : null}
             {event.userSaved ? <Badge variant="accent">已收藏</Badge> : null}
           </div>
-          <CardTitle>{event.title}</CardTitle>
+          <CardTitle>
+            <h2 className="text-xl leading-snug [overflow-wrap:anywhere] sm:text-2xl">
+              {event.title}
+            </h2>
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <article className="event-detail-page">
+          <article className="grid gap-5">
             <p
-              className="event-detail-summary"
+              className="max-w-[72ch] text-base leading-7 text-foreground"
               data-summary-status={event.summaryStatus}
             >
               {event.summary}
             </p>
 
             {event.explanation ? (
-              <div className="event-detail-reason">
-                <Sparkles aria-hidden="true" size={14} />
-                <span>{event.explanation}</span>
+              <div className="grid max-w-[72ch] grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-[16px] bg-muted p-4 text-sm leading-relaxed">
+                <Sparkles aria-hidden="true" className="mt-0.5 text-primary" size={16} />
+                <div>
+                  <h3 className="font-medium text-foreground">为什么重要</h3>
+                  <p className="mt-1 text-muted-foreground">{event.explanation}</p>
+                </div>
               </div>
             ) : null}
 
             {event.followUpSuggestion ? (
-              <div className="event-detail-reason">
-                <Sparkles aria-hidden="true" size={14} />
-                <span>后续跟踪：{event.followUpSuggestion}</span>
+              <div className="grid max-w-[72ch] grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-[16px] bg-muted p-4 text-sm leading-relaxed">
+                <Sparkles aria-hidden="true" className="mt-0.5 text-primary" size={16} />
+                <div>
+                  <h3 className="font-medium text-foreground">后续跟踪</h3>
+                  <p className="mt-1 text-muted-foreground">{event.followUpSuggestion}</p>
+                </div>
               </div>
             ) : null}
 
             {event.mergeReason ? (
-              <p className="text-xs text-muted-foreground mt-2">
+              <p className="max-w-[72ch] text-sm leading-relaxed text-muted-foreground">
                 合并原因：{event.mergeReason}
               </p>
             ) : null}
 
-            <dl className="event-detail-grid">
-              <div>
-                <dt>主题</dt>
-                <dd>{event.topicName}</dd>
+            <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="rounded-[16px] bg-muted p-4">
+                <dt className="text-sm text-muted-foreground">主题</dt>
+                <dd className="mt-1 break-words font-medium">{event.topicName}</dd>
               </div>
-              <div>
-                <dt>来源</dt>
-                <dd>{event.sourceName}</dd>
+              <div className="rounded-[16px] bg-muted p-4">
+                <dt className="text-sm text-muted-foreground">来源</dt>
+                <dd className="mt-1 break-words font-medium">
+                  {decodeHtmlEntities(event.sourceName)}
+                </dd>
               </div>
-              <div>
-                <dt>更新时间</dt>
-                <dd>{formatDateTime(event.updatedAt)}</dd>
+              <div className="rounded-[16px] bg-muted p-4">
+                <dt className="text-sm text-muted-foreground">更新时间</dt>
+                <dd className="mt-1 font-medium tabular-nums">{formatDateTime(event.updatedAt)}</dd>
               </div>
             </dl>
 
-            <div className="event-detail-actions">
+            <section className="grid gap-3 border-t border-border pt-5" aria-labelledby="event-reading-actions">
+              <h3 className="text-sm font-medium" id="event-reading-actions">阅读状态</h3>
+              <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap [&>a]:w-full [&>button]:w-full [&>form]:min-w-0 [&>form>button]:w-full sm:[&>a]:w-auto sm:[&>button]:w-auto sm:[&>form>button]:w-auto">
               <form action={updateDashboardEventStateAction}>
                 <input name="eventId" type="hidden" value={event.eventId} />
                 <input name="returnTo" type="hidden" value={returnTo} />
@@ -191,7 +206,8 @@ export default async function EventDetailPage({
                   size="sm"
                   type="submit"
                   value="dismiss"
-                  variant="danger"
+                  className="text-destructive hover:bg-destructive/10"
+                  variant="ghost"
                 >
                   <EyeOff aria-hidden="true" size={14} />
                   忽略此条
@@ -228,9 +244,13 @@ export default async function EventDetailPage({
                   </Button>
                 </form>
               )}
-            </div>
+              </div>
+            </section>
 
-            <div className="event-detail-actions">
+            <section className="grid gap-3 border-t border-border pt-5" aria-labelledby="event-preference-actions">
+              <h3 className="text-sm font-medium" id="event-preference-actions">调整偏好</h3>
+              <p className="text-sm leading-relaxed text-muted-foreground">这些反馈只影响当前主题的后续排序，不会移除这条情报。</p>
+              <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap [&>form]:min-w-0 [&>form>button]:w-full sm:[&>form>button]:w-auto">
               <form action={updateCategoryPreferenceAction}>
                 <input name="eventId" type="hidden" value={event.eventId} />
                 <input name="returnTo" type="hidden" value={returnTo} />
@@ -289,10 +309,13 @@ export default async function EventDetailPage({
                   少看类似
                 </Button>
               </form>
-            </div>
+              </div>
+            </section>
 
             {/* Issue #175 / SPEC §5.6: 来源质量反馈，影响当前 Topic 的 source 权重 */}
-            <div className="event-detail-actions">
+            <section className="grid gap-3 border-t border-border pt-5" aria-labelledby="event-calibration-actions">
+              <h3 className="text-sm font-medium" id="event-calibration-actions">校准来源与评分</h3>
+              <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap [&>form]:min-w-0 [&>form>button]:w-full sm:[&>form>button]:w-auto">
               <form action={recordEnhancedFeedbackAction}>
                 <input name="topicId" type="hidden" value={event.topicId} />
                 <input name="eventId" type="hidden" value={event.eventId} />
@@ -323,10 +346,10 @@ export default async function EventDetailPage({
                   来源存疑
                 </Button>
               </form>
-            </div>
+              </div>
 
             {/* Issue #175 / SPEC §5.6: 评分校准反馈，调整当前事件分数相关 category 权重 */}
-            <div className="event-detail-actions">
+              <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap [&>form]:min-w-0 [&>form>button]:w-full sm:[&>form>button]:w-auto">
               <form action={recordEnhancedFeedbackAction}>
                 <input name="topicId" type="hidden" value={event.topicId} />
                 <input name="eventId" type="hidden" value={event.eventId} />
@@ -357,9 +380,12 @@ export default async function EventDetailPage({
                   评分偏高
                 </Button>
               </form>
-            </div>
+              </div>
+            </section>
 
-            <div className="event-detail-actions">
+            <section className="grid gap-3 border-t border-border pt-5" aria-labelledby="event-tool-actions">
+              <h3 className="text-sm font-medium" id="event-tool-actions">工具</h3>
+              <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 sm:flex sm:flex-wrap [&>a]:w-full [&>form]:min-w-0 [&>form>button]:w-full sm:[&>a]:w-auto sm:[&>form>button]:w-auto">
               <form action={regenerateEventSummaryAction}>
                 <input name="eventId" type="hidden" value={event.eventId} />
                 <input name="returnTo" type="hidden" value={returnTo} />
@@ -368,28 +394,29 @@ export default async function EventDetailPage({
                   {event.summaryStatus === "READY" ? "重新采集并生成" : "重新采集"}
                 </Button>
               </form>
-              <Button asChild size="sm" variant="primary">
+              <Button asChild size="sm" variant="secondary">
                 <a href={`/exports/events/${event.eventId}`}>
                   <Download aria-hidden="true" size={14} />
                   Markdown
                 </a>
               </Button>
               {itemUrl ? (
-                <Button asChild size="sm" variant="ghost">
+                <Button asChild size="sm" variant="primary">
                   <a href={itemUrl} rel="noreferrer" target="_blank">
                     <ExternalLink aria-hidden="true" size={14} />
                     原文
                   </a>
                 </Button>
               ) : sourceUrl ? (
-                <Button asChild size="sm" variant="ghost">
+                <Button asChild size="sm" variant="primary">
                   <a href={sourceUrl} rel="noreferrer" target="_blank">
                     <ExternalLink aria-hidden="true" size={14} />
                     来源
                   </a>
                 </Button>
               ) : null}
-            </div>
+              </div>
+            </section>
           </article>
         </CardContent>
       </Card>
@@ -402,6 +429,22 @@ function readSearchParam(value: string | string[] | undefined): string {
   return typeof rawValue === "string" ? rawValue.trim().slice(0, 120) : "";
 }
 
+function formatCategoryLabel(category: string): string {
+  const [rawKind = "", ...rawValueParts] = category.split(":");
+  const value = decodeHtmlEntities(rawValueParts.join(":").trim());
+  if (!value) {
+    return decodeHtmlEntities(category);
+  }
+
+  const kindLabel: Record<string, string> = {
+    entity: "实体",
+    keyword: "关键词",
+    scope: "覆盖范围",
+    source: "来源",
+  };
+  return `${kindLabel[rawKind.toLowerCase()] ?? "内容方向"} · ${value}`;
+}
+
 function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
     day: "2-digit",
@@ -411,4 +454,3 @@ function formatDateTime(value: string): string {
     year: "numeric",
   }).format(new Date(value));
 }
-

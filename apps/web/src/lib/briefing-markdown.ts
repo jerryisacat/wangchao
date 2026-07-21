@@ -90,6 +90,27 @@ function stripFrontmatter(markdown: string): string {
 }
 
 /**
+ * 将生成链路遗留的工程化英文解释转换为面向读者的简体中文。
+ * 只处理已知固定模板，不改写自由文本，也不改变原始存储和导出内容。
+ */
+export function normalizeBriefingDisplayText(text: string): string {
+  return text
+    .replace(
+      /Matched topic keywords:\s*([^.。\n]+)[.。]?/gi,
+      (_match, keywords: string) => `命中主题关键词：${keywords.trim()}。`,
+    )
+    .replace(
+      /Matched topic entities:\s*([^.。\n]+)[.。]?/gi,
+      (_match, entities: string) => `命中关键实体：${entities.trim()}。`,
+    )
+    .replace(
+      /Matched include scope:\s*([^.。\n]+)[.。]?/gi,
+      (_match, scope: string) => `命中覆盖范围：${scope.trim()}。`,
+    )
+    .replace(/Matched default relevance threshold[.。]?/gi, "达到默认相关性阈值。");
+}
+
+/**
  * 将简报 Markdown 渲染为安全的 HTML 片段。
  *
  * 支持的语法子集（对齐 renderDailyBriefingMarkdown 产出）：
@@ -108,7 +129,7 @@ function stripFrontmatter(markdown: string): string {
 export function renderBriefingMarkdown(markdown: string): string {
   if (!markdown || !markdown.trim()) return "";
 
-  const source = stripFrontmatter(markdown);
+  const source = stripFrontmatter(normalizeBriefingDisplayText(markdown));
   const lines = source.split("\n");
 
   const html: string[] = [];

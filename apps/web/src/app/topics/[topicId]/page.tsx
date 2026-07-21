@@ -13,10 +13,11 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 import { updateTopicStatusAction, updateDashboardEventStateAction } from "@/app/actions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBanner } from "@/components/common/status-banner";
 import { DeleteTopicButton } from "@/components/topics/delete-topic-button";
@@ -63,7 +64,7 @@ export default async function TopicDetailPage({
 
   return (
     <>
-      <PageHeader eyebrow="TOPIC DASHBOARD" title={topic.name}>
+      <PageHeader eyebrow="主题工作台" title={topic.name}>
         <Button asChild size="sm" variant="ghost">
           <Link href="/topics">
             <ArrowLeft aria-hidden="true" size={14} />
@@ -103,80 +104,70 @@ export default async function TopicDetailPage({
       ) : null}
 
       {/* Topic status & stats card */}
-      <Card className="topic-detail-card" variant="kinetic">
-        <div className="topic-detail-status">
-          <TopicStatusBadge status={topic.status} />
-          {topic.status === "ACTIVE" ? (
-            <form action={updateTopicStatusAction}>
-              <input type="hidden" name="topicId" value={topic.id} />
-              <input type="hidden" name="statusAction" value="pause" />
-              <Button type="submit" size="sm" variant="secondary">
-                <Pause aria-hidden="true" size={14} />
-                <span>暂停抓取</span>
-              </Button>
-            </form>
-          ) : null}
-          {topic.status === "PAUSED" ? (
-            <form action={updateTopicStatusAction}>
-              <input type="hidden" name="topicId" value={topic.id} />
-              <input type="hidden" name="statusAction" value="resume" />
-              <Button type="submit" size="sm" variant="primary">
-                <Play aria-hidden="true" size={14} />
-                <span>恢复抓取</span>
-              </Button>
-            </form>
-          ) : null}
-          {topic.status !== "ARCHIVED" ? (
-            <form action={updateTopicStatusAction}>
-              <input type="hidden" name="topicId" value={topic.id} />
-              <input type="hidden" name="statusAction" value="archive" />
-              <Button type="submit" size="sm" variant="ghost">
-                <Archive aria-hidden="true" size={14} />
-                <span>归档</span>
-              </Button>
-            </form>
-          ) : null}
-          {topic.status === "ARCHIVED" ? (
-            <form action={updateTopicStatusAction}>
-              <input type="hidden" name="topicId" value={topic.id} />
-              <input type="hidden" name="statusAction" value="restore" />
-              <Button type="submit" size="sm" variant="primary">
-                <Play aria-hidden="true" size={14} />
-                <span>恢复</span>
-              </Button>
-            </form>
-          ) : null}
-          <DeleteTopicButton topicId={topic.id} topicName={topic.name} />
-        </div>
+      <Card className="gap-5" variant="work">
+        <CardContent className="grid gap-5">
+          <div className="flex flex-wrap items-center gap-2">
+            <TopicStatusBadge status={topic.status} />
+            {topic.status === "ACTIVE" ? (
+              <form action={updateTopicStatusAction}>
+                <input type="hidden" name="topicId" value={topic.id} />
+                <input type="hidden" name="statusAction" value="pause" />
+                <Button type="submit" size="sm" variant="secondary">
+                  <Pause aria-hidden="true" size={14} />
+                  <span>暂停抓取</span>
+                </Button>
+              </form>
+            ) : null}
+            {topic.status === "PAUSED" ? (
+              <form action={updateTopicStatusAction}>
+                <input type="hidden" name="topicId" value={topic.id} />
+                <input type="hidden" name="statusAction" value="resume" />
+                <Button type="submit" size="sm" variant="primary">
+                  <Play aria-hidden="true" size={14} />
+                  <span>恢复抓取</span>
+                </Button>
+              </form>
+            ) : null}
+            {topic.status !== "ARCHIVED" ? (
+              <form action={updateTopicStatusAction}>
+                <input type="hidden" name="topicId" value={topic.id} />
+                <input type="hidden" name="statusAction" value="archive" />
+                <Button type="submit" size="sm" variant="ghost">
+                  <Archive aria-hidden="true" size={14} />
+                  <span>归档</span>
+                </Button>
+              </form>
+            ) : null}
+            {topic.status === "ARCHIVED" ? (
+              <form action={updateTopicStatusAction}>
+                <input type="hidden" name="topicId" value={topic.id} />
+                <input type="hidden" name="statusAction" value="restore" />
+                <Button type="submit" size="sm" variant="primary">
+                  <Play aria-hidden="true" size={14} />
+                  <span>恢复</span>
+                </Button>
+              </form>
+            ) : null}
+            <DeleteTopicButton topicId={topic.id} topicName={topic.name} />
+          </div>
 
-        {topic.description ? (
-          <p className="topic-detail-description">{topic.description}</p>
-        ) : null}
+          {topic.description ? (
+            <p className="max-w-[72ch] text-base leading-relaxed text-foreground">
+              {topic.description}
+            </p>
+          ) : null}
 
-        <div className="topic-detail-stats">
-          <div className="topic-detail-stat">
-            <Rss aria-hidden="true" size={16} />
-            <span className="topic-detail-stat-value">{topic.sourceCount}</span>
-            <span className="topic-detail-stat-label">信源</span>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <TopicStat icon={<Rss aria-hidden="true" size={16} />} label="信源" value={topic.sourceCount} />
+            <TopicStat icon={<Sparkles aria-hidden="true" size={16} />} label="情报事件" value={topic.eventCount} />
+            <TopicStat icon={<FileText aria-hidden="true" size={16} />} label="简报" value={topic.briefingCount} />
+            <TopicStat
+              icon={<Clock3 aria-hidden="true" size={16} />}
+              label="最后更新"
+              value={new Date(topic.updatedAt).toLocaleDateString("zh-CN")}
+            />
           </div>
-          <div className="topic-detail-stat">
-            <Sparkles aria-hidden="true" size={16} />
-            <span className="topic-detail-stat-value">{topic.eventCount}</span>
-            <span className="topic-detail-stat-label">情报事件</span>
-          </div>
-          <div className="topic-detail-stat">
-            <FileText aria-hidden="true" size={16} />
-            <span className="topic-detail-stat-value">{topic.briefingCount}</span>
-            <span className="topic-detail-stat-label">简报</span>
-          </div>
-          <div className="topic-detail-stat">
-            <Clock3 aria-hidden="true" size={16} />
-            <span className="topic-detail-stat-value">
-              {new Date(topic.updatedAt).toLocaleDateString("zh-CN")}
-            </span>
-            <span className="topic-detail-stat-label">最后更新</span>
-          </div>
-        </div>
+        </CardContent>
       </Card>
 
       {/* Issue #185: 一体化 Dashboard 视图 */}
@@ -185,6 +176,28 @@ export default async function TopicDetailPage({
         eventStateAction={updateDashboardEventStateAction}
       />
     </>
+  );
+}
+
+function TopicStat({
+  icon,
+  label,
+  value,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: ReactNode;
+}) {
+  return (
+    <div className="min-w-0 rounded-[16px] bg-muted p-4">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <div className="mt-2 min-w-0 break-words text-lg font-medium leading-tight tabular-nums">
+        {value}
+      </div>
+    </div>
   );
 }
 

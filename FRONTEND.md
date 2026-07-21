@@ -192,6 +192,10 @@ App Shell 使用顶部导航（`components/layout/app-shell.tsx` + `top-nav.tsx`
 
 反馈动作区分“忽略此条”和类别偏好：“忽略此条”改变事件状态并退出默认信息流；“多关注这类 / 少关注这类”只调整当前 Topic 下的 category 偏好，提交后留在详情页并显示明确反馈。移动端动作区换行，每个按钮仍 ≥44px。
 
+- 类别展示必须把 `keyword:<value>`、`entity:<value>` 等内部结构转换为“关键词 · … / 实体 · …”，不得把工程 key 直接暴露给读者。
+- 动作按“阅读状态 / 调整偏好 / 校准来源与评分 / 工具”分组；“忽略此条”使用低权重危险文字态，原文是主要阅读行动，Markdown 和重新采集是次级工具。
+- 摘要、解释和后续跟踪正文以 16px、舒适行高和最多约 72ch 的阅读宽度呈现；来源、主题和更新时间使用独立 tonal metadata surface，不压成一行。
+
 摘要区域必须读取结构化状态：采集等待、采集失败、内容不足、平台暂不支持、AI 失败均显示明确提示，不得用标题或 RSS 摘要伪装成 AI 摘要；这些状态仍保留“原文”和“重新采集”动作。首页情报卡片使用同一状态文案。
 
 摘要语言跟随用户当前界面语言；完成 i18n 适配前固定简体中文，主题编辑页只读展示该状态。术语规则仍可编辑，用于保留产品名、缩写和指定译法。
@@ -210,6 +214,8 @@ App Shell 使用顶部导航（`components/layout/app-shell.tsx` + `top-nav.tsx`
 
 每个信源卡片（`Card` 或行）显示：状态（candidate / active / muted / rejected，`Badge`）、命中率 / 噪音率 / 重复率 / 质量分（`Badge` + meter 条）、最近抓取时间、推荐动作（approve / observe / mute / reject，`Button` 对应变体）、证据（为什么推荐这个操作）。大数字用 `font-medium tabular-nums`；hover 状态层只用于可点击动作。
 
+来源名称、推荐理由和错误摘要若包含 RSS / HTML 实体，应在显示层解码后交给 React 安全转义，不能把 `&#039;`、`&amp;` 等编码直接展示给用户。
+
 ### 5.7 偏好记忆
 
 偏好记忆（`app/preferences/page.tsx`）必须可解释，不做神秘 AI 黑盒。
@@ -225,6 +231,8 @@ App Shell 使用顶部导航（`components/layout/app-shell.tsx` + `top-nav.tsx`
 
 - 周期筛选：顶部 DAILY / WEEKLY / MONTHLY 周期 pill tabs（≥44px，`data-active` 标识当前项，URL 参数服务端筛选）。
 - 列表标题必须可进入简报详情；“阅读”是主要行动，“Markdown”是次级导出行动。周期、主题、覆盖日期、生成时间分层展示，不把它们压成同一行元数据。
+- 详情正文限制在约 72ch，以 16px / 1.75 行高呈现，标题、段落、列表、分隔线和外链具有稳定 editorial 层级；正文外链与“简报内情报”入口保留 ≥44px 触达高度。
+- 浏览器显示层须把 `Matched topic keywords/entities/include scope` 等生成链路固定模板转换为简体中文；仅转换已知模板，不改写自由文本、原始存储或导出文件。
 - Obsidian-friendly 文件名：简报导出 `{date}-{period}-{slug}.md`（如 `2026-07-11-weekly-ai-infrastructure.md`）。
 - 主题批量导出：主题详情页“批量导出”下载 Top 100 事件为单个 Markdown（`{date}-batch-{slug}.md`）。
 - 主题时间线：主题详情页“时间线”入口，按 `occurredAt` 倒序展示全部正式事件，含 merged sources。
@@ -243,6 +251,8 @@ App Shell 使用顶部导航（`components/layout/app-shell.tsx` + `top-nav.tsx`
 ### 5.10 历史与主题管理
 
 - 阅读历史的“已读 / 忽略 / 收藏 / 归档”是横向分段筛选：移动端 2×2、`sm` 起 4 列，每项 ≥44px；图标、标签和当前数量保持同一行，不允许退化为整列文字。
+- 主题详情页头动作允许自然换行，320px 下不横向滚动；状态摘要使用 `Card variant=work`，统计在移动端 2 列、`sm` 起 4 列，不使用 hover scale。
+- 主题工作台的未读和收藏情报不再套入外层 Card，避免 card-in-card；7 / 30 天切换和最近简报标题入口必须 ≥44px，并使用 Tailwind + MD3 原语而非未定义的 bespoke 类。
 - 主题标题是卡片的主要入口，触达高度 ≥44px；编辑、暂停/恢复、归档为次级操作。永久删除保留二次确认，但使用危险文字态，不与主行动争夺视觉优先级。
 
 ## 6. 组件规范

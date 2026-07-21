@@ -1,5 +1,19 @@
 ## 2026-07-21
 
+### Fix: 第三轮视觉检查收束详情页与主题工作台阅读层级
+
+- Cause: Railway 真实数据巡检发现情报详情直接暴露 `keyword:<value>`，14 个反馈与工具动作无分组且“忽略此条”抢占主视觉；主题详情保留 hover scale 与未定义 bespoke class，7 / 30 天切换和最近简报入口不足 44px；简报详情的正文、元数据、下载和 Event 入口缺少样式，正文还会显示 `Matched topic keywords`；信源名称及推荐理由把 HTML 实体编码直接展示给用户。既有响应式测试又依赖已删除的 Topic / Event 类名，未覆盖这些动态详情路由。
+- Changed:
+  - 情报详情把内部 category 转为“关键词 / 实体 / 覆盖范围”，正文收成 72ch 阅读宽度与 MD3 tonal metadata surface；14 个动作按“阅读状态 / 调整偏好 / 校准来源与评分 / 工具”分组，忽略动作降为危险文字态，原文提升为主要阅读行动。
+  - 主题状态摘要回归 `Card variant=work`，统计改为移动端 2 列、`sm` 起 4 列；工作台移除未读 / 收藏外层 Card，趋势 tabs 与最近简报入口补足 44px，并用 Tailwind + MD3 原语替换未定义 bespoke class。
+  - 简报详情建立 editorial 正文层级、72ch measure、16px / 1.75 行高和 44px 外链 / Event 入口；显示层本地化已知相关性解释模板，保持原始存储与导出不变并补安全 renderer fixture。
+  - 信源治理与信源健康显示层统一解码常见 HTML 实体后交给 React 转义；页面头动作允许自然换行，主题编辑页 eyebrow 改为简体中文且表单回归稳定的 `work` Card。
+  - 响应式 smoke 改用稳定 href 发现 Event / Topic / Briefing / Report 详情并纳入 history、reports、pricing、usage、topic timeline，避免视觉迁移后深层页面漏测。
+  - `FRONTEND.md` 与 `docs/L3-modules.md` 固化详情页阅读宽度、动作层级、触达尺寸、实体解码和动态路由回归要求。
+- Files: `apps/web/src/app/{events/[eventId],briefings/[briefingId],sources,topics/[topicId],topics/[topicId]/edit}/page.tsx`、`apps/web/src/components/{common/page-header,intelligence/topic-dashboard-view,intelligence/trend-chart}.tsx`、`apps/web/src/lib/{briefing-markdown,event-display}.ts`、`apps/web/scripts/briefing-detail.fixture.mjs`、`tests/smoke/responsive.spec.ts`、`FRONTEND.md`、`docs/L3-modules.md`。
+- Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过；本地 production server 的 320 / 375 / 414 / 768 / 1024 / 1440px 响应式矩阵通过（1 passed）。本地未配置 `DATABASE_URL`，真实数据详情页在 Railway 部署后补全矩阵与实图复查。
+- Notes / Risk: 仅调整浏览器显示层、布局和测试发现器，不改变查询、Server Action、权限、数据库、Worker、原始简报或导出内容；HTML 实体解码后仍由 React 安全转义，Markdown renderer 保持先 escape 再白名单渲染的安全边界。
+
 ### Fix: 第二轮视觉检查收束二级页面层级与可读性
 
 - Cause: Railway 真实数据巡检发现 `/history` 状态筛选缺少布局样式，在桌面和移动端均退化为纵向整列；`/preferences` 直接暴露内部 key 与英文 explanation；`/topics` 主题主链接仅 24px 高且永久删除抢主视觉；`/briefings` 缺少进入简报详情的明确行动，标题、周期、元数据和导出层级混杂。

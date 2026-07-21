@@ -120,7 +120,7 @@ function extractLabeledUrl(rawSummary: string, label: string): string {
   return "";
 }
 
-function decodeHtmlEntities(value: string): string {
+export function decodeHtmlEntities(value: string): string {
   return value
     .replaceAll("&amp;", "&")
     .replaceAll("&lt;", "<")

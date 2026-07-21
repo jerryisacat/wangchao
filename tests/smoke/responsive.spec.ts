@@ -24,7 +24,7 @@ test("all app pages stay in frame with touch-sized, readable controls", async ({
     testInfo.project.name !== "chromium-desktop",
     "The breakpoint matrix already includes mobile sizes.",
   );
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
 
   const paths = await discoverAppPaths(page);
 
@@ -172,26 +172,47 @@ test("all app pages stay in frame with touch-sized, readable controls", async ({
 
 async function discoverAppPaths(page: Page): Promise<string[]> {
   await page.goto("/");
-  const eventLinks = page.locator('.intelligence-card-title a[href^="/events/"]');
+  const eventLinks = page.locator('main a[href^="/events/"]');
   const eventHref =
     (await eventLinks.count()) > 0 ? await eventLinks.first().getAttribute("href") : null;
 
   await page.goto("/topics");
-  const topicLinks = page.locator('.topic-list-item-name[href^="/topics/"]');
+  const topicLinks = page.locator(
+    'main a[href^="/topics/"]:not([href="/topics/new"]):not([href$="/edit"]):not([href$="/timeline"])',
+  );
   const topicHref =
     (await topicLinks.count()) > 0 ? await topicLinks.first().getAttribute("href") : null;
+
+  await page.goto("/briefings");
+  const briefingLinks = page.locator('main a[href^="/briefings/"]');
+  const briefingHref =
+    (await briefingLinks.count()) > 0
+      ? await briefingLinks.first().getAttribute("href")
+      : null;
+
+  await page.goto("/reports");
+  const reportLinks = page.locator('main a[href^="/reports/"]');
+  const reportHref =
+    (await reportLinks.count()) > 0 ? await reportLinks.first().getAttribute("href") : null;
 
   return [
     "/",
     "/briefings",
+    briefingHref,
+    "/history",
+    "/reports",
+    reportHref,
     "/saved",
     "/preferences",
+    "/pricing",
     "/sources",
     "/topics",
     "/topics/new",
     topicHref,
     topicHref ? `${topicHref}/edit` : null,
+    topicHref ? `${topicHref}/timeline` : null,
     eventHref,
+    "/usage",
     "/admin/settings",
     "/admin/usage",
   ].filter((path): path is string => Boolean(path));

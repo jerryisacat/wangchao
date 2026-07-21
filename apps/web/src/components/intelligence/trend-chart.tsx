@@ -4,6 +4,7 @@
 // FRONTEND §4.4：移动端单列阅读，无横向滚动，点击区 ≥44px。
 
 import { Badge } from "@/components/ui/badge";
+import { decodeHtmlEntities } from "@/lib/event-display";
 
 interface TrendBarChartProps {
   buckets: Array<{ label: string; value: number }>;
@@ -168,7 +169,9 @@ export function SourceHealthList({ sources }: SourceHealthListProps) {
       {sources.map((source) => (
         <div className="source-health-row" key={source.sourceId}>
           <div className="source-health-header">
-            <span className="source-health-name">{source.name}</span>
+            <span className="source-health-name">
+              {decodeHtmlEntities(source.name)}
+            </span>
             <Badge variant={STATUS_VARIANTS[source.status] ?? "muted"}>
               {STATUS_LABELS[source.status] ?? source.status}
             </Badge>
@@ -214,7 +217,9 @@ export function SourceHealthList({ sources }: SourceHealthListProps) {
           {source.consecutiveFailures > 0 ? (
             <p className="source-health-warning">
               连续失败 {source.consecutiveFailures} 次
-              {source.lastError ? `：${source.lastError}` : ""}
+              {source.lastError
+                ? `：${decodeHtmlEntities(source.lastError)}`
+                : ""}
             </p>
           ) : null}
         </div>
