@@ -9,7 +9,7 @@
   - 新增 `--queue-worker` / `worker:queue` / Railway start 入口和无数据库 fixtures，覆盖空闲、积压、预算刷新、heartbeat 与 graceful shutdown。
   - 新增独立无 Cron 的 `queue-worker.railway.json`，配置异常重启、deployment overlap/draining；同步环境变量示例、部署拓扑、运维 runbook 与分层文档。
 - Files: `apps/worker/src/{index,index.fixtures}.ts`、`apps/worker/src/modules/{env,queue-worker,queue-worker.fixtures}.ts`、`apps/worker/package.json`、`package.json`、`.env_example`、`deploy/railway/queue-worker.railway.json`、`deploy/railway/README.md`、`AGENTS.md`、`CODEGUIDE.md`、`README.md`、`README-en.md`、`docs/{L3-modules,L4-operations,deployment,railway-deployment,railway-runbook}.md`、`DEVELOPE_LOGS.md`、`AGENTS_CHANGELOGS.md`。
-- Verification: `CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、`pnpm db:validate`、Railway config JSON 解析和 `git diff --check` 全部通过；Worker fixtures 验证空闲/活动 drain、fresh budget、heartbeat 聚合与 graceful shutdown。生产 Queue Worker 在线检查在本提交推送后通过 Railway CLI 执行。
+- Verification: `CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、`pnpm db:validate`、Railway config JSON 解析和 `git diff --check` 全部通过；Worker fixtures 验证空闲/活动 drain、fresh budget、heartbeat 聚合与 graceful shutdown。首次 Railway 构建暴露 `overlapSeconds/drainingSeconds` 类型应为 number，修正后重新部署并执行在线检查。
 - Notes / Risk: 不新增 DB schema 或 migration；Queue Worker 与 Cron 共享既有 fenced lease consumer，允许横向并发但同一 TaskRun 只能由 lease owner 结算。新增常驻 Railway service 会产生持续运行成本。
 
 ## 2026-07-21
