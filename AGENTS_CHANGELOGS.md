@@ -10,8 +10,8 @@
   - 登录与注册补语义 `h1`，主提交保持整行 44px，互跳入口改为整行 44px 次级按钮；响应式矩阵新增登录、注册和带测试草案 Cookie 的完整确认页。
   - `FRONTEND.md`、`CODEGUIDE.md` 与 `docs/L3-modules.md` 固化草案核对、已保存操作、账户入口和显示文本规则。
 - Files: `apps/web/src/app/{login,register,saved,topics/new/preview}/**`、`apps/web/src/components/intelligence/intelligence-card.tsx`、`apps/web/src/lib/display-text.ts`、`apps/web/scripts/summary-status.fixture.mjs`、`tests/smoke/responsive.spec.ts`、`FRONTEND.md`、`CODEGUIDE.md`、`docs/L3-modules.md`。
-- Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过（构建仅保留既有 PDF NFT tracing warnings）；扩展后的本地 320 / 375 / 414 / 768 / 1024 / 1440px 响应式矩阵通过（1 passed）。375px 定点复查确认：草案确认 3 张 Card 均 `scrollWidth = clientWidth = 343px`，11 个标签均为 14px / 500，重新生成 295×44px、确认创建 311×44px；登录 / 注册分别具有语义 `h1`，输入 56px、提交与互跳按钮 44px，页面宽度均为 375px。
-- Notes / Risk: 仅调整展示、布局、响应式测试与已知固定解释的显示层转换，不改变草案 Cookie 契约、确认创建写入时机、认证流程、事件原始存储、查询、权限、数据库或 Worker；显示文本继续交给 React 安全转义。Railway 真实数据与扩展矩阵将在部署后复查。
+- Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过（构建仅保留既有 PDF NFT tracing warnings）；扩展后的本地与 Railway 真实数据 320 / 375 / 414 / 768 / 1024 / 1440px 响应式矩阵均通过（各 1 passed）。375px 定点复查确认：草案确认 3 张 Card 均 `scrollWidth = clientWidth = 343px`，11 个标签均为 14px / 500，重新生成 295×44px、确认创建 311×44px；登录 / 注册分别具有语义 `h1`，输入 56px、提交与互跳按钮 44px，页面宽度均为 375px；Railway 草案缺失态已切换为 `work` Card 与统一“草案不可用”文案。
+- Notes / Risk: 仅调整展示、布局、响应式测试与已知固定解释的显示层转换，不改变草案 Cookie 契约、确认创建写入时机、认证流程、事件原始存储、查询、权限、数据库或 Worker；显示文本继续交给 React 安全转义。生产工作区当前没有已保存事件，带数据的 2+1 操作结构由扩展矩阵、类型测试和 fixture 覆盖，后续出现真实数据时继续纳入轮巡。
 
 ### Fix: 第四轮视觉检查收束报告、时间线与主题表单
 
