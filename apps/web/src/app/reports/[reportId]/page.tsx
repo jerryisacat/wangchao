@@ -7,7 +7,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBanner } from "@/components/common/status-banner";
 import { getReportDetail } from "@/lib/report-data";
-import { sanitizeForDisplay } from "@/lib/sanitize";
+import { renderBriefingMarkdown } from "@/lib/briefing-markdown";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +47,7 @@ export default async function ReportDetailPage({ params }: ReportDetailPageProps
   }
 
   const isProcessing = report.status === "PENDING" || report.status === "GENERATING";
+  const renderedHtml = report.markdown ? renderBriefingMarkdown(report.markdown) : "";
 
   return (
     <>
@@ -71,15 +72,15 @@ export default async function ReportDetailPage({ params }: ReportDetailPageProps
           <CardContent>
             <div className="flex flex-col gap-3">
               <div className="flex items-start gap-2">
-                <CircleAlert aria-hidden="true" className="mt-0.5 shrink-0 text-amber-600" size={16} />
+                <CircleAlert aria-hidden="true" className="mt-0.5 shrink-0 text-warning" size={16} />
                 <div className="flex flex-col gap-2">
-                  <p className="text-sm font-medium text-amber-900">情报库覆盖不足，未能生成完整报告。</p>
+                  <p className="text-sm font-medium text-foreground">情报库覆盖不足，未能生成完整报告。</p>
                   {report.coverageNote ? (
                     <p className="text-xs text-muted-foreground">{report.coverageNote}</p>
                   ) : null}
                 </div>
               </div>
-              <div className="flex flex-col gap-2 border-t border-amber-200 pt-3">
+              <div className="flex flex-col gap-2 border-t border-warning/30 pt-3">
                 <p className="text-xs font-medium text-muted-foreground">下一步建议</p>
                 <ul className="ml-4 list-disc text-xs text-muted-foreground">
                   <li>创建更精准的关注主题，覆盖该问题涉及的方向。</li>
@@ -122,50 +123,49 @@ export default async function ReportDetailPage({ params }: ReportDetailPageProps
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <dl className="grid gap-1.5 text-xs">
-              <div className="flex gap-2">
-                <dt className="w-20 shrink-0 text-muted-foreground">事件数</dt>
-                <dd className="text-muted-foreground">{report.eventCount}</dd>
+            <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="rounded-[16px] bg-muted p-3">
+                <dt className="text-sm text-muted-foreground">事件数</dt>
+                <dd className="mt-1 text-lg font-medium tabular-nums text-foreground">{report.eventCount}</dd>
               </div>
               {report.itemCount > 0 ? (
-                <div className="flex gap-2">
-                  <dt className="w-20 shrink-0 text-muted-foreground">情报正文</dt>
-                  <dd className="text-muted-foreground">{report.itemCount}</dd>
+                <div className="rounded-[16px] bg-muted p-3">
+                  <dt className="text-sm text-muted-foreground">情报正文</dt>
+                  <dd className="mt-1 text-lg font-medium tabular-nums text-foreground">{report.itemCount}</dd>
                 </div>
               ) : null}
               {report.topicIds.length > 0 ? (
-                <div className="flex gap-2">
-                  <dt className="w-20 shrink-0 text-muted-foreground">涉及主题</dt>
-                  <dd className="text-muted-foreground">{report.topicIds.length}</dd>
+                <div className="rounded-[16px] bg-muted p-3">
+                  <dt className="text-sm text-muted-foreground">涉及主题</dt>
+                  <dd className="mt-1 text-lg font-medium tabular-nums text-foreground">{report.topicIds.length}</dd>
                 </div>
               ) : null}
               {report.sourceIds.length > 0 ? (
-                <div className="flex gap-2">
-                  <dt className="w-20 shrink-0 text-muted-foreground">涉及信源</dt>
-                  <dd className="text-muted-foreground">{report.sourceIds.length}</dd>
+                <div className="rounded-[16px] bg-muted p-3">
+                  <dt className="text-sm text-muted-foreground">涉及信源</dt>
+                  <dd className="mt-1 text-lg font-medium tabular-nums text-foreground">{report.sourceIds.length}</dd>
                 </div>
               ) : null}
               {report.coverageNote ? (
-                <div className="flex gap-2">
-                  <dt className="w-20 shrink-0 text-muted-foreground">覆盖说明</dt>
-                  <dd className="text-muted-foreground">{report.coverageNote}</dd>
+                <div className="col-span-2 rounded-[16px] border border-border p-3 sm:col-span-4">
+                  <dt className="text-sm font-medium text-foreground">覆盖说明</dt>
+                  <dd className="mt-1 text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">{report.coverageNote}</dd>
                 </div>
               ) : null}
             </dl>
           </CardContent>
         </Card>
 
-        {report.markdown ? (
+        {renderedHtml ? (
           <Card variant="work">
             <CardHeader>
-              <CardTitle>报告内容</CardTitle>
+              <CardTitle><h2>报告正文</h2></CardTitle>
             </CardHeader>
             <CardContent>
-              <div>
-                <pre className="whitespace-pre-wrap break-words text-base leading-relaxed">
-                  {sanitizeForDisplay(report.markdown)}
-                </pre>
-              </div>
+              <div
+                className="mx-auto min-w-0 max-w-[72ch] [overflow-wrap:anywhere] text-base leading-7 text-foreground [&_a]:inline-flex [&_a]:min-h-11 [&_a]:max-w-full [&_a]:items-center [&_a]:font-medium [&_a]:text-primary [&_a]:underline [&_a]:underline-offset-4 [&_h1]:mb-5 [&_h1]:mt-2 [&_h1]:text-2xl [&_h1]:font-medium [&_h1]:leading-tight [&_h2]:mb-3 [&_h2]:mt-8 [&_h2]:text-xl [&_h2]:font-medium [&_h2]:leading-tight [&_hr]:my-8 [&_hr]:border-border [&_li]:my-2 [&_ol]:my-4 [&_ol]:list-decimal [&_ol]:space-y-2 [&_ol]:pl-6 [&_p]:my-4 [&_strong]:font-medium [&_ul]:my-3 [&_ul]:list-disc [&_ul]:space-y-2 [&_ul]:pl-6"
+                dangerouslySetInnerHTML={{ __html: renderedHtml }}
+              />
             </CardContent>
           </Card>
         ) : null}

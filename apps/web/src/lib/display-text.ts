@@ -17,3 +17,20 @@ export function decodeHtmlEntities(value: string): string {
     .replace(/&#(?:0*62|x0*3e);/gi, ">")
     .replace(/&#(?:0*160|x0*a0);/gi, " ");
 }
+
+/** 将事件分类内部值转换为面向用户的中文标签。 */
+export function formatCategoryLabel(category: string): string {
+  const [rawKind = "", ...rawValueParts] = category.split(":");
+  const value = decodeHtmlEntities(rawValueParts.join(":").trim());
+  if (!value) {
+    return decodeHtmlEntities(category);
+  }
+
+  const kindLabel: Record<string, string> = {
+    entity: "实体",
+    keyword: "关键词",
+    scope: "覆盖范围",
+    source: "来源",
+  };
+  return `${kindLabel[rawKind.toLowerCase()] ?? "内容方向"} · ${value}`;
+}

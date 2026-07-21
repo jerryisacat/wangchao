@@ -72,11 +72,11 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
               maxLength={500}
               required
             />
-            <div className="flex items-center justify-between">
+            <div className="grid gap-3 sm:flex sm:items-center sm:justify-between">
               <span className="text-xs text-muted-foreground">
                 报告生成是异步任务，提交后可在下方查看进度。
               </span>
-              <Button size="sm" type="submit" variant="primary">
+              <Button className="w-full sm:w-auto" size="sm" type="submit" variant="primary">
                 <FileSearch aria-hidden="true" size={14} />
                 生成报告
               </Button>
@@ -101,13 +101,13 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
               <div className="divide-y divide-border">
                 {data.reports.map((report) => (
                   <article
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-4 transition-colors first:pt-0 last:pb-0"
+                    className="grid items-start gap-3 py-4 transition-colors first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_auto]"
                     key={report.id}
                   >
                     <div className="min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Link
-                          className="text-base font-medium text-foreground hover:text-primary hover:underline"
+                          className="flex min-h-11 min-w-0 items-center rounded-[10px] text-base font-medium text-foreground [overflow-wrap:anywhere] hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           href={`/reports/${report.id}`}
                         >
                           {report.question}
@@ -125,7 +125,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
                         {report.eventCount > 0 ? ` · ${report.eventCount} 条事件` : ""}
                       </p>
                     </div>
-                    <Button asChild size="sm" variant="ghost">
+                    <Button asChild className="w-full sm:w-auto" size="sm" variant="ghost">
                       <Link href={`/reports/${report.id}`}>查看</Link>
                     </Button>
                   </article>

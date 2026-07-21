@@ -1,5 +1,18 @@
 ## 2026-07-21
 
+### Fix: 第四轮视觉检查收束报告、时间线与主题表单
+
+- Cause: Railway 与代码巡检发现专题报告正文仍用等宽 `<pre>` 承载，标题、列表和外链缺乏阅读层级；报告历史行和提交区会在窄屏挤压主内容；主题时间线暴露内部 category、英文 `Unknown`、11px 等宽来源信息和小原文链接；主题编辑把十余个字段压在单一卡片中，12px 重标签与巨型名称输入使重点不清。
+- Changed:
+  - 专题报告详情复用安全 Markdown 白名单 renderer，正文收为 72ch、16px / 1.75 行高的 editorial 层级；统计改为移动端 2 列、`sm` 起 4 列 tonal surface，覆盖说明独立呈现，信息不足状态改用语义 token。
+  - 报告提交区与历史行改为移动端纵向布局，主按钮与查看动作占满可用宽度；报告标题成为可换行且 ≥44px 的主要入口，状态不再挤压标题。
+  - 事件 category 中文映射下沉到共享显示 helper，情报详情与主题时间线统一复用；时间线解码来源实体，移除 `Unknown` 与 11px 工程元数据，标题和“查看原文”入口补足 44px。
+  - 主题编辑按“基本信息 / 主题画像 / 语言与简报偏好”拆成三张工作卡片，标签回归 14px `Label` 原语，说明文字提升可读性，保存动作在移动端占满宽度；新建主题保留文档允许的品牌卡片，但移除内联样式和遗留 `form-actions`。
+  - `FRONTEND.md`、`CODEGUIDE.md` 与 `docs/L3-modules.md` 固化报告 editorial 层级、时间线本地化、44px 触点和编辑表单分区规则。
+- Files: `apps/web/src/app/{reports,reports/[reportId],topics/[topicId]/timeline,topics/[topicId]/edit,topics/new,events/[eventId]}/page.tsx`、`apps/web/src/lib/display-text.ts`、`apps/web/scripts/summary-status.fixture.mjs`、`FRONTEND.md`、`CODEGUIDE.md`、`docs/L3-modules.md`。
+- Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过（构建仅保留既有 PDF NFT tracing warnings）；本地 320 / 375 / 414 / 768 / 1024 / 1440px 响应式矩阵通过。375px 定点复查确认新建主题 Card `scrollWidth = clientWidth = 343px`，标签为 14px / 500，返回与生成按钮均 44px，生成主按钮宽 295px，无页面或卡片超框。
+- Notes / Risk: 仅调整显示 helper、布局与安全渲染方式，不改变报告原始 Markdown、导出、查询、Server Action、权限、数据库或 Worker；报告继续使用先转义不可信文本再白名单渲染的安全边界。Railway 真实数据与六档宽度复查将在本提交部署后补充。
+
 ### Fix: 第三轮视觉检查收束详情页与主题工作台阅读层级
 
 - Cause: Railway 真实数据巡检发现情报详情直接暴露 `keyword:<value>`，14 个反馈与工具动作无分组且“忽略此条”抢占主视觉；主题详情保留 hover scale 与未定义 bespoke class，7 / 30 天切换和最近简报入口不足 44px；简报详情的正文、元数据、下载和 Event 入口缺少样式，正文还会显示 `Matched topic keywords`；信源名称及推荐理由把 HTML 实体编码直接展示给用户。既有响应式测试又依赖已删除的 Topic / Event 类名，未覆盖这些动态详情路由。

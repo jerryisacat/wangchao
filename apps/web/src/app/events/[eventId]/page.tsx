@@ -31,7 +31,7 @@ import { StatusBanner } from "@/components/common/status-banner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { decodeHtmlEntities } from "@/lib/display-text";
+import { decodeHtmlEntities, formatCategoryLabel } from "@/lib/display-text";
 import { getDashboardEventDetail } from "@/lib/topic-source-data";
 import { isHttpUrl } from "@wangchao/core";
 
@@ -427,22 +427,6 @@ export default async function EventDetailPage({
 function readSearchParam(value: string | string[] | undefined): string {
   const rawValue = Array.isArray(value) ? value[0] : value;
   return typeof rawValue === "string" ? rawValue.trim().slice(0, 120) : "";
-}
-
-function formatCategoryLabel(category: string): string {
-  const [rawKind = "", ...rawValueParts] = category.split(":");
-  const value = decodeHtmlEntities(rawValueParts.join(":").trim());
-  if (!value) {
-    return decodeHtmlEntities(category);
-  }
-
-  const kindLabel: Record<string, string> = {
-    entity: "实体",
-    keyword: "关键词",
-    scope: "覆盖范围",
-    source: "来源",
-  };
-  return `${kindLabel[rawKind.toLowerCase()] ?? "内容方向"} · ${value}`;
 }
 
 function formatDateTime(value: string): string {

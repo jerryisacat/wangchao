@@ -1,4 +1,4 @@
-import { ArrowLeft, Clock3, FileText } from "lucide-react";
+import { ArrowLeft, Clock3, ExternalLink, FileText } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import { getTopicTimeline } from "@/lib/topic-source-data";
+import { decodeHtmlEntities, formatCategoryLabel } from "@/lib/display-text";
 
 export const dynamic = "force-dynamic";
 
@@ -90,22 +91,25 @@ export default async function TopicTimelinePage({ params, searchParams }: Timeli
                     </div>
                     <div className="grid min-w-0 gap-2">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Link href={`/events/${event.eventId}`} className="text-foreground transition-colors hover:text-accent">
+                        <Link href={`/events/${event.eventId}`} className="flex min-h-11 min-w-0 items-center rounded-[10px] text-foreground transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                           <h3 className="m-0 text-[15px] font-bold leading-[1.35] [overflow-wrap:anywhere]">{event.title}</h3>
                         </Link>
-                        {event.category ? <Badge variant="outline">{event.category}</Badge> : null}
+                        {event.category ? <Badge variant="outline">{formatCategoryLabel(event.category)}</Badge> : null}
                       </div>
                       <p className="m-0 line-clamp-3 text-sm leading-[1.5] text-muted-foreground [overflow-wrap:anywhere]">{event.summary}</p>
-                      <div className="flex flex-wrap gap-3 font-mono text-[11px] text-muted-foreground">
-                        <span>来源: {event.sourceName ?? "Unknown"}</span>
+                      <div className="grid gap-2 text-sm leading-6 text-muted-foreground">
+                        <span>来源：{event.sourceName ? decodeHtmlEntities(event.sourceName) : "未知信源"}</span>
                         {event.url ? (
-                          <a href={event.url} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
-                            原文
-                          </a>
+                          <Button asChild className="w-full sm:w-fit" size="sm" variant="ghost">
+                            <a href={event.url} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink aria-hidden="true" size={14} />
+                              查看原文
+                            </a>
+                          </Button>
                         ) : null}
                         {event.secondarySources.length > 0 ? (
                           <span className="[overflow-wrap:anywhere]">
-                            联合报道: {event.secondarySources.map((s) => s.sourceName).join(", ")}
+                            联合报道：{event.secondarySources.map((s) => decodeHtmlEntities(s.sourceName)).join("、")}
                           </span>
                         ) : null}
                       </div>

@@ -1,5 +1,5 @@
 import { getSummaryDisplay } from "../src/lib/summary-status.ts";
-import { decodeHtmlEntities } from "../src/lib/display-text.ts";
+import { decodeHtmlEntities, formatCategoryLabel } from "../src/lib/display-text.ts";
 
 const ready = getSummaryDisplay("READY", "这是已经生成的摘要。");
 if (!ready.available || ready.text !== "这是已经生成的摘要。") {
@@ -21,4 +21,8 @@ const decodedEntities = decodeHtmlEntities(
 );
 if (decodedEntities !== 'What\'s & What\'s "new" today') {
   throw new Error(`Common named, padded and hexadecimal entities should decode: ${decodedEntities}`);
+}
+
+if (formatCategoryLabel("keyword:AI&#039;s future") !== "关键词 · AI's future") {
+  throw new Error("Internal event categories should render as localized, decoded labels.");
 }

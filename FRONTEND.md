@@ -208,6 +208,8 @@ App Shell 使用顶部导航（`components/layout/app-shell.tsx` + `top-nav.tsx`
 
 设计规则：输入框可以更大；草案编辑区回到清晰表单（`Input` / `Textarea` / `Label`）；创建后展示“系统开始观察”反馈动效（需 reduced-motion 版本）；首页只保留 `新增主题` 入口。
 
+主题编辑属于高频工作表单，不沿用新建页的品牌巨型输入。按“基本信息 / 主题画像 / 语言与简报偏好”拆成三个 `Card variant=work`，说明文案使用至少 14px 的舒适行高，标签遵循 `Label` 原语；移动端保存按钮占满可用宽度，避免十余个字段压入单一卡片后重点不清。
+
 ### 5.6 信源管理
 
 信源管理（`app/sources/page.tsx`）比情报流更偏操作面板。首页只显示情报来源，不展示信源治理指标。
@@ -236,7 +238,9 @@ App Shell 使用顶部导航（`components/layout/app-shell.tsx` + `top-nav.tsx`
 - 浏览器显示层须把 `Matched topic keywords/entities/include scope` 等生成链路固定模板转换为简体中文；仅转换已知模板，不改写自由文本、原始存储或导出文件。
 - Obsidian-friendly 文件名：简报导出 `{date}-{period}-{slug}.md`（如 `2026-07-11-weekly-ai-infrastructure.md`）。
 - 主题批量导出：主题详情页“批量导出”下载 Top 100 事件为单个 Markdown（`{date}-batch-{slug}.md`）。
-- 主题时间线：主题详情页“时间线”入口，按 `occurredAt` 倒序展示全部正式事件，含 merged sources。
+- 主题时间线：主题详情页“时间线”入口，按 `occurredAt` 倒序展示全部正式事件，含 merged sources；事件标题和原文入口均 ≥44px，分类值必须转换为中文显示标签，来源与联合报道使用可读正文样式，不显示 `Unknown`、内部 key 或 HTML 实体编码。
+
+专题报告（`app/reports/*`）沿用 editorial / intelligence report 层级：提交区在移动端纵向排列并让主按钮占满宽度；历史报告标题是 ≥44px 的主要入口，状态允许换行且行操作不挤压标题。详情统计使用移动端 2 列、`sm` 起 4 列 tonal surface；Markdown 正文经安全白名单 renderer 输出，限制约 72ch、16px / 1.75 行高，并为标题、段落、列表和外链建立稳定层级，不得用等宽 `<pre>` 承载整篇报告。覆盖不足状态只使用语义 token，不硬编码明暗色值。
 
 ### 5.9 管理后台设置
 
