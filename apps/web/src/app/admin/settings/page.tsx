@@ -187,7 +187,7 @@ export default async function AdminSettingsPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="mb-4 rounded-md border border-border bg-surface p-4">
+              <div className="mb-4 rounded-[16px] bg-muted p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <Badge variant={credential?.ai.hasKey ? "success" : "muted"}>
                     {credential?.ai.hasKey ? "已配置" : "未配置"}
@@ -244,7 +244,7 @@ export default async function AdminSettingsPage({
                 </form>
               </div>
 
-              <p className="credential-note">
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
                 保存后系统将使用此 Key 进行 AI 分析和信源推荐。当前 Key
                 不会显示，仅显示脱敏提示。
               </p>
@@ -263,7 +263,7 @@ export default async function AdminSettingsPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="mb-4 rounded-md border border-border bg-surface p-4">
+              <div className="mb-4 rounded-[16px] bg-muted p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <Badge
                     variant={credential?.search.hasKey ? "success" : "muted"}
@@ -314,7 +314,7 @@ export default async function AdminSettingsPage({
                 </form>
               </div>
 
-              <p className="credential-note">
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
                 保存后系统将使用此 Key 进行信源发现。当前 Key
                 不会显示，仅显示脱敏提示。
               </p>
@@ -333,7 +333,7 @@ export default async function AdminSettingsPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="mb-4 rounded-md border border-border bg-surface p-4">
+              <div className="mb-4 rounded-[16px] bg-muted p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <Badge
                     variant={telegramCredential.hasBotToken ? "success" : "muted"}
@@ -394,7 +394,7 @@ export default async function AdminSettingsPage({
                 </div>
               ) : null}
 
-              <p className="credential-note">
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
                 配置后，系统每日简报生成完成后会自动发送到指定 Telegram Chat。
                 Bot Token 加密存储，不会明文显示。未配置或禁用时不影响 Web/Markdown 简报。
               </p>
@@ -413,7 +413,7 @@ export default async function AdminSettingsPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="mb-4 rounded-md border border-border bg-surface p-4">
+              <div className="mb-4 rounded-[16px] bg-muted p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <Badge
                     variant={byokCredential.hasKey ? "success" : "muted"}
@@ -454,7 +454,7 @@ export default async function AdminSettingsPage({
                 ) : null}
               </div>
 
-              <p className="credential-note">
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
                 {subscription?.plan === "PLUS"
                   ? "Plus 计划要求必填 BYOK，AI 调用使用你自己的 Key（不限量）。"
                   : subscription?.plan === "PRO"
@@ -497,7 +497,7 @@ export default async function AdminSettingsPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="mb-4 rounded-md border border-border bg-surface p-4">
+              <div className="mb-4 rounded-[16px] bg-muted p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <Badge
                     variant={
@@ -546,7 +546,7 @@ export default async function AdminSettingsPage({
                 </div>
               ) : null}
 
-              <p className="credential-note">
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
                 配置后用户可通过加密货币支付升级订阅计划。App Secret 加密存储，不会明文显示。
               </p>
             </CardContent>
@@ -564,7 +564,7 @@ export default async function AdminSettingsPage({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="mb-4 rounded-md border border-border bg-surface p-4">
+              <div className="mb-4 rounded-[16px] bg-muted p-4">
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-muted-foreground">
                     {subscription?.isSelfHosted
@@ -584,7 +584,7 @@ export default async function AdminSettingsPage({
                 formAction={toggleSelfHostedModeAction}
               />
 
-              <p className="credential-note">
+              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
                 仅 OWNER 或 ADMIN 可操作。开启后跳过所有配额检查，隐藏定价页与支付入口。
               </p>
             </CardContent>

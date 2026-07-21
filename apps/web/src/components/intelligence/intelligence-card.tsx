@@ -11,6 +11,8 @@ import {
 import Link from "next/link";
 import type { DashboardEventSummary } from "@/lib/topic-source-data";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { isHttpUrl } from "@wangchao/core";
 
 function formatDateTime(value: string): string {
@@ -36,9 +38,9 @@ export function IntelligenceCard({
   const sourceLinkUrl = sourceUrl ?? itemUrl;
 
   return (
-    <article className="intelligence-card">
-      <div className="intelligence-card-header">
-        <Badge className="intelligence-card-topic" variant="default">
+    <Card className="px-6 gap-5" variant="default">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge className="max-w-full min-w-0 truncate" variant="default">
           {event.topicName}
         </Badge>
         {event.entities && event.entities.length > 0
@@ -48,9 +50,14 @@ export function IntelligenceCard({
               </Badge>
             ))
           : null}
-        <span className="intelligence-card-source">
+        <span className="min-w-0 flex-1 text-sm text-muted-foreground break-words">
           {sourceLinkUrl ? (
-            <a href={sourceLinkUrl} rel="noreferrer" target="_blank">
+            <a
+              className="text-primary hover:underline"
+              href={sourceLinkUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
               {event.sourceName}
             </a>
           ) : (
@@ -58,80 +65,93 @@ export function IntelligenceCard({
           )}
           {event.mergedSourceCount > 1 ? (
             <span>
-              · 另有 {event.mergedSourceCount - 1} 个来源报道
+              {" "}
+              · 另有{" "}
+              <span className="font-medium tabular-nums">
+                {event.mergedSourceCount - 1}
+              </span>{" "}
+              个来源报道
             </span>
           ) : null}
-          <span className="intelligence-card-time">
-            {" "}
-            · {formatDateTime(event.occurredAt)}
-          </span>
         </span>
+        <Badge variant="muted">{formatDateTime(event.occurredAt)}</Badge>
         {event.userSaved ? <Badge variant="accent">已收藏</Badge> : null}
       </div>
 
-      <h3 className="intelligence-card-title">
-        <Link href={`/events/${event.eventId}`}>{event.title}</Link>
+      <h3 className="text-lg font-medium leading-snug break-words">
+        <Link
+          className="text-foreground decoration-none transition-colors hover:text-primary"
+          href={`/events/${event.eventId}`}
+        >
+          {event.title}
+        </Link>
       </h3>
 
       <p
-        className="intelligence-card-summary"
+        className="text-base leading-relaxed text-foreground line-clamp-4 break-words"
         data-summary-status={event.summaryStatus}
       >
         {event.summary}
       </p>
 
       {event.explanation ? (
-        <div className="intelligence-card-reason">
-          <Sparkles aria-hidden="true" size={13} />
-          <span>{event.explanation}</span>
+        <div className="flex items-start gap-1.5 rounded-[16px] bg-muted p-3 text-sm text-muted-foreground">
+          <Sparkles aria-hidden="true" className="mt-0.5 shrink-0" size={13} />
+          <span className="min-w-0">{event.explanation}</span>
         </div>
       ) : null}
 
-      <div className="intelligence-card-actions">
-        <form action={eventStateAction}>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <form action={eventStateAction} className="min-w-0">
           <input name="eventId" type="hidden" value={event.eventId} />
           <input name="returnTo" type="hidden" value="/" />
-          <button
+          <Button
             aria-label="标记已读"
-            className="icon-action"
+            className="w-full justify-center"
             name="action"
+            size="sm"
             title="标记已读"
             type="submit"
             value="read"
+            variant="ghost"
           >
             <Check aria-hidden="true" size={14} />
             <span>已读</span>
-          </button>
+          </Button>
         </form>
-        <form action={eventStateAction}>
+        <form action={eventStateAction} className="min-w-0">
           <input name="eventId" type="hidden" value={event.eventId} />
           <input name="returnTo" type="hidden" value="/" />
-          <button
+          <Button
             aria-label="收藏"
-            className="icon-action"
+            className="w-full justify-center"
             name="action"
+            size="sm"
             title="收藏"
             type="submit"
             value="save"
+            variant="ghost"
           >
             <Bookmark aria-hidden="true" size={14} />
             <span>收藏</span>
-          </button>
+          </Button>
         </form>
-        <form action={eventStateAction}>
+        <form action={eventStateAction} className="min-w-0">
           <input name="eventId" type="hidden" value={event.eventId} />
           <input name="returnTo" type="hidden" value="/" />
-          <button
+          <Button
             aria-label="忽略此条"
-            className="icon-action"
+            className="w-full justify-center"
             name="action"
+            size="sm"
             title="忽略此条"
             type="submit"
             value="dismiss"
+            variant="ghost"
           >
             <ThumbsDown aria-hidden="true" size={14} />
             <span>忽略</span>
-          </button>
+          </Button>
         </form>
         <form action={eventStateAction}>
           <input name="eventId" type="hidden" value={event.eventId} />
@@ -149,31 +169,35 @@ export function IntelligenceCard({
           </button>
         </form>
         {itemUrl ? (
-          <a
+          <Button
             aria-label="查看原文"
-            className="icon-action"
-            href={itemUrl}
-            rel="noreferrer"
-            target="_blank"
+            asChild
+            className="w-full justify-center"
+            size="sm"
             title="查看原文"
+            variant="ghost"
           >
-            <ExternalLink aria-hidden="true" size={14} />
-            <span>原文</span>
-          </a>
+            <a href={itemUrl} rel="noreferrer" target="_blank">
+              <ExternalLink aria-hidden="true" size={14} />
+              <span>原文</span>
+            </a>
+          </Button>
         ) : sourceUrl ? (
-          <a
+          <Button
             aria-label="查看来源"
-            className="icon-action"
-            href={sourceUrl}
-            rel="noreferrer"
-            target="_blank"
+            asChild
+            className="w-full justify-center"
+            size="sm"
             title="查看来源"
+            variant="ghost"
           >
-            <ExternalLink aria-hidden="true" size={14} />
-            <span>来源</span>
-          </a>
+            <a href={sourceUrl} rel="noreferrer" target="_blank">
+              <ExternalLink aria-hidden="true" size={14} />
+              <span>来源</span>
+            </a>
+          </Button>
         ) : null}
       </div>
-    </article>
+    </Card>
   );
 }

@@ -86,7 +86,7 @@ export function CcpaymentCredentialForm({
   return (
     <form
       action={formAction}
-      className="grid gap-3 rounded-md border border-border bg-surface p-4"
+      className="grid gap-3 rounded-[16px] bg-muted p-4"
       ref={formRef}
       onSubmit={handleSubmit}
     >

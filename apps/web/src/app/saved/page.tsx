@@ -1,4 +1,5 @@
 import {
+  ArrowLeft,
   Bookmark,
   Check,
   ExternalLink,
@@ -31,7 +32,10 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
     <>
       <PageHeader eyebrow="已收藏" title="已保存情报">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/">← 返回情报流</Link>
+          <Link href="/">
+            <ArrowLeft aria-hidden="true" size={14} />
+            返回情报流
+          </Link>
         </Button>
       </PageHeader>
 
@@ -48,73 +52,89 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
                 title="暂无收藏"
               />
             ) : (
-              <div className="event-list">
+              <div className="divide-y divide-border">
                 {savedEvents.map((event) => (
-                  <article className="event-row saved-event-row" key={event.eventId}>
-                    <div className="event-copy">
-                      <div className="event-copy-header">
-                        <Badge className="event-topic-badge" variant="default">
+                  <article
+                    className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-4 transition-colors hover:bg-primary/5 first:pt-0 last:pb-0"
+                    key={event.eventId}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <Badge
+                          className="max-w-full min-w-0 truncate"
+                          variant="default"
+                        >
                           {event.topicName}
                         </Badge>
-                        <span className="event-copy-meta">
+                        <span className="text-xs text-muted-foreground">
                           {event.sourceName} · {formatDateTime(event.occurredAt)}
                         </span>
                       </div>
-                      <h3>
-                        <Link href={`/events/${event.eventId}`}>{event.title}</Link>
+                      <h3 className="m-0 mt-1.5 break-words text-base font-medium leading-snug line-clamp-2">
+                        <Link
+                          className="text-foreground hover:text-primary"
+                          href={`/events/${event.eventId}`}
+                        >
+                          {event.title}
+                        </Link>
                       </h3>
-                      <div className="event-summary">{event.summary}</div>
+                      <div className="mt-1.5 text-sm leading-relaxed line-clamp-3">
+                        {event.summary}
+                      </div>
                       {event.explanation ? (
-                        <div className="event-reason">
+                        <div className="mt-2 inline-flex items-center gap-1.5 rounded-[16px] bg-muted p-3 text-xs leading-relaxed text-muted-foreground">
                           <Sparkles aria-hidden="true" size={13} />
                           {event.explanation}
                         </div>
                       ) : null}
                     </div>
-                    <div className="event-actions">
+                    <div className="flex flex-wrap items-center justify-end gap-1.5">
                       <Badge variant="accent">已收藏</Badge>
                       <form action={updateDashboardEventStateAction}>
                         <input name="eventId" type="hidden" value={event.eventId} />
                         <input name="returnTo" type="hidden" value="/saved" />
-                        <button
+                        <Button
                           aria-label="标记已读"
-                          className="icon-action"
                           name="action"
+                          size="sm"
                           title="标记已读"
                           type="submit"
                           value="read"
+                          variant="ghost"
                         >
                           <Check aria-hidden="true" size={14} />
-                          <span>已读</span>
-                        </button>
+                          已读
+                        </Button>
                       </form>
                       <form action={updateDashboardEventStateAction}>
                         <input name="eventId" type="hidden" value={event.eventId} />
                         <input name="returnTo" type="hidden" value="/saved" />
-                        <button
+                        <Button
                           aria-label="取消收藏"
-                          className="icon-action"
                           name="action"
+                          size="sm"
                           title="取消收藏"
                           type="submit"
                           value="unsave"
+                          variant="ghost"
                         >
                           <X aria-hidden="true" size={14} />
-                          <span>取消收藏</span>
-                        </button>
+                          取消收藏
+                        </Button>
                       </form>
                       {event.primaryItemUrl ? (
-                        <a
-                          aria-label="查看原文"
-                          className="icon-action"
-                          href={event.primaryItemUrl}
-                          rel="noreferrer"
-                          target="_blank"
-                          title="查看原文"
-                        >
-                          <ExternalLink aria-hidden="true" size={14} />
-                          <span>原文</span>
-                        </a>
+                        <Button asChild size="sm" variant="ghost">
+                          <a
+                            aria-label="查看原文"
+                            href={event.primaryItemUrl}
+                            rel="noreferrer"
+                            target="_blank"
+                            title="查看原文"
+                          >
+                            <ExternalLink aria-hidden="true" size={14} />
+                            原文
+                          </a>
+                        </Button>
                       ) : null}
                     </div>
                   </article>
@@ -122,11 +142,14 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
               </div>
             )}
             {savedPage.total > 0 ? (
-              <nav aria-label="收藏分页" className="saved-pagination">
-                <span>
+              <nav
+                aria-label="收藏分页"
+                className="mt-4 flex min-h-11 items-center justify-between gap-3 border-t border-border pt-3 text-sm text-muted-foreground"
+              >
+                <span className="font-medium tabular-nums">
                   第 {savedPage.page} / {savedPage.pageCount} 页
                 </span>
-                <div className="saved-pagination-actions">
+                <div className="flex flex-wrap justify-end gap-2">
                   {savedPage.page > 1 ? (
                     <Button asChild size="sm" variant="ghost">
                       <Link href={savedPageHref(savedPage.page - 1)}>上一页</Link>

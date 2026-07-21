@@ -1,8 +1,15 @@
 import type { Metadata } from "next";
-import { GeistSans } from "geist/font/sans";
+import { Roboto } from "next/font/google";
 import { GeistMono } from "geist/font/mono";
 import { AppShell } from "@/components/layout/app-shell";
 import "./globals.css";
+
+const roboto = Roboto({
+  subsets: ["latin"],
+  weight: ["400", "500", "700"],
+  variable: "--font-roboto",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Wangchao Intelligence",
@@ -19,8 +26,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className={`dark ${GeistSans.variable} ${GeistMono.variable}`}>
-      <body className={GeistSans.className}>
+    <html lang="zh-CN" className={`${roboto.variable} ${GeistMono.variable}`}>
+      <body className={roboto.className}>
         <AppShell>{children}</AppShell>
       </body>
     </html>

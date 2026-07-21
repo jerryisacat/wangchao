@@ -1,4 +1,4 @@
-import { CircleAlert, FileSearch, Loader2 } from "lucide-react";
+import { ArrowLeft, CircleAlert, FileSearch, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,10 @@ export default async function ReportDetailPage({ params }: ReportDetailPageProps
       <>
         <PageHeader eyebrow="专题报告" title="报告不存在">
           <Button asChild size="sm" variant="ghost">
-            <Link href="/reports">← 返回报告列表</Link>
+            <Link href="/reports">
+              <ArrowLeft aria-hidden="true" size={14} />
+              返回报告列表
+            </Link>
           </Button>
         </PageHeader>
         <Card variant="work">
@@ -49,7 +52,10 @@ export default async function ReportDetailPage({ params }: ReportDetailPageProps
     <>
       <PageHeader eyebrow="专题报告" title={report.question}>
         <Button asChild size="sm" variant="ghost">
-          <Link href="/reports">← 返回报告列表</Link>
+          <Link href="/reports">
+            <ArrowLeft aria-hidden="true" size={14} />
+            返回报告列表
+          </Link>
         </Button>
       </PageHeader>
 
@@ -155,8 +161,8 @@ export default async function ReportDetailPage({ params }: ReportDetailPageProps
               <CardTitle>报告内容</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="report-content">
-                <pre className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+              <div>
+                <pre className="whitespace-pre-wrap break-words text-base leading-relaxed">
                   {sanitizeForDisplay(report.markdown)}
                 </pre>
               </div>

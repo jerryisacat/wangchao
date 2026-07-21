@@ -27,34 +27,52 @@ export default async function WorkspaceUsagePage() {
         </Button>
       </PageHeader>
 
-      <div className="tenant-card workspace-audit-tenant">
+      <div className="flex flex-wrap items-start justify-between gap-2.5 rounded-[16px] border border-border bg-card p-4 mb-3">
         <div>
-          <span>当前工作区</span>
-          <strong>{audit.tenant.organizationName}</strong>
-          <p>{audit.tenant.organizationSlug}</p>
+          <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            当前工作区
+          </span>
+          <strong className="mt-1 block text-sm font-medium">
+            {audit.tenant.organizationName}
+          </strong>
+          <p className="mt-1 text-xs text-muted-foreground tabular-nums">
+            {audit.tenant.organizationSlug}
+          </p>
         </div>
         <Badge variant="success">{formatRole(audit.tenant.role)}</Badge>
       </div>
 
-      <div className="workspace-audit-stats">
-        <div className="workspace-audit-stat">
-          <Users aria-hidden="true" size={18} />
-          <span className="workspace-audit-stat-value">{audit.memberships.length}</span>
-          <span className="workspace-audit-stat-label">成员</span>
+      <div className="grid grid-cols-1 gap-3 mb-3 sm:grid-cols-2 md:grid-cols-3">
+        <div className="flex items-center gap-2.5 rounded-[16px] bg-muted p-4">
+          <Users aria-hidden="true" className="text-accent" size={18} />
+          <div>
+            <span className="block text-2xl font-medium tabular-nums">
+              {audit.memberships.length}
+            </span>
+            <span className="text-sm text-muted-foreground">成员</span>
+          </div>
         </div>
-        <div className="workspace-audit-stat">
-          <Activity aria-hidden="true" size={18} />
-          <span className="workspace-audit-stat-value">{usageRecords}</span>
-          <span className="workspace-audit-stat-label">近 30 天用量记录</span>
+        <div className="flex items-center gap-2.5 rounded-[16px] bg-muted p-4">
+          <Activity aria-hidden="true" className="text-accent" size={18} />
+          <div>
+            <span className="block text-2xl font-medium tabular-nums">
+              {usageRecords}
+            </span>
+            <span className="text-sm text-muted-foreground">近 30 天用量记录</span>
+          </div>
         </div>
-        <div className="workspace-audit-stat">
-          <Activity aria-hidden="true" size={18} />
-          <span className="workspace-audit-stat-value">{audit.usageSummary.length}</span>
-          <span className="workspace-audit-stat-label">计量维度</span>
+        <div className="flex items-center gap-2.5 rounded-[16px] bg-muted p-4">
+          <Activity aria-hidden="true" className="text-accent" size={18} />
+          <div>
+            <span className="block text-2xl font-medium tabular-nums">
+              {audit.usageSummary.length}
+            </span>
+            <span className="text-sm text-muted-foreground">计量维度</span>
+          </div>
         </div>
       </div>
 
-      <div className="workspace-audit-grid">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <Card variant="work">
           <CardHeader>
             <CardTitle>
@@ -62,12 +80,19 @@ export default async function WorkspaceUsagePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="membership-list">
+            <div className="divide-y divide-border">
               {audit.memberships.map((membership) => (
-                <article className="membership-row" key={membership.userId}>
-                  <div>
-                    <h3>{membership.name || membership.email}</h3>
-                    <p>{membership.email}</p>
+                <article
+                  className="flex items-center justify-between gap-2.5 py-3.5 transition-colors hover:bg-primary/5"
+                  key={membership.userId}
+                >
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-medium leading-tight">
+                      {membership.name || membership.email}
+                    </h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {membership.email}
+                    </p>
                   </div>
                   <Badge variant={roleTone(membership.role)}>
                     {formatRole(membership.role)}
@@ -85,7 +110,7 @@ export default async function WorkspaceUsagePage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="workspace-audit-period">
+            <p className="mb-3 text-sm text-muted-foreground">
               统计起点 {formatDate(audit.usageSince)}；数量按各自单位展示，不跨单位相加。
             </p>
             {audit.usageSummary.length === 0 ? (
@@ -95,14 +120,21 @@ export default async function WorkspaceUsagePage() {
                 title="暂无用量"
               />
             ) : (
-              <div className="usage-list">
+              <div className="divide-y divide-border">
                 {audit.usageSummary.map((usage) => (
-                  <article className="usage-row" key={`${usage.type}:${usage.unit}`}>
-                    <div>
-                      <h3>{formatUsageType(usage.type)}</h3>
-                      <p>{usage.count} 条用量记录</p>
+                  <article
+                    className="flex items-center justify-between gap-2.5 py-3.5 transition-colors hover:bg-primary/5"
+                    key={`${usage.type}:${usage.unit}`}
+                  >
+                    <div className="min-w-0">
+                      <h3 className="text-sm font-medium leading-tight">
+                        {formatUsageType(usage.type)}
+                      </h3>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {usage.count} 条用量记录
+                      </p>
                     </div>
-                    <strong className="workspace-usage-quantity">
+                    <strong className="font-medium tabular-nums text-accent text-right break-words">
                       {usage.quantity} {formatUsageUnit(usage.unit)}
                     </strong>
                   </article>

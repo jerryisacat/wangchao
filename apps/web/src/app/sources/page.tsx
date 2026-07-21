@@ -19,6 +19,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBanner } from "@/components/common/status-banner";
@@ -62,14 +64,14 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
         />
       ) : null}
 
-      <div style={{ display: "grid", gap: 16 }}>
+      <div className="grid gap-4">
         {activeTopic ? (
           <Card variant="work">
             <CardHeader>
               <CardTitle>添加候选信源</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="source-discovery-toolbar">
+              <div className="mb-3 flex justify-start">
                 <form action={runSourceDiscoveryAction}>
                   <Button size="sm" type="submit" variant="primary">
                     <Search aria-hidden="true" size={14} />
@@ -77,32 +79,35 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                   </Button>
                 </form>
               </div>
-              <form action={createCandidateSourceAction} className="candidate-form">
+              <form action={createCandidateSourceAction} className="grid gap-3">
                 <input name="topicId" type="hidden" value={activeTopic.id} />
-                <label>
-                  <span>候选源名称</span>
-                  <input
+                <div className="grid gap-2">
+                  <Label htmlFor="candidateSourceName">候选源名称</Label>
+                  <Input
+                    id="candidateSourceName"
                     name="candidateSourceName"
                     placeholder="示例 RSS 源"
                     required
                   />
-                </label>
-                <label>
-                  <span>RSS URL</span>
-                  <input
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="candidateSourceUrl">RSS URL</Label>
+                  <Input
+                    id="candidateSourceUrl"
                     name="candidateSourceUrl"
                     placeholder="https://example.com/feed.xml"
                     required
                     type="url"
                   />
-                </label>
-                <label>
-                  <span>观察备注</span>
-                  <input
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="candidateSourceDescription">观察备注</Label>
+                  <Input
+                    id="candidateSourceDescription"
                     name="candidateSourceDescription"
                     placeholder="来源、推荐理由或观察目标。"
                   />
-                </label>
+                </div>
                 <Button size="sm" type="submit" variant="secondary">
                   <Plus aria-hidden="true" size={14} />
                   加入候选
@@ -125,96 +130,127 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
               />
             ) : (
               <>
-                <div className="source-batch-toolbar">
-                  <form action={batchUpdateSourceGovernanceAction}>
-                    <CheckSquare
-                      aria-hidden="true"
-                      size={14}
-                      style={{ marginRight: 6 }}
-                    />
-                    <span className="source-batch-label">批量治理</span>
-                    <input
+                <div className="mb-3">
+                  <form
+                    action={batchUpdateSourceGovernanceAction}
+                    className="flex flex-wrap items-center gap-2"
+                  >
+                    <CheckSquare aria-hidden="true" size={14} />
+                    <span className="whitespace-nowrap text-sm font-medium">
+                      批量治理
+                    </span>
+                    <Input
                       name="sourceIds"
                       placeholder="粘贴信源 ID，逗号分隔"
                       required
-                      className="source-batch-input"
+                      className="h-11 min-w-[200px] flex-1"
                     />
                     <input
                       name="reason"
                       type="hidden"
                       value="batch-governance"
                     />
-                    <button
-                      className="icon-action"
+                    <Button
                       name="action"
+                      size="sm"
                       title="批量批准"
                       type="submit"
                       value="approve"
+                      variant="primary"
                     >
                       <Check aria-hidden="true" size={13} />
-                      <span>批量批准</span>
-                    </button>
-                    <button
-                      className="icon-action"
+                      批量批准
+                    </Button>
+                    <Button
                       name="action"
+                      size="sm"
                       title="批量观察"
                       type="submit"
                       value="observe"
+                      variant="secondary"
                     >
                       <Clock3 aria-hidden="true" size={13} />
-                      <span>批量观察</span>
-                    </button>
-                    <button
-                      className="icon-action"
+                      批量观察
+                    </Button>
+                    <Button
                       name="action"
+                      size="sm"
                       title="批量静音"
                       type="submit"
                       value="mute"
+                      variant="ghost"
                     >
                       <ShieldCheck aria-hidden="true" size={13} />
-                      <span>批量静音</span>
-                    </button>
-                    <button
-                      className="icon-action"
+                      批量静音
+                    </Button>
+                    <Button
                       name="action"
+                      size="sm"
                       title="批量拒绝"
                       type="submit"
                       value="reject"
+                      variant="danger"
                     >
                       <X aria-hidden="true" size={13} />
-                      <span>批量拒绝</span>
-                    </button>
+                      批量拒绝
+                    </Button>
                   </form>
                 </div>
-                <div className="source-quality-list">
+                <div className="grid gap-2">
                   {workspace.sourceGovernance.map((source) => (
-                    <article className="source-quality-row" key={source.sourceId}>
-                      <div>
-                        <div className="source-quality-title">
-                          <h3>{source.name}</h3>
+                    <article
+                      className="grid grid-cols-1 gap-3 rounded-[16px] bg-muted p-4 md:grid-cols-[1fr_auto]"
+                      key={source.sourceId}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="text-sm font-medium">{source.name}</h3>
                           <Badge variant={sourceTone(source.status)}>
                             {formatSourceStatus(source.status)}
                           </Badge>
                         </div>
-                        <div className="source-quality-score">
-                          {Math.round(source.qualityScore)}
+                        <div className="mt-2 flex items-center gap-3">
+                          <Badge variant="accent" className="tabular-nums">
+                            {Math.round(source.qualityScore)}
+                          </Badge>
+                          <div
+                            className="h-1.5 flex-1 overflow-hidden rounded-full bg-background"
+                            aria-hidden="true"
+                          >
+                            <div
+                              className="h-full rounded-full bg-primary transition-all duration-300 ease-[cubic-bezier(0.2,0,0,1)]"
+                              style={{
+                                width: `${Math.max(0, Math.min(100, Math.round(source.qualityScore)))}%`,
+                              }}
+                            />
+                          </div>
                         </div>
                         {source.recommendationReason ? (
-                          <p className="source-recommendation">
+                          <p className="mt-1 max-w-[62ch] text-sm text-foreground">
                             {source.recommendationReason}
                           </p>
                         ) : null}
-                        <div className="source-quality-metrics">
-                          <span>命中 {formatPercent(source.hitRate)}</span>
-                          <span>噪声 {formatPercent(source.noiseRate)}</span>
-                          <span>重复 {formatPercent(source.duplicateRate)}</span>
-                          <span>事件 {source.eventCount}</span>
+                        <div className="mt-2.5 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                          <span className="rounded-[12px] bg-background px-1.5 py-1 font-mono text-xs text-muted-foreground">
+                            命中 {formatPercent(source.hitRate)}
+                          </span>
+                          <span className="rounded-[12px] bg-background px-1.5 py-1 font-mono text-xs text-muted-foreground">
+                            噪声 {formatPercent(source.noiseRate)}
+                          </span>
+                          <span className="rounded-[12px] bg-background px-1.5 py-1 font-mono text-xs text-muted-foreground">
+                            重复 {formatPercent(source.duplicateRate)}
+                          </span>
+                          <span className="rounded-[12px] bg-background px-1.5 py-1 font-mono text-xs text-muted-foreground">
+                            事件 {source.eventCount}
+                          </span>
                           {source.discoveryChannel ? (
-                            <span>{formatDiscoveryChannel(source.discoveryChannel)}</span>
+                            <span className="rounded-[12px] bg-background px-1.5 py-1 font-mono text-xs text-muted-foreground">
+                              {formatDiscoveryChannel(source.discoveryChannel)}
+                            </span>
                           ) : null}
                         </div>
                         {source.consecutiveFailures > 0 ? (
-                          <p className="source-error-hint">
+                          <p className="mt-1.5 text-xs leading-relaxed text-destructive">
                             连续失败 {source.consecutiveFailures} 次 ·{" "}
                             {source.lastErrorAt
                               ? formatDateTime(source.lastErrorAt)
@@ -222,73 +258,110 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                             {source.lastError ? `: ${source.lastError}` : ""}
                           </p>
                         ) : null}
-                        <p>
-                          {source.topicName} · 建议 {formatRecommendation(source.recommendation)} · 最近{" "}
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {source.topicName} · 建议{" "}
+                          {formatRecommendation(source.recommendation)} · 最近{" "}
                           {source.lastFetchedAt
                             ? formatDateTime(source.lastFetchedAt)
                             : "未抓取"}
                         </p>
                       </div>
-                      <div className="source-governance-actions">
+                      <div className="flex flex-wrap justify-end gap-1.5">
                         <form action={updateSourceGovernanceAction}>
-                          <input name="sourceId" type="hidden" value={source.sourceId} />
-                          <input name="reason" type="hidden" value="governance:approve" />
-                          <button
+                          <input
+                            name="sourceId"
+                            type="hidden"
+                            value={source.sourceId}
+                          />
+                          <input
+                            name="reason"
+                            type="hidden"
+                            value="governance:approve"
+                          />
+                          <Button
                             aria-label="批准"
-                            className="icon-action"
                             name="action"
+                            size="sm"
                             title="批准"
                             type="submit"
                             value="approve"
+                            variant="primary"
                           >
                             <Check aria-hidden="true" size={13} />
-                            <span>批准</span>
-                          </button>
+                            批准
+                          </Button>
                         </form>
                         <form action={updateSourceGovernanceAction}>
-                          <input name="sourceId" type="hidden" value={source.sourceId} />
-                          <input name="reason" type="hidden" value="governance:observe" />
-                          <button
+                          <input
+                            name="sourceId"
+                            type="hidden"
+                            value={source.sourceId}
+                          />
+                          <input
+                            name="reason"
+                            type="hidden"
+                            value="governance:observe"
+                          />
+                          <Button
                             aria-label="观察"
-                            className="icon-action"
                             name="action"
+                            size="sm"
                             title="观察"
                             type="submit"
                             value="observe"
+                            variant="secondary"
                           >
                             <Clock3 aria-hidden="true" size={13} />
-                            <span>观察</span>
-                          </button>
+                            观察
+                          </Button>
                         </form>
                         <form action={updateSourceGovernanceAction}>
-                          <input name="sourceId" type="hidden" value={source.sourceId} />
-                          <input name="reason" type="hidden" value="governance:mute" />
-                          <button
+                          <input
+                            name="sourceId"
+                            type="hidden"
+                            value={source.sourceId}
+                          />
+                          <input
+                            name="reason"
+                            type="hidden"
+                            value="governance:mute"
+                          />
+                          <Button
                             aria-label="静音"
-                            className="icon-action"
                             name="action"
+                            size="sm"
                             title="静音"
                             type="submit"
                             value="mute"
+                            variant="ghost"
                           >
                             <ShieldCheck aria-hidden="true" size={13} />
-                            <span>静音</span>
-                          </button>
+                            静音
+                          </Button>
                         </form>
                         <form action={updateSourceGovernanceAction}>
-                          <input name="sourceId" type="hidden" value={source.sourceId} />
-                          <input name="reason" type="hidden" value="governance:reject" />
-                          <button
+                          <input
+                            name="sourceId"
+                            type="hidden"
+                            value={source.sourceId}
+                          />
+                          <input
+                            name="reason"
+                            type="hidden"
+                            value="governance:reject"
+                          />
+                          <Button
                             aria-label="拒绝"
-                            className="icon-action"
                             name="action"
+                            size="sm"
                             title="拒绝"
                             type="submit"
                             value="reject"
+                            variant="danger"
                           >
                             <X aria-hidden="true" size={13} />
-                            <span>拒绝</span>
-                          </button>
+                            拒绝
+                          </Button>
                         </form>
                       </div>
                     </article>
@@ -302,46 +375,46 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
         {workspace.expiredCandidates.length > 0 ? (
           <Card variant="work">
             <CardHeader>
-              <CardTitle>
-                <AlertTriangle
-                  aria-hidden="true"
-                  size={16}
-                  style={{ marginRight: 6, verticalAlign: "middle" }}
-                />
+              <CardTitle className="flex items-center gap-1.5">
+                <AlertTriangle aria-hidden="true" size={16} />
                 过期候选源复审（{workspace.expiredCandidates.length}）
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="source-quality-list">
+              <div className="grid gap-2">
                 {workspace.expiredCandidates.map((candidate) => (
                   <article
-                    className="source-quality-row"
+                    className="grid grid-cols-1 gap-3 rounded-[16px] bg-muted p-4 md:grid-cols-[1fr_auto]"
                     key={candidate.sourceId}
                   >
-                    <div>
-                      <div className="source-quality-title">
-                        <h3>{candidate.name}</h3>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-sm font-medium">
+                          {candidate.name}
+                        </h3>
                         <Badge variant="warning">待复审</Badge>
                       </div>
-                      <p>主题: {candidate.topicName}</p>
-                      <p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        主题: {candidate.topicName}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
                         过期时间:{" "}
                         {candidate.observeExpiresAt
                           ? formatDateTime(candidate.observeExpiresAt)
                           : "未知"}
                       </p>
                       {candidate.recommendationReason ? (
-                        <p className="source-recommendation">
+                        <p className="mt-1 max-w-[62ch] text-sm text-foreground">
                           {candidate.recommendationReason}
                         </p>
                       ) : null}
                       {candidate.lastError ? (
-                        <p className="source-error-hint">
+                        <p className="mt-1.5 text-xs leading-relaxed text-destructive">
                           错误: {candidate.lastError}
                         </p>
                       ) : null}
                     </div>
-                    <div className="source-governance-actions">
+                    <div className="flex flex-wrap justify-end gap-1.5">
                       <form action={updateSourceGovernanceAction}>
                         <input
                           name="sourceId"
@@ -353,16 +426,18 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                           type="hidden"
                           value="expiry-review:approve"
                         />
-                        <button
-                          className="icon-action"
+                        <Button
+                          aria-label="批准"
                           name="action"
+                          size="sm"
                           title="批准"
                           type="submit"
                           value="approve"
+                          variant="primary"
                         >
                           <Check aria-hidden="true" size={13} />
-                          <span>批准</span>
-                        </button>
+                          批准
+                        </Button>
                       </form>
                       <form action={updateSourceGovernanceAction}>
                         <input
@@ -375,16 +450,18 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
                           type="hidden"
                           value="expiry-review:reject"
                         />
-                        <button
-                          className="icon-action"
+                        <Button
+                          aria-label="拒绝"
                           name="action"
+                          size="sm"
                           title="拒绝"
                           type="submit"
                           value="reject"
+                          variant="danger"
                         >
                           <X aria-hidden="true" size={13} />
-                          <span>拒绝</span>
-                        </button>
+                          拒绝
+                        </Button>
                       </form>
                     </div>
                   </article>
