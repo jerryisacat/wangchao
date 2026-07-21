@@ -240,6 +240,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 | `apps/web/src/lib/report-data.ts` | 报告数据读取 helper（`getReportsPage`/`getReportDetail`）。 |
 | `apps/web/src/proxy.ts` | Next.js 16 request proxy：真实 Better Auth Session 认证门、页面安全重定向、API/Action 401、每请求 nonce CSP 与 Web 安全响应头。 |
 | `apps/web/src/lib/auth-access.ts` | 公开路由 allowlist、站内 `next` 归一化、登录路径与 API path 纯策略。 |
+| `apps/web/src/app/account/page.tsx` + `apps/web/src/components/auth/*` | 账户与访问页及认证 UI 复用层：显式区分正式认证/免登录模式，展示当前身份、工作区、角色与登出，并提供紧凑 MD3 登录/注册表单状态。 |
 | `apps/web/src/lib/content-security-policy.ts` | Production CSP policy builder，约束 nonce/strict-dynamic 与 script/object 安全边界。 |
 | `apps/web/scripts/auth-access.fixture.mjs` | Auth route policy 与开放重定向防护 fixture。 |
 | `apps/web/scripts/content-security-policy.fixture.mjs` | CSP unit + production server smoke fixture，验证逐请求 nonce 与 framework/Flight script 属性。 |

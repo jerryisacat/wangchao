@@ -308,8 +308,11 @@ apps/web/src/
 │   ├── admin/usage/page.tsx          # OWNER/ADMIN 成员与近 30 天用量审计
 │   ├── admin/settings/credential-form.tsx  # 凭证表单客户端组件（密码显隐/Provider 下拉/loading）
 │   ├── admin/settings/telegram-form.tsx  # Telegram 凭证表单客户端组件（Bot Token/Chat ID/测试连接）
-│   ├── login/page.tsx                # 登录页（email/password + 站内 next 回跳）
-│   ├── register/page.tsx             # 注册页（email/password）
+│   ├── account/page.tsx              # 账户与访问页（身份/认证模式/工作区/角色/登出）
+│   ├── login/page.tsx                # 登录页 server 边界（认证模式/账户拒绝原因/站内 next）
+│   ├── login/login-form.tsx          # 登录客户端表单（email/password + loading/error）
+│   ├── register/page.tsx             # 注册页 server 边界（认证模式）
+│   ├── register/register-form.tsx    # 注册客户端表单（自动登录 + 个人工作区说明）
 │   ├── pricing/page.tsx              # 定价页（FREE/PLUS/PRO 三层对比）
 │   ├── usage/page.tsx                # 用量仪表盘（配额进度条、AI 调用/导出统计）
 │   ├── api/health/route.ts           # Web health endpoint
@@ -338,6 +341,10 @@ apps/web/src/
 │       ├── briefings/[briefingId]/route.ts # 简报 Markdown 下载（Obsidian-friendly 文件名）
 │       └── topics/[topicId]/route.ts    # 主题批量导出（Top 100 事件）
 ├── components/
+│   ├── auth/
+│   │   ├── auth-card.tsx             # 认证页复用紧凑 MD3 Card 与语义标题
+│   │   ├── auth-mode-notice.tsx      # 正式认证/免登录自托管模式说明与行动
+│   │   └── password-field.tsx        # filled password field + 44px 显隐控制
 │   ├── layout/
 │   │   ├── app-shell.tsx             # AppShell Tailwind 响应式内容容器
 │   │   ├── top-nav.tsx               # MD3 顶部导航（4 个阅读入口 + 新增主题 + 更多分组菜单）
@@ -414,8 +421,10 @@ apps/web/src/
 | `apps/web/src/lib/content-security-policy.ts` | CSP policy builder：校验 base64/base64url nonce，生成包含 `nonce-*`、`strict-dynamic`、禁用 script attributes/object/embed 等边界的 production policy。 |
 | `apps/web/src/app/layout.tsx` | 根 layout；声明 `dynamic = "force-dynamic"`，确保包括登录/注册在内的原静态路由均在请求时渲染，从而让所有 framework/React Flight scripts 获得当前请求 nonce。 |
 | `apps/web/scripts/content-security-policy.fixture.mjs` | CSP 回归 fixture：验证 script directive 必须包含 nonce/strict-dynamic，且不得退化为 `'unsafe-inline'`；传入 `BASE_URL` 时验证每请求 nonce 唯一且所有 production script 标签携带响应 nonce。 |
-| `apps/web/src/app/login/page.tsx` | 登录页。email/password 表单，提交到 Better Auth session；只消费经过 `normalizeAuthReturnPath()` 的 `next`（兼容旧 `callbackUrl`），拒绝站外开放重定向。 |
-| `apps/web/src/app/register/page.tsx` | 注册页。email/password 注册，创建用户后重定向。 |
+| `apps/web/src/app/login/page.tsx`、`login-form.tsx` | 登录页 server/client 边界。Server 读取 `isAuthEnabled()`、安全 `next` 与账户拒绝原因；认证开启时提交 email/password 到 Better Auth，显示数据库 Session 说明和稳定中文错误，认证关闭时隐藏无效表单并引导进入默认工作区。 |
+| `apps/web/src/app/register/page.tsx`、`register-form.tsx` | 注册页 server/client 边界。认证开启时提交 email/password、自动登录并说明会创建独立个人工作区；认证关闭时隐藏无效表单并说明当前无需注册。 |
+| `apps/web/src/app/account/page.tsx` | 账户与访问页。展示 User identity/lifecycle status、认证模式、当前 Organization/Membership role；正式认证模式提供登出，兼容模式提供免登录边界说明。 |
+| `apps/web/src/components/auth/*` | 认证 UI 复用层：紧凑 MD3 `AuthCard`、正式/兼容模式 notice、带 ≥44px 显隐按钮和描述关联的 `PasswordField`。 |
 | `apps/web/src/app/pricing/page.tsx` | 定价页。FREE/PLUS/PRO 三层对比，展示各层配额限制和价格。 |
 | `apps/web/src/app/usage/page.tsx` | 用量仪表盘。展示当前周期配额使用进度条（主题/信源/AI 调用/导出），按 `getSubscriptionPlanView()` + `getTodayAiCallCount()`/`getMonthAiCallCount()`/`getMonthExportCount()`/`getTopicCount()`/`getActiveSourceCount()` 读取。 |
 | `apps/web/src/app/actions.ts` | Server Action 入口；创建主题并自动匹配候选源、更新事件状态、创建候选源、手动 source discovery、信源治理、主题管理（`updateTopicAction`/`updateTopicStatusAction`/`deleteTopicAction`，OWNER/ADMIN 守卫）、批量信源治理（`batchUpdateSourceGovernanceAction`）、`upsertAiCredentialAction` / `upsertSearchCredentialAction`（OWNER/ADMIN 守卫，加密存储 API Key）、`deleteAiCredentialAction` / `deleteSearchCredentialAction`（清除凭证）、`testAiCredentialAction`（测试 AI 连接，含 chat/completions 兜底）、`listAiModelsAction`（嗅探可用模型列表，不写 DB）、`testSearchCredentialAction`（测试搜索连接）、`upsertTelegramCredentialAction`/`deleteTelegramCredentialAction`/`testTelegramCredentialAction`（Telegram 凭证管理）、`createReportAction`（提交报告问题，异步调用 `runReportGeneration`）、`deletePreferenceAction`/`updatePreferenceWeightAction`（偏好编辑）、`recordEnhancedFeedbackAction`（增强反馈：MORE/LESS_LIKE_THIS、SOURCE_QUALITY_UP/DOWN、SCORE_UP/DOWN）。失败通过 stderr 记录，成功/失败通过 redirect URL 参数反馈。 |

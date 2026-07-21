@@ -84,7 +84,7 @@ test.describe("Better Auth end-to-end", () => {
     await page.getByLabel("显示名称").fill(testName);
     await page.getByLabel("邮箱").fill(testEmail);
     await page.getByLabel("密码").fill(testPassword);
-    await page.getByRole("button", { name: "注册" }).click();
+    await page.getByRole("button", { name: "创建账号" }).click();
 
     await page.waitForURL("/", { timeout: 15_000 });
     await expect(page.getByRole("heading", { name: "未读情报" })).toBeVisible();
@@ -148,7 +148,7 @@ test.describe("Better Auth end-to-end", () => {
     await page.getByLabel("显示名称").fill(secondName);
     await page.getByLabel("邮箱").fill(secondEmail);
     await page.getByLabel("密码").fill(testPassword);
-    await page.getByRole("button", { name: "注册" }).click();
+    await page.getByRole("button", { name: "创建账号" }).click();
     await page.waitForURL("/", { timeout: 15_000 });
     await expect(page.getByRole("heading", { name: "未读情报" })).toBeVisible();
 

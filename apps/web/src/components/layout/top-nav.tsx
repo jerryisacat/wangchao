@@ -12,6 +12,7 @@ import {
   Rss,
   Settings,
   Sparkles,
+  UserRound,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -156,15 +157,17 @@ export function TopNav({
             authEnabled={authEnabled}
           />
 
-          <Button asChild size="sm" variant="primary">
-            <Link
-              aria-current={pathname === "/topics/new" ? "page" : undefined}
-              href="/topics/new"
-            >
-              <Plus aria-hidden="true" size={14} />
-              <span>新增主题</span>
-            </Link>
-          </Button>
+          {isAdmin ? (
+            <Button asChild size="sm" variant="primary">
+              <Link
+                aria-current={pathname === "/topics/new" ? "page" : undefined}
+                href="/topics/new"
+              >
+                <Plus aria-hidden="true" size={14} />
+                <span>新增主题</span>
+              </Link>
+            </Button>
+          ) : null}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -190,6 +193,12 @@ export function TopNav({
               <DropdownMenuSeparator />
 
               <DropdownMenuLabel>账户</DropdownMenuLabel>
+              <DropdownMenuItem asChild>
+                <Link href="/account">
+                  <UserRound aria-hidden="true" size={16} />
+                  <span>账户与访问</span>
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/history">
                   <Archive aria-hidden="true" size={16} />

@@ -1,5 +1,17 @@
 ## 2026-07-21
 
+### Feat: 认证模式可见化与账户访问 UI 闭环
+
+- Cause: 登录/注册页无论 `BETTER_AUTH_SECRET` 是否启用都展示同一凭证表单，导致免登录部署看起来像“认证代码未完成”，提交后才暴露 503；账户菜单缺少查看当前身份、工作区和认证模式的入口，暂停/删除账户回到登录页时也没有解释。`MEMBER` 还会看到无权执行的“新增主题”主行动。
+- Changed:
+  - 登录/注册拆成 server 模式判定与 client 表单：认证开启时保留 Better Auth email/password、站内回跳和自动登录；认证关闭时隐藏无效表单，使用 warning tonal 状态明确“免登录自托管模式”并提供整行进入工作台行动。
+  - 新增复用认证 Card、认证模式说明和密码字段；补 44px 密码显隐、字段/错误 `aria-describedby`、`aria-live`、提交禁用与稳定中文错误，登录页展示 `ACCOUNT_SUSPENDED` / `ACCOUNT_DELETED` 原因。
+  - 新增 `/account`，以 MD3 工作卡片展示当前用户、生命周期状态、认证模式、Organization、Membership role 与登出；“更多”菜单增加真实账户入口，`MEMBER` 不再渲染无权执行的新增主题 CTA。
+  - 响应式 smoke 纳入 `/account`，Better Auth E2E 同步新的“创建账号”行动名称；`FRONTEND.md` 与 L3 模块文档固化账户 UI 规则。
+- Files: `apps/web/src/app/{login,register,account}/**`、`apps/web/src/components/{auth,layout/top-nav}/**`、`tests/smoke/{auth,responsive}.spec.ts`、`FRONTEND.md`、`CODEGUIDE.md`、`docs/L3-modules.md`、`AGENTS_CHANGELOGS.md`。
+- Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过（首次 sandbox build 因无法请求既有 Google Roboto 失败，允许网络后成功；仅保留既有 PDF NFT tracing warnings）；Playwright 实图覆盖免登录分支 320px 登录 / 375px 注册，以及正式认证分支 320/768px 登录与 414/1024px 注册，无横向溢出，字段、密码显隐、主行动、模式说明和互跳层级正常。
+- Notes / Risk: 不改变 Better Auth、Session、proxy、数据库或权限规则；`/account` 与其他数据页一样依赖 `DATABASE_URL`。本地未配置数据库，因此账户页浏览器检查只到 loading/error 边界，正式数据态由类型、构建与后续有库 smoke 覆盖。
+
 ### Fix: 第六轮全站残留审计收束壳层、趋势与后台触达
 
 - Cause: 全站 `page/loading/error`、共享组件与 CSS 引用交叉扫描发现：主题工作台趋势和信源健康仍引用没有任何 CSS 定义的 `trend-chart-*` / `source-health-*` 类，有真实数据时会退化成无层级文本；AppShell 和工作区切换仍依赖迁移前 bespoke class，后者是手写遮罩菜单，缺少 Radix 的焦点与 Esc 行为；后台自用模式和自定义 Provider 确认 checkbox 的实际方框仅 16px，风险说明只有 12px。

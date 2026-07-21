@@ -236,6 +236,7 @@ async function discoverAppPaths(page: Page): Promise<string[]> {
 
   return [
     "/",
+    "/account",
     "/briefings",
     briefingHref,
     "/history",
