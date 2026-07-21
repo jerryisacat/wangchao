@@ -1,5 +1,17 @@
 ## 2026-07-21
 
+### Fix: 第六轮全站残留审计收束壳层、趋势与后台触达
+
+- Cause: 全站 `page/loading/error`、共享组件与 CSS 引用交叉扫描发现：主题工作台趋势和信源健康仍引用没有任何 CSS 定义的 `trend-chart-*` / `source-health-*` 类，有真实数据时会退化成无层级文本；AppShell 和工作区切换仍依赖迁移前 bespoke class，后者是手写遮罩菜单，缺少 Radix 的焦点与 Esc 行为；后台自用模式和自定义 Provider 确认 checkbox 的实际方框仅 16px，风险说明只有 12px。
+- Changed:
+  - 横向趋势、每日柱图、空状态和信源健康全部改为 Tailwind + MD3 token；趋势建立标签 / meter / 数值层级，信源指标移动端 2 列、`sm` 起 3 列，连续失败使用 warning tonal surface。
+  - AppShell 内容容器改为 Tailwind 响应式安全区布局；工作区切换替换为 Radix `DropdownMenu`，触发器与选项均 ≥44px，支持焦点管理、Esc、长名称截断和当前工作区标识。
+  - 自用模式后果与手动确认说明提升到 14px，checkbox 方框提升到 20px，整行标签提供 ≥44px 点击区和状态层。
+  - 全仓 CSS selector / TSX class 引用交叉扫描确认运行页面只保留文档允许的 `.topic-lab` 与无障碍 `.sr-only`，无未定义 bespoke class；`FRONTEND.md` 与 `docs/L3-modules.md` 固化最终规则。
+- Files: `apps/web/src/components/{layout/app-shell,layout/workspace-switcher,intelligence/trend-chart}.tsx`、`apps/web/src/app/admin/settings/{self-hosted-form,credential-form}.tsx`、`FRONTEND.md`、`docs/L3-modules.md`。
+- Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过（构建仅保留既有 PDF NFT tracing warnings）；本地 320 / 375 / 414 / 768 / 1024 / 1440px 完整响应式矩阵通过（1 passed）；静态残留扫描确认无硬编码明暗色、页面 `transition-all`、未授权 hover scale、低于 12px 正文或未定义页面类。
+- Notes / Risk: 仅调整壳层、组件展示与菜单/checkbox 交互，不改变工作区切换 Action、权限、趋势数据、信源质量计算、凭证门控、数据库或 Worker；`globals.css` 中历史未引用规则按追加式样式治理约束保留，但运行 TSX 不再引用。Railway 真实数据、工作区菜单、趋势/信源健康与后台 checkbox 将在部署后完成最终复查。
+
 ### Fix: 第五轮视觉检查收束草案确认、已保存与账户入口
 
 - Cause: 剩余页面巡检发现主题草案确认仍依赖已淘汰的 `topic-profile-*`、`form-actions`、`topic-select` 等 bespoke class 和内联样式，在 MD3 迁移后退化成长而无层级的单卡表单；已保存事件标题不足 44px，移动端三项操作会作为窄列挤压正文，相关性解释仍可能展示工程英文；登录与注册缺少语义主标题，互跳入口只有行内文字可点击。

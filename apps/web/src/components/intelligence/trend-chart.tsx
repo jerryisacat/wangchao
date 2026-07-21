@@ -24,31 +24,31 @@ export function TrendBarChart({
 }: TrendBarChartProps) {
   if (buckets.length === 0) {
     return (
-      <p className="trend-chart-empty">{emptyMessage}</p>
+      <p className="rounded-[16px] bg-muted p-4 text-sm text-muted-foreground">{emptyMessage}</p>
     );
   }
 
   const maxValue = Math.max(...buckets.map((b) => b.value), 1);
 
   return (
-    <div className="trend-chart" role="img" aria-label={ariaLabel}>
+    <div className="grid gap-3" role="img" aria-label={ariaLabel}>
       {buckets.map((bucket, index) => {
         const widthPercent = Math.max(
           (bucket.value / maxValue) * 100,
           bucket.value > 0 ? 4 : 0,
         );
         return (
-          <div className="trend-chart-row" key={`${bucket.label}-${index}`}>
-            <span className="trend-chart-label" title={bucket.label}>
+          <div className="grid min-w-0 grid-cols-[minmax(72px,0.45fr)_minmax(0,1fr)_auto] items-center gap-2" key={`${bucket.label}-${index}`}>
+            <span className="truncate text-sm text-muted-foreground" title={bucket.label}>
               {bucket.label}
             </span>
-            <div className="trend-chart-bar-track">
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
               <div
-                className="trend-chart-bar"
+                className="h-full rounded-full bg-primary"
                 style={{ width: `${widthPercent}%` }}
               />
             </div>
-            <span className="trend-chart-value">{bucket.value}</span>
+            <span className="text-sm font-medium tabular-nums">{bucket.value}</span>
           </div>
         );
       })}
@@ -68,14 +68,14 @@ interface DailyTrendChartProps {
  */
 export function DailyTrendChart({ buckets, ariaLabel }: DailyTrendChartProps) {
   if (buckets.length === 0) {
-    return <p className="trend-chart-empty">该时间窗口内暂无事件。</p>;
+    return <p className="rounded-[16px] bg-muted p-4 text-sm text-muted-foreground">该时间窗口内暂无事件。</p>;
   }
 
   const maxValue = Math.max(...buckets.map((b) => b.count), 1);
 
   return (
-    <div className="daily-trend-chart" role="img" aria-label={ariaLabel}>
-      <div className="daily-trend-chart-bars">
+    <div className="min-w-0" role="img" aria-label={ariaLabel}>
+      <div className="flex h-36 min-w-0 items-end gap-2 border-b border-border pb-2">
         {buckets.map((bucket) => {
           const heightPercent = Math.max(
             (bucket.count / maxValue) * 100,
@@ -84,17 +84,17 @@ export function DailyTrendChart({ buckets, ariaLabel }: DailyTrendChartProps) {
           const shortDate = bucket.date.slice(5); // MM-DD
           return (
             <div
-              className="daily-trend-chart-bar-wrapper"
+              className="flex h-full min-w-0 flex-1 flex-col items-center gap-2"
               key={bucket.date}
               title={`${bucket.date}: ${bucket.count} 个事件`}
             >
-              <div className="daily-trend-chart-bar-track">
+              <div className="relative w-full flex-1 overflow-hidden rounded-t-[8px] bg-muted">
                 <div
-                  className="daily-trend-chart-bar"
+                  className="absolute inset-x-0 bottom-0 rounded-t-[8px] bg-primary"
                   style={{ height: `${heightPercent}%` }}
                 />
               </div>
-              <span className="daily-trend-chart-label">{shortDate}</span>
+              <span className="text-xs tabular-nums text-muted-foreground">{shortDate}</span>
             </div>
           );
         })}
@@ -161,61 +161,61 @@ function formatDate(iso: string | null): string {
 
 export function SourceHealthList({ sources }: SourceHealthListProps) {
   if (sources.length === 0) {
-    return <p className="trend-chart-empty">该主题暂无信源。</p>;
+    return <p className="rounded-[16px] bg-muted p-4 text-sm text-muted-foreground">该主题暂无信源。</p>;
   }
 
   return (
-    <div className="source-health-list">
+    <div className="divide-y divide-border">
       {sources.map((source) => (
-        <div className="source-health-row" key={source.sourceId}>
-          <div className="source-health-header">
-            <span className="source-health-name">
+        <div className="grid gap-3 py-4 first:pt-0 last:pb-0" key={source.sourceId}>
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
+            <span className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">
               {decodeHtmlEntities(source.name)}
             </span>
             <Badge variant={STATUS_VARIANTS[source.status] ?? "muted"}>
               {STATUS_LABELS[source.status] ?? source.status}
             </Badge>
           </div>
-          <div className="source-health-metrics">
-            <div className="source-health-metric">
-              <span className="source-health-metric-label">质量分</span>
-              <span className="source-health-metric-value">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="rounded-[16px] bg-muted p-3">
+              <span className="block text-xs text-muted-foreground">质量分</span>
+              <span className="mt-1 block font-medium tabular-nums">
                 {formatScore(source.qualityScore)}
               </span>
             </div>
-            <div className="source-health-metric">
-              <span className="source-health-metric-label">命中率</span>
-              <span className="source-health-metric-value">
+            <div className="rounded-[16px] bg-muted p-3">
+              <span className="block text-xs text-muted-foreground">命中率</span>
+              <span className="mt-1 block font-medium tabular-nums">
                 {formatPercent(source.hitRate)}
               </span>
             </div>
-            <div className="source-health-metric">
-              <span className="source-health-metric-label">噪音率</span>
-              <span className="source-health-metric-value">
+            <div className="rounded-[16px] bg-muted p-3">
+              <span className="block text-xs text-muted-foreground">噪音率</span>
+              <span className="mt-1 block font-medium tabular-nums">
                 {formatPercent(source.noiseRate)}
               </span>
             </div>
-            <div className="source-health-metric">
-              <span className="source-health-metric-label">事件数</span>
-              <span className="source-health-metric-value">
+            <div className="rounded-[16px] bg-muted p-3">
+              <span className="block text-xs text-muted-foreground">事件数</span>
+              <span className="mt-1 block font-medium tabular-nums">
                 {source.eventCount}
               </span>
             </div>
-            <div className="source-health-metric">
-              <span className="source-health-metric-label">抓取条目</span>
-              <span className="source-health-metric-value">
+            <div className="rounded-[16px] bg-muted p-3">
+              <span className="block text-xs text-muted-foreground">抓取条目</span>
+              <span className="mt-1 block font-medium tabular-nums">
                 {source.totalItems}
               </span>
             </div>
-            <div className="source-health-metric">
-              <span className="source-health-metric-label">最近抓取</span>
-              <span className="source-health-metric-value">
+            <div className="rounded-[16px] bg-muted p-3">
+              <span className="block text-xs text-muted-foreground">最近抓取</span>
+              <span className="mt-1 block text-sm font-medium tabular-nums">
                 {formatDate(source.lastFetchedAt)}
               </span>
             </div>
           </div>
           {source.consecutiveFailures > 0 ? (
-            <p className="source-health-warning">
+            <p className="rounded-[16px] bg-warning/10 p-3 text-sm leading-6 text-warning">
               连续失败 {source.consecutiveFailures} 次
               {source.lastError
                 ? `：${decodeHtmlEntities(source.lastError)}`

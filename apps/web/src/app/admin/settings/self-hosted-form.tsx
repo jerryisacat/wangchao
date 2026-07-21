@@ -24,8 +24,8 @@ export function SelfHostedToggleForm({
       />
 
       {!currentEnabled ? (
-        <div className="rounded-[16px] border border-warning/40 bg-warning/10 p-4 text-xs text-foreground">
-          <div className="mb-2 flex items-center gap-1.5 font-bold">
+        <div className="rounded-[16px] border border-warning/40 bg-warning/10 p-4 text-sm leading-6 text-foreground">
+          <div className="mb-2 flex items-center gap-1.5 font-medium">
             <CircleAlert aria-hidden="true" size={14} />
             开启自用模式的后果
           </div>
@@ -35,10 +35,10 @@ export function SelfHostedToggleForm({
             <li>BYOK 变为可选配置</li>
             <li>仅影响当前工作区</li>
           </ul>
-          <label className="mt-3 flex items-center gap-2 font-normal">
+          <label className="mt-3 flex min-h-11 cursor-pointer items-center gap-3 rounded-[12px] px-2 font-normal hover:bg-warning/10">
             <input
               checked={confirmed}
-              className="h-4 w-4 rounded border-input"
+              className="size-5 shrink-0 rounded border-input"
               onChange={(e) => setConfirmed(e.target.checked)}
               type="checkbox"
             />
@@ -46,7 +46,7 @@ export function SelfHostedToggleForm({
           </label>
         </div>
       ) : (
-        <div className="rounded-[16px] bg-muted p-4 text-xs text-muted-foreground">
+        <div className="rounded-[16px] bg-muted p-4 text-sm leading-6 text-muted-foreground">
           当前工作区已处于自用模式。关闭后将恢复正常的配额检查和支付流程。
         </div>
       )}

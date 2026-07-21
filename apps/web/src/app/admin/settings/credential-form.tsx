@@ -359,10 +359,10 @@ export function CredentialForm({
         </p>
       ) : null}
       {testResult && !testResult.ok && selectedProvider === "custom" ? (
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+        <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-[12px] px-2 text-sm text-muted-foreground hover:bg-muted">
           <input
             checked={manualConfirm}
-            className="h-4 w-4 rounded border-input"
+            className="size-5 shrink-0 rounded border-input"
             onChange={(e) => {
               setManualConfirm(e.target.checked);
               if (!e.target.checked) {

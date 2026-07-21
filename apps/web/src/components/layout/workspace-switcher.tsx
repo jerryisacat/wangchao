@@ -1,8 +1,14 @@
 "use client";
 
 import { Check, ChevronsUpDown } from "lucide-react";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import type { UserMembershipSummary } from "@wangchao/db";
 import { setActiveWorkspaceAction } from "@/app/actions";
@@ -21,8 +27,6 @@ export function WorkspaceSwitcher({
   authEnabled,
   className,
 }: WorkspaceSwitcherProps) {
-  const [open, setOpen] = useState(false);
-
   if (!authEnabled || memberships.length === 0) {
     return null;
   }
@@ -33,65 +37,53 @@ export function WorkspaceSwitcher({
   const label = active?.organizationName ?? "选择工作区";
 
   return (
-    <div className={cn("workspace-switcher", className)}>
-      <button
-        aria-expanded={open}
-        aria-haspopup="listbox"
-        aria-label="切换工作区"
-        className="workspace-switcher-trigger"
-        onClick={() => setOpen((prev) => !prev)}
-        type="button"
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          aria-label="切换工作区"
+          className={cn("max-w-11 px-0 sm:max-w-[180px] sm:px-4", className)}
+          size="sm"
+          variant="secondary"
+        >
+          <span className="hidden min-w-0 truncate sm:block">{label}</span>
+          <ChevronsUpDown aria-hidden="true" size={14} />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        className="w-[min(320px,calc(100vw-32px))]"
       >
-        <span className="workspace-switcher-label hidden sm:inline">{label}</span>
-        <ChevronsUpDown aria-hidden="true" size={14} />
-      </button>
-
-      {open ? (
-        <>
-          <button
-            aria-label="关闭工作区选择"
-            className="workspace-switcher-overlay"
-            onClick={() => setOpen(false)}
-            type="button"
-          />
-          <ul className="workspace-switcher-menu" role="listbox" aria-label="工作区列表">
-            {memberships.map((membership) => {
+        <DropdownMenuLabel>切换工作区</DropdownMenuLabel>
+        {memberships.map((membership) => {
               const isActive =
                 membership.organizationId === activeOrganizationId;
               return (
-                <li key={membership.organizationId} role="option" aria-selected={isActive}>
-                  <form action={setActiveWorkspaceAction}>
-                    <input
-                      name="organizationId"
-                      type="hidden"
-                      value={membership.organizationId}
-                    />
+                <form action={setActiveWorkspaceAction} key={membership.organizationId}>
+                  <input
+                    name="organizationId"
+                    type="hidden"
+                    value={membership.organizationId}
+                  />
+                  <DropdownMenuItem asChild>
                     <button
-                      className={cn(
-                        "workspace-switcher-item",
-                        isActive && "workspace-switcher-item-active",
-                      )}
-                      onClick={() => setOpen(false)}
+                      aria-current={isActive ? "true" : undefined}
+                      className={cn("w-full min-w-0", isActive && "font-medium")}
                       type="submit"
                     >
-                      <span className="workspace-switcher-item-name">
+                      <span className="min-w-0 flex-1 truncate text-left">
                         {membership.organizationName}
                       </span>
-                      <span className="workspace-switcher-item-role">
+                      <span className="shrink-0 text-xs text-muted-foreground">
                         {formatRole(membership.role)}
                       </span>
-                      {isActive ? (
-                        <Check aria-hidden="true" size={14} />
-                      ) : null}
+                      {isActive ? <Check aria-hidden="true" size={14} /> : null}
                     </button>
-                  </form>
-                </li>
+                  </DropdownMenuItem>
+                </form>
               );
-            })}
-          </ul>
-        </>
-      ) : null}
-    </div>
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

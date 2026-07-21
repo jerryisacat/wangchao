@@ -150,6 +150,7 @@ App Shell 使用顶部导航（`components/layout/app-shell.tsx` + `top-nav.tsx`
 
 - 主导航（日常阅读 4 项）：未读情报 `/`、简报 `/briefings`、报告 `/reports`、已保存 `/saved`。激活态 `bg-secondary text-secondary-foreground`。
 - 右侧：新增主题 `/topics/new`（primary 药丸 CTA）+ 「更多」`DropdownMenu`。
+- 多工作区切换同样使用 Radix `DropdownMenu`：触发器和每个工作区选项均 ≥44px，移动端只保留可理解的切换图标，菜单支持焦点管理、Esc 关闭和长名称截断；不手写遮罩与弹层状态。
 - 「更多」分组并按角色 / 登录态条件渲染：
   - 管理：主题列表 `/topics`、信源管理 `/sources`。
   - 账户：偏好记忆 `/preferences`、我的用量 `/usage`、方案与定价 `/pricing`。
@@ -251,6 +252,7 @@ App Shell 使用顶部导航（`components/layout/app-shell.tsx` + `top-nav.tsx`
 - 凭证分类不依赖横向滚动：移动端 2 列、`sm` 起 3 列、`lg` 起 6 列，每个 tab ≥44px；窄屏隐藏装饰图标但保留完整文字标签。
 - 模型嗅探：AI 凭证表单“刷新模型列表”调 `listAiModelsAction`，嗅探 OpenAI-compatible 端点可用模型，`<select>` 展示模型 ID 及 `ownedBy`，支持“自定义…”回退到自由 `<Input>`。嗅探结果不持久化。
 - 自定义 Provider 手动确认：选“自定义”且自动测试失败时显示“我已确认此 Key 有效” checkbox，勾选跳过自动测试门控；取消勾选清空测试状态。
+- checkbox 的整行标签必须是 ≥44px 点击区，方框至少 20px；自用模式后果和手动确认说明使用至少 14px 正文，不把关键风险压成 12px 注脚。
 - 计费提示：测试按钮下显示“测试将发送一次最小 API 请求，可能产生极少量费用”。
 - 独立性说明：页面顶部显示“AI 凭证与搜索凭证相互独立，可分别保存与清除。”
 - Telegram 即时推送：Telegram tab 分开展示凭证和即时推送开关；Free 显示升级提示，未配置凭证不可开启，服务端重复执行权限与计划校验。
@@ -260,6 +262,7 @@ App Shell 使用顶部导航（`components/layout/app-shell.tsx` + `top-nav.tsx`
 - 阅读历史的“已读 / 忽略 / 收藏 / 归档”是横向分段筛选：移动端 2×2、`sm` 起 4 列，每项 ≥44px；图标、标签和当前数量保持同一行，不允许退化为整列文字。
 - 主题详情页头动作允许自然换行，320px 下不横向滚动；状态摘要使用 `Card variant=work`，统计在移动端 2 列、`sm` 起 4 列，不使用 hover scale。
 - 主题工作台的未读和收藏情报不再套入外层 Card，避免 card-in-card；7 / 30 天切换和最近简报标题入口必须 ≥44px，并使用 Tailwind + MD3 原语而非未定义的 bespoke 类。
+- 主题趋势与信源健康全部使用 Tailwind + token：横向趋势提供标签 / meter / 数值三列，日趋势提供可读日期，信源指标移动端 2 列、`sm` 起 3 列；空状态和连续失败提示使用 tonal surface，不允许依赖没有 CSS 定义的 `trend-chart-*` / `source-health-*` 类。
 - 主题标题是卡片的主要入口，触达高度 ≥44px；编辑、暂停/恢复、归档为次级操作。永久删除保留二次确认，但使用危险文字态，不与主行动争夺视觉优先级。
 - 已保存情报标题同样是 ≥44px 的主要入口；移动端把“已读 / 取消收藏”排成两列，“原文”占满下一行，不能让操作列挤压标题和摘要。主题、来源、标题、摘要与解释均在显示层解码 HTML 实体，已知相关性模板转换为简体中文。
 

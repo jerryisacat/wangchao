@@ -339,13 +339,14 @@ apps/web/src/
 │       └── topics/[topicId]/route.ts    # 主题批量导出（Top 100 事件）
 ├── components/
 │   ├── layout/
-│   │   ├── app-shell.tsx             # AppShell 容器
-│   │   └── top-nav.tsx               # MD3 顶部导航（4 个阅读入口 + 新增主题 + 更多分组菜单 + 工作区切换）
+│   │   ├── app-shell.tsx             # AppShell Tailwind 响应式内容容器
+│   │   ├── top-nav.tsx               # MD3 顶部导航（4 个阅读入口 + 新增主题 + 更多分组菜单）
+│   │   └── workspace-switcher.tsx    # Radix DropdownMenu 工作区切换（焦点/Esc/长名称）
 │   ├── intelligence/
 │   │   ├── intelligence-card.tsx     # 情报卡片 client 组件
 │   │   ├── intelligence-feed.tsx     # 情报流 client 组件
 │   │   ├── topic-dashboard-view.tsx  # 主题工作台（未读/收藏/趋势/信源健康/最近简报）
-│   │   ├── trend-chart.tsx           # 纯 CSS 趋势与信源健康图表
+│   │   ├── trend-chart.tsx           # Tailwind + token 趋势与 2/3 列信源健康指标
 │   │   └── topic-filter.tsx          # 主题筛选标签条
 │   ├── common/
 │   │   ├── empty-state.tsx           # 通用空状态
