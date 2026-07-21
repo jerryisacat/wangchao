@@ -15,6 +15,7 @@
     "health": "node dist/index.js --health",
     "instant-push": "node dist/index.js --instant-push",
     "report-generation": "node dist/index.js --report-generation",
+    "queue-worker": "node dist/index.js --queue-worker",
     "lint": "tsc -p tsconfig.json --noEmit",
     "source-discovery": "node dist/index.js --source-discovery",
     "task-runs": "node dist/index.js --task-runs",

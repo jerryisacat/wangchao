@@ -63,7 +63,7 @@ Postgres
 | 后台任务 | `apps/worker` Node.js worker |
 | 包管理 | `pnpm` workspace |
 | Web app | `apps/web`，Next.js App Router，提供顶部导航产品壳、首页未读情报流、创建主题、信源管理、简报、已收藏、偏好记忆、`/api/health`、loading/error 状态和 shadcn/Radix/Tailwind v4 组件链。按 `FRONTEND.md` 采用 Material You（MD3）视觉体系。 |
-| Worker | `apps/worker`，Node.js TypeScript worker；默认 cycle 在单一总预算内先消费 durable SOURCE_FETCH/SOURCE_DISCOVERY TaskRun，再按稳定顺序与动态公平预算串行执行全部 eligible Organization 的 fetch pipeline；支持独立 `--task-runs`、source discovery、instant push 与 `--health`。 |
+| Worker | `apps/worker`，Node.js TypeScript worker；Railway Queue Worker 以 `--queue-worker` 常驻消费 durable SOURCE_FETCH/SOURCE_DISCOVERY/CONTENT_FETCH TaskRun，小时 Cron 再按稳定顺序与动态公平预算串行执行全部 eligible Organization 的 fetch pipeline；支持独立 `--task-runs`、source discovery、instant push 与 `--health`。 |
 | 共享包 | `packages/core`, `packages/ai`, `packages/db`, `packages/sources` |
 | DB 基础 | `packages/db`，Prisma/Postgres schema、migration、seed、lazy client、tenant/member role guard、usage event 与查询 helper |
 | 情报管线 | `packages/core` + `apps/worker`，提供可解释 relevance/noise、event draft、dedupe hash、gravity ranking、feedback delta 和 preference ranking |
@@ -127,7 +127,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 - Web app 只 enqueue 任务和读取 durable status，不执行长任务。
 - Durable queue 的所有权不是 `status=RUNNING` 本身，而是未过期的 `leaseOwner + leaseToken`；Worker 的 renew/complete/fail/yield 必须使用同一 fencing tuple，旧 lease 影响 0 行。
 - Web producer 必须提供 tenant-scoped active idempotency key；Worker 只 claim exact supported type allowlist。原始 Error、URL、stack 不得写入 TaskRun 或日志，失败只保留固定低基数分类。
-- Worker 负责抓取、Markdown 正文采集、item normalize、可解释分析、反馈归纳、简报生成和 source quality observation。AI 摘要必须在正文采集 `READY` 后执行。
+- Worker 负责抓取、Markdown 正文采集、item normalize、可解释分析、反馈归纳、简报生成和 source quality observation；常驻 Queue Worker 只消费 durable command，不运行全量 cron pipeline。AI 摘要必须在正文采集 `READY` 后执行。
 - AI 摘要语言跟随当前界面语言而非原文语言；在 i18n 接入前固定为简体中文，topic profile 不得绕过该约束。
 - Next.js route handlers 用于外部 API、webhooks、export downloads、status endpoints。Server Actions 用于内部产品 mutations。
 

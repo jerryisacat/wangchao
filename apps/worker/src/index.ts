@@ -31,6 +31,7 @@ import {
   type TaskRunConsumerOptions,
 } from "./modules/task-run-consumer.js";
 import { runReportGeneration, runReportGenerationCycle } from "./modules/report.js";
+import { runQueueWorker, type QueueWorkerMetrics, type QueueWorkerOptions } from "./modules/queue-worker.js";
 
 import type {
   WorkerFetchCycleResult,
@@ -60,6 +61,8 @@ export type {
   RunOrganizationFetchCyclesOptions,
   TaskRunConsumerMetrics,
   TaskRunConsumerOptions,
+  QueueWorkerMetrics,
+  QueueWorkerOptions,
 };
 
 export {
@@ -81,7 +84,7 @@ export {
 };
 
 export { createAnalysisRuntimeWithPlan, createSourceRecommendationRuntime };
-export { runFetchCycle, runTaskRunConsumerCycle, runWorkerHealthCheck, runReportGeneration, runReportGenerationCycle };
+export { runFetchCycle, runTaskRunConsumerCycle, runQueueWorker, runWorkerHealthCheck, runReportGeneration, runReportGenerationCycle };
 
 export interface MainCycleDeps {
   resetCycleTimeBudget: (timeoutMs?: number) => void;
@@ -132,12 +135,15 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   setupSignalHandlers();
 
   const isHealth = process.argv.includes("--health");
+  const isQueueWorker = process.argv.includes("--queue-worker");
   const isTaskRuns = process.argv.includes("--task-runs");
   const isSourceDiscovery = process.argv.includes("--source-discovery");
   const isInstantPush = process.argv.includes("--instant-push");
   const isReportGeneration = process.argv.includes("--report-generation");
   const cycleType = isHealth
     ? "health"
+    : isQueueWorker
+      ? "queue-worker"
     : isTaskRuns
       ? "task-runs"
       : isSourceDiscovery
@@ -152,6 +158,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 
   const command = isHealth
     ? runWorkerHealthCheck()
+    : isQueueWorker
+      ? runQueueWorker()
     : isTaskRuns
       ? runTaskRunConsumerCycle()
       : isSourceDiscovery

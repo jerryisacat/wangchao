@@ -25,7 +25,7 @@ This repo may be useful if any of the following apply to you:
 - You want your read / save / dismiss / not-interested actions to train the system in return, instead of seeing the same low-value content every day.
 - You want to沉淀 important intelligence into Markdown / Obsidian, not just let it vanish in the daily feed.
 
-The current version is a **personal / single-user** edition. The primary deployment path is **GitHub auto-sync to Railway**: Railway hosts the Web service, Worker Cron, Source Discovery Cron, and managed Postgres. Multi-tenancy, team permissions, and payment systems are later phases and don't block the current experience.
+The current version is a **personal / single-user** edition. The primary deployment path is **GitHub auto-sync to Railway**: Railway hosts the Web service, a persistent Queue Worker, scheduled jobs, and managed Postgres. Multi-tenancy, team permissions, and payment systems are later phases and don't block the current experience.
 
 ## How sources enter the system
 
@@ -151,7 +151,7 @@ Beyond daily/weekly/monthly briefings, Wangchao also supports:
 | Worker | RSS fetch (concurrent + exponential backoff + error tracking), item writes, full-text article extraction (Readability), deterministic + AI intelligence pipeline, preference learning (6 FeedbackKinds + 30-day half-life time decay), daily/weekly/monthly briefing (UTC window idempotent), topic report generation (rule + AI evidence retrieval), Telegram delivery, source quality observation, structured logging (Railway-consumable), `--health` |
 | Database | Prisma schema, versioned migrations, seed, workspace models, TaskRun (full-pipeline audit), UsageEvent, DeliveryLog, Report |
 
-The personal edition has completed Railway Web + Postgres deployment verification. The deployment target is GitHub auto-sync triggering Railway Web, Worker Cron, and Source Discovery Cron. The Worker is still designed as "one cycle then exit," launched on schedule by Railway Cron.
+The personal edition uses a dual Worker topology: a persistent Queue Worker consumes manual durable tasks, while Worker/Discovery/Report/Instant Push jobs still run one cycle and exit under Railway Cron. All application services auto-deploy from GitHub `master` and share Postgres.
 
 ## Deployment
 
@@ -162,6 +162,7 @@ The repo uses **GitHub → Railway** as the primary deployment path:
 | Railway service | Config file | Purpose |
 |---|---|---|
 | Web | `deploy/railway/web.railway.json` | Next.js product UI, Server Actions, export routes, `/api/health` |
+| Queue Worker | `deploy/railway/queue-worker.railway.json` | Persistent consumer for manual fetch, discovery, and summary-regeneration tasks |
 | Worker Cron | `deploy/railway/worker-cron.railway.json` | Scheduled RSS fetch, analysis, briefing, source observation |
 | Source Discovery Cron | `deploy/railway/source-discovery-cron.railway.json` | Periodic candidate source discovery |
 | Postgres | Railway managed Postgres | Prisma database, migrations, seed, and runtime data |
@@ -278,7 +279,7 @@ Development is organized by `AGENTS.md` and `REFACTOR_PLAN.md`. After each phase
 ## Personal Edition Boundaries
 
 - Passes `pnpm db:generate`, `pnpm db:validate`, `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, and `pnpm worker:health`.
-- Railway Web + Postgres production smoke tests have passed; GitHub integration is connected. Deployment target is GitHub auto-sync to Railway (Web + Worker Cron + Source Discovery Cron).
+- Railway Web + Postgres production smoke tests have passed; GitHub integration is connected. Deployment target is GitHub auto-sync to Railway (Web + Queue Worker + scheduled jobs).
 - GitHub Actions CI is configured: push/PR to `master` triggers install → typecheck → lint → build → test → db:validate → http-smoke-check.
 - Designed for personal workspace use; default workspace identity is configured via environment variables.
 - Worker handles fetching, analysis, briefing generation, topic report generation, and Telegram delivery; Railway Cron handles scheduled execution. Worker outputs structured JSON logs consumable by Railway logs.

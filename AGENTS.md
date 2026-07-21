@@ -42,7 +42,7 @@
 | Worker | Node.js worker |
 | AI | OpenAI-compatible adapter |
 | Export | Markdown 优先，PDF 后置 |
-| Deployment | GitHub → Railway：Web、Worker Cron、Source Discovery Cron、Report Cron、Instant Push Cron、Postgres |
+| Deployment | GitHub → Railway：Web、Queue Worker、Worker Cron、Source Discovery Cron、Report Cron、Instant Push Cron、Postgres |
 
 ## 4. 开发阶段
 
@@ -66,6 +66,7 @@
 | Railway service | Config file | 目标 |
 |---|---|---|
 | Web | `deploy/railway/web.railway.json` | Next.js App Router、`/api/health` |
+| Queue Worker | `deploy/railway/queue-worker.railway.json` | 常驻消费 durable TaskRun，处理手动抓取/发现/摘要任务 |
 | Worker Cron | `deploy/railway/worker-cron.railway.json` | 定时 RSS fetch、analysis、briefing、source observation |
 | Source Discovery Cron | `deploy/railway/source-discovery-cron.railway.json` | 周期候选信源发现 |
 | Report Cron | `deploy/railway/report-cron.railway.json` | 扫描 PENDING 状态的 Report 并生成 |

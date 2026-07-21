@@ -64,6 +64,8 @@ pnpm railway:start
 pnpm railway:worker:build
 pnpm railway:worker:predeploy
 pnpm railway:worker:start
+pnpm railway:queue-worker:start
+pnpm worker:queue
 pnpm worker:source-discovery
 pnpm db:wait
 pnpm db:deploy
@@ -74,10 +76,11 @@ pnpm db:deploy
 - 部署主路径是 **GitHub push/merge → Railway 自动构建和部署**，不需要手动运行上述脚本（除非使用 `railway up` 本地 fallback）。详细运维操作见 `docs/railway-runbook.md`。
 - `deploy/railway/web.railway.json` 使用 `pnpm railway:build` 执行完整 monorepo 构建，避免 Railway/Railpack 在 Web-only 构建时裁掉 `@wangchao/*` workspace 包；在 pre-deploy 阶段运行 `pnpm db:wait && pnpm db:deploy && pnpm db:seed`，先等待 Railway Postgres 私网端口可达，再执行 migration/seed，启动命令为 `pnpm railway:web:start`，健康检查路径为 `/api/health`。
 - `deploy/railway/worker-cron.railway.json` 使用 `pnpm railway:build` 执行完整 monorepo 构建，避免 worker runtime 缺少 `@wangchao/*/dist`；在 pre-deploy 阶段运行 `pnpm railway:worker:predeploy`（即 `pnpm db:wait && pnpm db:deploy`），确保数据库可达且 migration 已应用后再启动；按 `0 * * * *` UTC 每小时执行一次 `pnpm railway:worker:start`。
+- `deploy/railway/queue-worker.railway.json` 使用相同完整构建与 pre-deploy，但不配置 cron；`pnpm railway:queue-worker:start` 启动常驻 durable TaskRun consumer，进程异常由 Railway 重启，部署停止时在 draining window 内优雅退出。
 - `deploy/railway/source-discovery-cron.railway.json` 使用 `pnpm railway:build` 执行完整 monorepo 构建，避免 source discovery runtime 缺少 `@wangchao/*/dist`；在 pre-deploy 阶段同样运行 `pnpm railway:worker:predeploy`；按 `0 2 * * 1` UTC 每周执行一次 `pnpm --filter @wangchao/worker source-discovery`。
 - `pnpm railway:build:web` 和 `pnpm railway:build:worker` 是可选的 Turborepo filtered build 脚本，用于未来优化构建速度。当前 Railway config 仍使用 `pnpm railway:build`（完整构建），因为 Railpack per-service 构建可能裁掉 workspace `dist/` 输出（这是已发生的生产问题）。切换到 filtered build 的前提是在 Railway staging 环境验证 runtime 中 `@wangchao/*/dist` 完整存在。
-- `railway.json` 是当前 CLI 本地上传部署入口（紧急 fallback）。两个服务通过 `WANGCHAO_RAILWAY_ROLE` 分发启动行为：`web` 跑 migration/seed 并启动 Next.js，`worker` 跳过 predeploy 并执行一轮 Node worker。root config 缺少 `healthcheckPath` 和 `cronSchedule`，不能替代 service-level config 作为长期生产配置。
-- Railway Web、Worker Cron 与 Source Discovery Cron 应连接同一个 Railway Postgres，并共享 `DATABASE_URL`（通过 Railway service reference 注入）、默认 workspace、AI 和 discovery 环境变量。三个服务的 predeploy 都会运行 `db:wait && db:deploy`，Prisma `migrate deploy` 是幂等的，已应用的 migration 不会重复执行，因此多服务并行 predeploy 不会冲突。详细环境变量矩阵见 `docs/railway-runbook.md` §5。
+- `railway.json` 是当前 CLI 本地上传部署入口（紧急 fallback）。通过 `WANGCHAO_RAILWAY_ROLE=web|worker|queue-worker` 分发启动行为；root config 缺少 service 专属健康检查、cron 与 draining 配置，不能替代 service-level config 作为长期生产配置。
+- Railway 全部应用服务应连接同一个 Railway Postgres，并共享 `DATABASE_URL`（通过 Railway service reference 注入）及所需业务变量。各 worker service 的 predeploy 都会运行 `db:wait && db:deploy`，Prisma `migrate deploy` 是幂等的，已应用的 migration 不会重复执行，因此多服务并行 predeploy 不会冲突。详细环境变量矩阵见 `docs/railway-runbook.md` §5。
 - `pnpm db:wait` 由 `scripts/wait-for-database.mjs` 提供，只从 `DATABASE_URL` 解析 host/port 并做 TCP 探测，不输出完整连接串。默认最多等待 180 秒，每 2 秒重试；可通过 `WANGCHAO_DB_WAIT_TIMEOUT_MS` 和 `WANGCHAO_DB_WAIT_INTERVAL_MS` 覆盖。
 - 2026-07-06 已创建 Railway project `wangchao`，添加 `Postgres`、`wangchao-web` 和 `wangchao-worker` 服务；Web、Worker、Postgres 已迁移到 `southeast-asia`，实际 region ID 为 `asia-southeast1-eqsg3a`。
 
@@ -196,6 +199,10 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 - `WANGCHAO_FETCH_CONCURRENCY` 控制每轮 worker 并发抓取 RSS source 数量，默认 `5`。
 - `WANGCHAO_FETCH_BACKOFF_BASE_MS` 控制重试指数退避的基准延迟毫秒数，默认 `1000`。实际延迟为 `BASE * 2^(attempt-1) * jitter(0.5-1.0)`。
+- `WANGCHAO_QUEUE_POLL_INTERVAL_MS` 控制常驻 Queue Worker 空闲轮询间隔，默认 `2000` 毫秒。
+- `WANGCHAO_QUEUE_DRAIN_BUDGET_MS` 控制每次 durable queue drain 的生命周期预算，默认 `30000` 毫秒；每轮重新初始化，避免常驻进程耗尽一次性 deadline。
+- `WANGCHAO_QUEUE_MAX_TASKS_PER_DRAIN` 控制每次 drain 最多 claim 的任务数，默认 `50`。
+- `WANGCHAO_QUEUE_HEARTBEAT_INTERVAL_MS` 控制常驻进程 heartbeat 日志间隔，默认 `60000` 毫秒。
 - 正文采集不需要新增环境变量：RSS embedded content 优先；普通网页使用 Readability + 安全 Markdown 转换；X/Twitter 暂不接入 API，状态为 `UNSUPPORTED`，用户仍可打开原文。
 
 ### 信源治理
@@ -219,7 +226,7 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 - `docs/deployment.md` 记录当前 Railway 部署顺序、环境变量、服务配置、日志、备份和回滚策略。
 - `docs/railway-runbook.md` 是 Railway 生产运维主参考：GitHub→Railway 主路径、Cron 运行观测、Postgres 备份/PITR、发布验证 smoke/回滚 runbook、环境变量矩阵、CI/CD。
 - `railway.json` 是 `railway up` 本地紧急 fallback 使用的 Railway root config（通过 `WANGCHAO_RAILWAY_ROLE` 分发）。
-- `deploy/railway/*.railway.json` 是 Railway Config as Code；Web、Worker Cron、Source Discovery Cron、Instant Push Cron 和 Report Cron 分别作为独立 Railway service 设置对应 config file path。
+- `deploy/railway/*.railway.json` 是 Railway Config as Code；Web、Queue Worker、Worker Cron、Source Discovery Cron、Instant Push Cron 和 Report Cron 分别作为独立 Railway service 设置对应 config file path。
 - `.github/workflows/ci.yml` 是 GitHub Actions CI workflow，在 push/PR 到 `master` 时运行 lint、typecheck、build、test 和 Prisma schema validate。
 
 ## 验证注意事项

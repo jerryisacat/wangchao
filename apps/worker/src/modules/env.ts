@@ -63,6 +63,27 @@ export function getTotalConcurrency(): number {
   return _totalConcurrency;
 }
 
+export function getQueueWorkerPollIntervalMs(): number {
+  return readBoundedNumberEnv("WANGCHAO_QUEUE_POLL_INTERVAL_MS", 2_000, 250, 60_000);
+}
+
+export function getQueueWorkerDrainBudgetMs(): number {
+  return readBoundedNumberEnv("WANGCHAO_QUEUE_DRAIN_BUDGET_MS", 30_000, 1_000, 300_000);
+}
+
+export function getQueueWorkerMaxTasks(): number {
+  return readBoundedNumberEnv("WANGCHAO_QUEUE_MAX_TASKS_PER_DRAIN", 50, 1, 500);
+}
+
+export function getQueueWorkerHeartbeatIntervalMs(): number {
+  return readBoundedNumberEnv(
+    "WANGCHAO_QUEUE_HEARTBEAT_INTERVAL_MS",
+    60_000,
+    5_000,
+    3_600_000,
+  );
+}
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -109,5 +130,4 @@ export function pLimit(concurrency: number): <T>(fn: () => Promise<T>) => Promis
       }
     });
 }
-
 

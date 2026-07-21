@@ -16,15 +16,16 @@
 
 ## 2. 项目结构
 
-Railway project 包含三个资源：
+Railway project 包含 Postgres 与六个 application service；本节突出 Web、常驻 Queue Worker 与主 Worker Cron：
 
 | 资源 | 用途 | 配置文件 |
 |---|---|---|
 | Postgres | 望潮数据库 | Railway managed PostgreSQL |
 | wangchao-web | Next.js 产品界面、Server Actions、export routes、`/api/health` | `deploy/railway/web.railway.json` |
+| wangchao-queue-worker | 常驻消费 durable TaskRun | `deploy/railway/queue-worker.railway.json` |
 | wangchao-worker | RSS 抓取、情报分析、简报生成、source observation | `deploy/railway/worker-cron.railway.json` |
 
-Web 和 Worker 共享同一个 Postgres 实例和同一份代码仓库，通过 `WANGCHAO_RAILWAY_ROLE` 环境变量区分启动行为。
+所有服务共享同一个 Postgres 实例和代码仓库；生产使用各自的 Config as Code 文件区分启动行为，`WANGCHAO_RAILWAY_ROLE` 仅用于本地上传 fallback。
 
 ## 3. 创建项目和服务
 
@@ -60,15 +61,24 @@ railway add --service wangchao-worker
 
 在 service settings 中设置 config file path 为 `deploy/railway/worker-cron.railway.json`。
 
+### 3.5 添加 Queue Worker 服务
+
+```bash
+railway add --service wangchao-queue-worker
+```
+
+连接同一 GitHub repo，并将 config file path 设为 `deploy/railway/queue-worker.railway.json`。该服务不配置 Cron。
+
 ## 4. 环境变量
 
-在 Railway dashboard 或 CLI 中为两个服务分别设置以下变量。
+在 Railway dashboard 或 CLI 中为各服务按职责设置变量；Queue Worker 至少需要 Postgres reference、默认组织/用户变量、`ENCRYPTION_KEY` 和 AI runtime 所需变量。
 
 ### 4.1 必需变量
 
 | 变量 | 服务 | 说明 |
 |---|---|---|
 | `DATABASE_URL` | web, worker | Postgres 连接串。从 Railway Postgres 资源引用 `${Postgres.DATABASE_URL}`。 |
+| `DATABASE_URL` | queue worker | 与其他服务相同的 Postgres service reference。 |
 | `WANGCHAO_RAILWAY_ROLE` | web | 设为 `web` |
 | `WANGCHAO_RAILWAY_ROLE` | worker | 设为 `worker` |
 | `WANGCHAO_DEFAULT_ORGANIZATION_SLUG` | web, worker | 默认工作区 slug，如 `default` |
@@ -97,6 +107,8 @@ railway variables --service wangchao-web set WANGCHAO_DEFAULT_USER_NAME=YourName
 ```
 
 对 worker 重复上述命令，并把 `WANGCHAO_RAILWAY_ROLE` 设为 `worker`。
+
+service-level config 的 Queue Worker 不需要 `WANGCHAO_RAILWAY_ROLE`；仅在 root config fallback 时设为 `queue-worker`。
 
 ### 4.4 引用 Postgres 连接串
 
@@ -137,9 +149,13 @@ Worker 服务的部署流程（由 `deploy/railway/worker-cron.railway.json` 定
 
 Worker 是一次性任务：执行完一轮抓取→分析→简报后退出。Railway Cron 会按 schedule 自动重新启动。
 
-### 5.3 部署顺序
+### 5.3 部署 Queue Worker 服务
 
-三个服务（Web、Worker Cron、Source Discovery Cron）的 predeploy 都会运行 `db:wait && db:deploy`（Prisma `migrate deploy` 是幂等的，已应用的 migration 不会重复执行），因此并行部署不会冲突。首次部署时先部署 Web 可确保 seed 数据先写入。
+Queue Worker 使用完整构建和 `pnpm railway:worker:predeploy`，启动命令为 `pnpm railway:queue-worker:start`。进程常驻、空闲轮询 durable TaskRun，异常时按配置自动重启；Railway 发出 SIGTERM 后停止 claim 新任务并受控退出。
+
+### 5.4 部署顺序
+
+全部 worker service 的 predeploy 都会运行 `db:wait && db:deploy`（Prisma `migrate deploy` 是幂等的），因此并行部署不会重复应用 migration。首次部署时先部署 Web 可确保 seed 数据先写入。
 
 ## 6. 验证
 
@@ -152,6 +168,7 @@ railway status
 确认：
 - `wangchao-web` 状态为 `Online`
 - `wangchao-worker` 状态为 `Completed`（正常，worker 是一次性任务）
+- `wangchao-queue-worker` 状态为 `Online`
 - `Postgres` 状态为 `Online`
 
 ### 6.2 Web 健康检查
@@ -191,6 +208,8 @@ railway logs --service wangchao-worker
 ```
 
 确认输出包含 `Wangchao worker` 和 JSON 结果（`fetchedSources`、`insertedOrUpdatedItems`、`createdOrUpdatedEvents`、`generatedBriefings` 等）。
+
+Queue Worker 使用 `railway logs --service wangchao-queue-worker`，空闲时应周期出现 `queue-worker-heartbeat`，有命令时出现 `queue-drain`。
 
 ### 6.5 Worker 健康检查（本地）
 

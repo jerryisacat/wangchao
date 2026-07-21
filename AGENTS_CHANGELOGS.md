@@ -1,3 +1,17 @@
+## 2026-07-22
+
+### Feat: 常驻 Railway Queue Worker 即时消费持久任务
+
+- Cause: 第一阶段已让手动摘要刷新可靠写入 durable `CONTENT_FETCH`，但生产只有每小时 Worker Cron，任务开始执行仍可能等待近一小时；常驻进程还必须避免复用一次性 cycle deadline 后永久停止 claim，并能在 Railway 部署切换时安全退出。
+- Changed:
+  - 新增 `runQueueWorker()` 常驻循环：活动队列立即连续 drain，空队列按可配置间隔轮询；每轮刷新 bounded 生命周期预算，限制单轮 claim 数量，并聚合安全指标。
+  - 增加 `queue-drain` 与低频 `queue-worker-heartbeat` 结构化日志，复用既有 SIGTERM/SIGINT lifecycle，在 shutdown 后停止新 claim、等待当前 consumer 收尾。
+  - 新增 `--queue-worker` / `worker:queue` / Railway start 入口和无数据库 fixtures，覆盖空闲、积压、预算刷新、heartbeat 与 graceful shutdown。
+  - 新增独立无 Cron 的 `queue-worker.railway.json`，配置异常重启、deployment overlap/draining；同步环境变量示例、部署拓扑、运维 runbook 与分层文档。
+- Files: `apps/worker/src/{index,index.fixtures}.ts`、`apps/worker/src/modules/{env,queue-worker,queue-worker.fixtures}.ts`、`apps/worker/package.json`、`package.json`、`.env_example`、`deploy/railway/queue-worker.railway.json`、`deploy/railway/README.md`、`AGENTS.md`、`CODEGUIDE.md`、`README.md`、`README-en.md`、`docs/{L3-modules,L4-operations,deployment,railway-deployment,railway-runbook}.md`、`DEVELOPE_LOGS.md`、`AGENTS_CHANGELOGS.md`。
+- Verification: `CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、`pnpm db:validate`、Railway config JSON 解析和 `git diff --check` 全部通过；Worker fixtures 验证空闲/活动 drain、fresh budget、heartbeat 聚合与 graceful shutdown。生产 Queue Worker 在线检查在本提交推送后通过 Railway CLI 执行。
+- Notes / Risk: 不新增 DB schema 或 migration；Queue Worker 与 Cron 共享既有 fenced lease consumer，允许横向并发但同一 TaskRun 只能由 lease owner 结算。新增常驻 Railway service 会产生持续运行成本。
+
 ## 2026-07-21
 
 ### Fix: 手动刷新摘要进入持久任务并按单事件处理

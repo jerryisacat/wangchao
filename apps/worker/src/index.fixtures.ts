@@ -8,6 +8,7 @@ import { runDedupOrchestrationFixtures } from "./modules/dedup.fixtures.js";
 import { runReportGenerationFixtures } from "./modules/report.fixtures.js";
 import { runTelegramDeliveryFixtures } from "./modules/telegram-delivery.fixtures.js";
 import { runSummaryRegenerationFixtures } from "./modules/summary-regeneration.fixtures.js";
+import { runQueueWorkerFixtures } from "./modules/queue-worker.fixtures.js";
 import { TelegramDeliveryError, escapeTelegramHtml, formatEventForInstantPush, sendTelegramMessage, truncateTelegramMessage } from "./telegram.js";
 
 export async function runWorkerFixtures(): Promise<void> {
@@ -20,6 +21,7 @@ export async function runWorkerFixtures(): Promise<void> {
   await runReportGenerationFixtures();
   await runTelegramDeliveryFixtures();
   await runSummaryRegenerationFixtures();
+  await runQueueWorkerFixtures();
   const embedded = mapFetchedSourceItem(
     { id: "source-1", organizationId: "org-1", topicId: "topic-1", name: "Source", url: "https://example.com/feed" },
     {

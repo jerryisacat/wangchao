@@ -2,6 +2,17 @@
 
 本文件记录分阶段开发审计和延期功能追踪，辅助 `AGENTS_CHANGELOGS.md` 使用。它不是传统 release changelog；重点是记录每个阶段是否达成 `REFACTOR_PLAN.md` 和 `AGENTS.md` 目标、缺失功能、已知问题、修复情况和后续追踪项。
 
+## 2026-07-22
+
+### 手动摘要重生成 durable queue 第二阶段：常驻消费
+
+- Phase: 独立线上功能修复（第二阶段）。
+- Scope: 新增 Railway Queue Worker 常驻服务，持续消费第一阶段写入的 `CONTENT_FETCH` 等 durable TaskRun；提供 bounded polling/drain、每轮 deadline 刷新、heartbeat、graceful shutdown 与异常重启配置。
+- Alignment: 长任务仍只在 Worker；复用 tenant scope、lease heartbeat、fenced settlement、指数退避与安全日志，不把网络/AI 工作放入 Web request lifecycle。
+- Verification: 无 DB fixtures 覆盖空闲/积压循环、预算刷新、指标聚合和停止信号；全仓与 Railway 生产验证结果记录在同日 `AGENTS_CHANGELOGS.md`。
+- Completion: 代码、Config as Code、运维文档和生产 Queue Worker 部署作为同一阶段交付。
+- Follow-up: 根据生产 heartbeat 与 TaskRun 排队时延调节 poll/drain 参数；若负载增长，可在不改变任务协议的前提下增加 Queue Worker 副本。
+
 ## 2026-07-21
 
 ### 手动摘要重生成 durable queue 闭环
