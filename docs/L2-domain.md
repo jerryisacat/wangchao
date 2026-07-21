@@ -10,14 +10,15 @@
 
 | 模型 | 职责 |
 |------|------|
-| `User` | 人类账户。当前个人版使用默认用户，不要求真实注册登录。 |
-| `Organization` | 租户和计费边界。当前个人版使用默认组织。 |
-| `Membership` | User-to-Organization 角色映射（OWNER/ADMIN/MEMBER）。 |
+| `User` | 人类账户。承载 Better Auth 1.6.23 core 字段（`email`、`name` NOT NULL、`emailVerified`、`image`）和用户生命周期状态（`accountStatus`、`suspendedAt`/`suspendedReason`/`suspendEndsAt`、`deletionRequestedAt`、`deletedAt`、`lastLoginAt`、`lastActivityAt`）。设置 `BETTER_AUTH_SECRET` 时使用真实注册/session；未设置时兼容默认用户。 |
+| `Organization` | 租户和计费边界。认证模式下，新用户首次进入工作台时获得确定性、独立的个人组织；兼容模式使用默认组织。 |
+| `Membership` | User-to-Organization 角色映射（OWNER/ADMIN/MEMBER）。自动创建的个人工作区 Membership 为 OWNER；既有 Membership 优先复用。 |
 | `Subscription` | Organization 的 1:1 订阅与计费配置。仅承载 plan/status/isSelfHosted/Stripe/周期字段，不再存储凭证或即时推送开关。 |
 | `OrganizationCredential` | Organization 的凭证分区表。每行一类凭证（AI/SEARCH/BYOK/TELEGRAM/CCPAYMENT），通过 `credentialType` 分区。存储 AES-256-GCM 密文 + 脱敏 hint + provider/model/baseUrl/chatId/appId 等配置字段；Telegram 行同时承载即时推送开关和首次启用时间。`organizationId + credentialType` 唯一。 |
 | `PaymentInvoice` | 支付订单记录。跟踪 CCPayment 和 Stripe 支付，关联 organization，含订单号（`provider + providerOrderId` 唯一）、金额（Decimal）、币种、支付状态和 provider 元数据。 |
-| `Account` | Better Auth 兼容的 OAuth/account 记录。当前用于 email/password 认证，预留第三方 OAuth 扩展。 |
-| `Session` | Better Auth 兼容的会话记录。跟踪用户登录状态和过期时间。 |
+| `Account` | Better Auth 1.6.23 兼容的 OAuth/account 记录。承载 Better Auth core OAuth 字段（`accessTokenExpiresAt` 通过 `auth.ts account.fields` 映射到既有 `expiresAt` 列、`refreshTokenExpiresAt`、`idToken`、`scope`）。当前用于 email/password 认证，预留第三方 OAuth 扩展。 |
+| `Session` | Better Auth 1.6.23 兼容的会话记录。跟踪用户登录状态和过期时间。 |
+| `Verification` | Better Auth 1.6.23 core 验证记录表。承载 `identifier`/`value`/`expiresAt`，用于 email 验证、密码重置等 token 交换。 |
 | `Topic` | 用户创建的情报主题，包含 topic profile、状态和 owner。 |
 | `Source` | RSS/Web 信源注册条目，带 candidate/active/muted/rejected 状态和质量分。`observeExpiresAt` 是观察到期时间，用于候选源复审机制。设置为 CANDIDATE 状态时自动设置 14 天观察期；到期后 worker 自动复审（有事件产出则提升为 ACTIVE，否则 REJECTED）。 |
 | `Item` | worker 抓取并规范化后的原始条目；`rawContent` 保存清洗后的 Markdown 快照，结构化字段记录采集状态、来源、时间和错误码。 |
@@ -115,6 +116,32 @@ SAVED ───unsave─────> READ（已有 readAt）或 UNREAD
 - 对已收藏事件执行 `read` 时写入 `readAt` 和 `READ` feedback，但保留 `saved=true` / `SAVED`；只有显式 `unsave` 才移出收藏集合。
 - 收藏集合以 `(userId, eventId)` 对应的 `UserItemState.saved=true` 为查询依据，并按用户分页读取；不得通过截取首页事件后再过滤来推断完整收藏集合。
 
+### User Account 状态机
+
+```text
+ACTIVE ──suspend──────────> SUSPENDED
+SUSPENDED ──reactivate──────> ACTIVE
+ACTIVE ──requestDeletion──> DELETION_PENDING
+SUSPENDED ──requestDeletion> DELETION_PENDING
+DELETION_PENDING ──markDeleted> DELETED  (terminal)
+```
+
+规则（Issue #153 Lane 1）：
+- 状态机由 `packages/db/src/repositories/user-lifecycle.ts` 实现，所有转换使用原子 `updateMany` + `where.accountStatus` 谓词，避免 read-before-write 竞态。`updateMany` 返回 `count=0` 时再 `findUnique` 区分 `USER_NOT_FOUND` 与 `INVALID_TRANSITION` 两种错误码。
+- 稳定错误码：`USER_NOT_FOUND` / `INVALID_TRANSITION` / `INVALID_REASON`。错误消息不泄漏 Prisma 内部信息。
+- `suspendUser` 必须带非空 `reason`（trim 后长度 > 0），否则抛 `INVALID_REASON`。`suspendEndsAt` 可选。
+- `requestUserDeletion` 接受 `ACTIVE` 或 `SUSPENDED` 源状态；进入 `DELETION_PENDING` 时清空 suspension metadata，使后续 `markUserDeleted` 不需要区分来源。
+- `markUserDeleted` 设置 `deletedAt`，但保留 `suspendedAt`/`suspendedReason`/`deletionRequestedAt` 作为最近一次转换的审计轨迹。`DELETED` 为终态，不接受任何后续转换或 `recordUserLogin`/`recordUserActivity`。
+- `recordUserLogin` 只更新 `lastLoginAt`；`recordUserActivity` 只更新 `lastActivityAt`。两者都拒绝 `DELETED` 用户。两个时间戳职责分离，登录与会话/请求活跃度不可互相替代。
+- `accountStatus` 与 `emailVerified` 是独立字段：`emailVerified` 仅表示邮箱已验证，不决定账号是否可用；账号是否可登录由 `accountStatus` 和 Lane 2 runtime gating 决定。
+
+Lane 2 待办（runtime / UI，尚未实现）：
+- Better Auth hooks / middleware 在 `SUSPENDED` / `DELETION_PENDING` / `DELETED` 状态下拒绝新 session。
+- 邮箱验证强制（未验证邮箱时限制可用功能或拒绝登录）。
+- 删除保留期：`DELETION_PENDING` -> `DELETED` 的实际触发策略（cron / 保留期窗口）。
+- MFA（多因素认证）：当前 schema 未承载 MFA 字段，由 Better Auth plugin 在 Lane 2 引入。
+- 平台账号（`providerId="credential"` 以外的 OAuth account）的命名空间与 lifecycle 关联尚未完成。
+
 ### Briefing 周期与幂等规则
 
 - `DAILY` 使用 UTC 自然日半开区间 `[rangeStart, rangeEnd)`；`WEEKLY` 使用 UTC 自然周（周一开始）半开区间；`MONTHLY` 使用 UTC 自然月半开区间。当前尚未实现 organization/user 可配置业务时区。
@@ -126,15 +153,21 @@ SAVED ───unsave─────> READ（已有 readAt）或 UNREAD
 ### TaskRun 状态机
 
 ```text
-                     ┌──success──> SUCCEEDED
-create/start ──> RUNNING
-                     └──failure──> FAILED
+enqueue ──> PENDING ──atomic claim/lease──> RUNNING ──fenced complete──> SUCCEEDED
+               ^                                │
+               │                                ├─fenced fail, attempt < maxAttempts──> PENDING
+               │                                ├─fenced fail, budget exhausted───────> FAILED
+               └────planned yield (budget neutral)┘
+expired RUNNING lease ──reaper──> PENDING（有剩余预算）或 FAILED（预算耗尽）
 ```
 
 规则：
-- Worker fetch pipeline 必须有 attempt 上限；当前 `MAX_FETCH_ATTEMPTS=3`，每次尝试都会新建独立 `TaskRun`，失败记录不会被下一次 attempt 覆盖。
-- 当前运行路径创建后直接进入 `RUNNING`，最终收敛为 `SUCCEEDED` 或 `FAILED`；`PENDING` / `CANCELED` 为后续 DB queue/cancel 能力预留，当前代码不把它们描述为已实现状态转换。
-- 六类 TaskRun 均有真实写入者：`SOURCE_FETCH`、`SOURCE_DISCOVERY`、`AI_RELEVANCE`、`AI_EVENT_EXTRACTION`、`BRIEFING_GENERATION`、`EXPORT_GENERATION`。
+- `SOURCE_FETCH` / `SOURCE_DISCOVERY` 使用 durable queue：Web 只调用 `enqueueTaskRun()` 创建 `PENDING` 行；主 Worker 通过单条 PostgreSQL CTE + `FOR UPDATE SKIP LOCKED` 原子 claim，并设置 `leaseOwner`、高熵 `leaseToken`、`leaseExpiresAt`、`heartbeatAt`。其他细粒度 AI/采集审计 TaskRun 继续使用同步 RUNNING→终态 helper，不冒充队列任务。
+- complete/fail/yield/renew 均以 `id + RUNNING + leaseOwner + leaseToken + leaseExpiresAt > now` 为 fencing 谓词。过期或旧 token 影响 0 行，旧 Worker 不得覆盖新 lease 的结果。
+- claim 时 `attempt + 1`；fail 与 expired-lease recovery 在同一 SQL statement 内按 `attempt < maxAttempts` 决定回到 `PENDING` 或进入 `FAILED`。planned yield 使用 `GREATEST(attempt - 1, 0)` 返还本次 claim 的失败预算。
+- active idempotency 由 PostgreSQL partial unique index保证：同一 `organizationId + type + idempotencyKey` 在 `PENDING/RUNNING` 期间最多一行；终态后同 key 可再次 enqueue。Web 手动任务使用 60 秒 UTC 时间桶抑制双击/请求重试。
+- 主 Worker 只 claim exact allowlist `SOURCE_FETCH` / `SOURCE_DISCOVERY`，严格解析 `{mode,userId}` input；handler 期间约每个 lease 的 1/3 续租，成功/失败都通过 fenced API 收敛。Durable 与 legacy 审计 TaskRun 都不持久化原始 Error、URL、stack，仅保存固定低基数 error class；fetch 子 cycle 日志同样只输出固定 cycle 名与 class。`lease_expired` 是 reaper 专用固定系统标记。
+- fetch pipeline 自身的网络 attempt 上限仍为 `MAX_FETCH_ATTEMPTS=3`；每次抓取审计记录保持独立，不被 durable queue 的 claim attempt 覆盖。
 - LLM extraction 失败但规则 fallback 成功时，`AI_EVENT_EXTRACTION=FAILED`，外层 `AI_RELEVANCE=SUCCEEDED` 且 output 标记 `llmFallback=true`；这不是整轮失败，也不会丢失 provider 错误证据。
 - AI UsageEvent 的 quantity 统计逻辑 adapter 调用数（内部 HTTP retry 不重复计数），包括最终失败的调用；成功数和 fallback 数保留在 metadata。
 
@@ -333,6 +366,7 @@ Organization
   ├── Membership ── User
   │                 └── Session (Better Auth)
   │                 └── Account (Better Auth)
+  │                 └── Verification (Better Auth core, token 交换)
   ├── Subscription (1:1, 计划/状态/支付周期)
   │     └── PaymentInvoice (1:N, 支付订单记录)
   ├── OrganizationCredential (1:N per type, AI/SEARCH/BYOK/TELEGRAM/CCPAYMENT)

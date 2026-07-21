@@ -14,6 +14,14 @@ import {
   readSafeReturnPath,
   toUserActionError,
 } from "./_shared";
+import {
+  type EnhancedFeedbackKind,
+  ENHANCED_FEEDBACK_KIND_LABEL,
+  ENHANCED_FEEDBACK_KIND_ORDER,
+  getEnhancedFeedbackValue,
+  isValidEnhancedFeedbackKind,
+  shouldRecordCategoryPreference,
+} from "./enhanced-feedback-kinds";
 
 export async function updateDashboardEventStateAction(
   formData: FormData,
@@ -187,6 +195,80 @@ async function refreshPreferenceMemory(
   );
 }
 
+export async function markBriefingAsReadAction(
+  formData: FormData,
+): Promise<void> {
+  // SPEC §5.5 / Plan Task 3.2 (#173): 按当日 Briefing snapshot 批量标记当前用户已读。
+  // 复用 #172 UserItemState 隔离；不写 IntelligenceEvent.status；保留 saved；幂等。
+  const briefingId = readRequiredField(formData, "briefingId");
+  const returnTo = readSafeReturnPath(formData, "returnTo") ?? `/briefings`;
+  let message = "简报内的事件已批量标记为已读。";
+  let type: ActionRedirectType = "notice";
+
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("Database connection is required to mark briefing as read.");
+    }
+
+    const {
+      assertMembershipRole,
+      getPrismaClient,
+      markBriefingEventsRead,
+      recordUsageEvent,
+    } = await import("@wangchao/db");
+    const { getSessionWorkspace } = await import("@/lib/session");
+    const prisma = getPrismaClient();
+    const workspace = await getSessionWorkspace();
+
+    await assertMembershipRole(
+      prisma,
+      {
+        organizationId: workspace.organizationId,
+        userId: workspace.userId,
+      },
+      ["OWNER", "ADMIN", "MEMBER"],
+    );
+
+    const result = await markBriefingEventsRead(prisma, {
+      briefingId,
+      organizationId: workspace.organizationId,
+      userId: workspace.userId,
+    });
+
+    if (result.changed > 0) {
+      await refreshPreferenceMemory(prisma, workspace);
+    }
+
+    await recordUsageEvent(prisma, {
+      metadata: {
+        briefingId,
+        changed: result.changed,
+        skipped: result.skipped,
+        source: "briefing-bulk-read",
+      },
+      organizationId: workspace.organizationId,
+      quantity: result.changed,
+      subjectId: briefingId,
+      subjectType: "briefing",
+      type: "WEB_ACTION",
+      unit: "events-marked-read",
+      userId: workspace.userId,
+    });
+
+    if (result.changed === 0) {
+      message = "简报中没有需要标记的新事件。";
+    }
+  } catch (error) {
+    logActionError("markBriefingAsReadAction", error);
+    message = toUserActionError(error);
+    type = "error";
+  }
+
+  revalidatePath("/");
+  revalidatePath(returnTo);
+  redirect(actionRedirectHref(returnTo, type, message));
+}
+
 export async function regenerateEventSummaryAction(
   formData: FormData,
 ): Promise<void> {
@@ -289,12 +371,10 @@ export async function regenerateEventSummaryAction(
 export async function recordEnhancedFeedbackAction(
   formData: FormData,
 ): Promise<void> {
+  // Issue #175 / SPEC §5.6: 详情页增强反馈入口（6 种 kind）。
+  // 复用 #164 FeedbackKind + recordEnhancedFeedback；kind 白名单/VALUE/撤销语义走纯函数。
   const topicId = readRequiredField(formData, "topicId");
-  const kind = readRequiredField(formData, "feedbackKind") as
-    | "MORE_LIKE_THIS"
-    | "LESS_LIKE_THIS"
-    | "SCORE_UP"
-    | "SCORE_DOWN";
+  const rawKind = readRequiredField(formData, "feedbackKind");
   const eventId = readOptionalField(formData, "eventId") || undefined;
   const sourceId = readOptionalField(formData, "sourceId") || undefined;
   const returnTo = readSafeReturnPath(formData, "returnTo") ?? "/";
@@ -306,9 +386,10 @@ export async function recordEnhancedFeedbackAction(
       throw new Error("Database connection is required for feedback.");
     }
 
-    if (!["MORE_LIKE_THIS", "LESS_LIKE_THIS", "SCORE_UP", "SCORE_DOWN"].includes(kind)) {
+    if (!isValidEnhancedFeedbackKind(rawKind)) {
       throw new Error("Invalid feedback kind.");
     }
+    const kind: EnhancedFeedbackKind = rawKind;
 
     const {
       assertMembershipRole,
@@ -329,13 +410,8 @@ export async function recordEnhancedFeedbackAction(
       ["OWNER", "ADMIN", "MEMBER"],
     );
 
-    const valueMap: Record<string, number> = {
-      MORE_LIKE_THIS: 2,
-      LESS_LIKE_THIS: -2,
-      SCORE_UP: 1,
-      SCORE_DOWN: -1,
-    };
-
+    // 明确绑定 event/source/topic，防双写：FeedbackEvent 主键 = 自增 id，
+    // 这里每次提交一条记录，core generatePreferenceDeltas 按 dedupKey(topicId+key+feedbackEventId) 幂等归纳。
     await recordEnhancedFeedback(
       prisma,
       { organizationId: workspace.organizationId },
@@ -345,11 +421,12 @@ export async function recordEnhancedFeedbackAction(
         kind,
         eventId,
         sourceId,
-        value: valueMap[kind],
+        value: getEnhancedFeedbackValue(kind),
       },
     );
 
-    if ((kind === "SCORE_UP" || kind === "SCORE_DOWN") && eventId) {
+    // SCORE 类同时写 category preference（沿用 #164 路径，影响 category 权重）。
+    if (shouldRecordCategoryPreference(kind) && eventId) {
       await recordCategoryPreferenceFeedback(prisma, {
         action: kind === "SCORE_UP" ? "up" : "down",
         eventId,
@@ -357,6 +434,10 @@ export async function recordEnhancedFeedbackAction(
         userId: workspace.userId,
       });
     }
+
+    await refreshPreferenceMemory(prisma, workspace);
+
+    message = `已记录「${ENHANCED_FEEDBACK_KIND_LABEL[kind]}」反馈。`;
   } catch (error) {
     logActionError("recordEnhancedFeedbackAction", error);
     message = toUserActionError(error);

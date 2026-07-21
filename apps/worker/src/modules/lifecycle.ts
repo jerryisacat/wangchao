@@ -1,7 +1,7 @@
 import { getSoftTimeoutMs } from "./env.js";
 
 let isShuttingDown = false;
-let cycleStartTime = Date.now();
+let cycleDeadline = Date.now() + getSoftTimeoutMs();
 
 export function setupSignalHandlers(): void {
   const shutdown = async (signal: string) => {
@@ -26,10 +26,35 @@ export function isCycleShuttingDown(): boolean {
   return isShuttingDown;
 }
 
-export function resetCycleStartTime(): void {
-  cycleStartTime = Date.now();
+/**
+ * Set the cycle time budget. When `timeoutMs` is omitted the default soft
+ * timeout (`WANGCHAO_WORKER_CYCLE_SOFT_TIMEOUT_MS`) is used. The deadline is
+ * stored locally as an absolute timestamp; `isCycleTimeExhausted` returns true
+ * once `Date.now()` reaches it.
+ */
+export function resetCycleTimeBudget(timeoutMs?: number): void {
+  const budget = timeoutMs ?? getSoftTimeoutMs();
+  cycleDeadline = Date.now() + budget;
 }
 
+/**
+ * Backward-compatible alias: resets the cycle start time using the default
+ * budget (same behavior as pre-#163 `resetCycleStartTime`).
+ */
+export function resetCycleStartTime(): void {
+  resetCycleTimeBudget();
+}
+
+/**
+ * Remaining milliseconds until the cycle deadline. Never negative.
+ */
+export function getCycleRemainingMs(): number {
+  return Math.max(0, cycleDeadline - Date.now());
+}
+
+/**
+ * Deadline semantics: true once `Date.now()` reaches the cycle deadline.
+ */
 export function isCycleTimeExhausted(): boolean {
-  return Date.now() - cycleStartTime > getSoftTimeoutMs();
+  return Date.now() >= cycleDeadline;
 }

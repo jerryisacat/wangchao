@@ -1,5 +1,5 @@
 import { createOpenAiCompatibleAdapter, recommendSourceCandidate, type EventExtractionAdapter, type SourceRecommendation, type SourceRecommendationAdapter } from "@wangchao/ai";
-import { checkAiCallQuota, resolveEffectivePlan, shouldUseByok } from "@wangchao/core";
+import { checkAiCallQuota, resolveEffectivePlanFromView, shouldUseByok } from "@wangchao/core";
 import { getDecryptedByokCredential, getDecryptedCredentials, getMonthAiCallCount, getPrismaClient, getSubscriptionPlanView, getTodayAiCallCount } from "@wangchao/db";
 import { createSearchProvider as createSearchProviderFromSources, extractTopicKeywords, type SearchProvider, type SearchProviderType } from "@wangchao/sources";
 import type { SourceDiscoveryTopicRecord } from "@wangchao/db";
@@ -109,12 +109,7 @@ export async function createAnalysisRuntimeWithPlan(
 ): Promise<AnalysisRuntimeResult | null> {
   const planView = await getSubscriptionPlanView(prisma, { organizationId });
   const isSelfHosted = planView.isSelfHosted;
-  const plan = resolveEffectivePlan({
-    plan: planView.plan,
-    status: planView.status ?? "ACTIVE",
-    isSelfHosted,
-    currentPeriodEnd: planView.currentPeriodEnd,
-  });
+  const plan = resolveEffectivePlanFromView(planView);
 
   const todayCalls = await getTodayAiCallCount(prisma, { organizationId });
   const monthCalls = await getMonthAiCallCount(prisma, { organizationId });

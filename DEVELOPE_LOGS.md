@@ -2,6 +2,233 @@
 
 本文件记录分阶段开发审计和延期功能追踪，辅助 `AGENTS_CHANGELOGS.md` 使用。它不是传统 release changelog；重点是记录每个阶段是否达成 `REFACTOR_PLAN.md` 和 `AGENTS.md` 目标、缺失功能、已知问题、修复情况和后续追踪项。
 
+## 2026-07-18
+
+## Stage 5 / Task 5.2: Timeline/Saved 导出 + briefings/topics route ?format=（#187）
+
+- Phase: implementation plan Stage 5 Task 5.2。
+- Scope: briefings/topics export route ?format=json|pdf|markdown 补全、Timeline 全量导出（>100 不截断，>500 deferred to Worker）、Saved collection 导出（user-scoped，三格式复用 snapshot）、dedup fixture 时间依赖修复（固定时间改相对时间）。
+- Alignment: SPEC §5.7。
+- Verification: core export-schema + render-pdf fixture + 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后 Stage 5 全部完成，批量 push。
+- Follow-up: >500 条 deferred 的 Worker EXPORT_GENERATION handler 待后续实现；saved 路由 topicId fallback 语义待优化。
+
+## Stage 5 / Task 5.1: JSON/PDF 导出（#186）
+
+- Phase: implementation plan Stage 5 Task 5.1。
+- Scope: 稳定版本化 JSON schema（EXPORT_JSON_SCHEMA_VERSION=1）、pdfkit PDF renderer（中文字体 fallback 链、分页、链接）、events export route 支持 ?format=json|pdf|markdown、DB recordMarkdownExport 泛化接受 format 参数。
+- Alignment: SPEC §5.7。
+- Verification: core export-schema 6 fixture + render-pdf 8 fixture + 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 5 批量 push）；未部署、未关闭 Issue。
+- Follow-up: briefings/topics export route 的 ?format= 支持留给 #187 一起补；字体资产策略用 runtime fallback（不 commit 8.3MB OTF）。
+
+## Stage 4 / Task 4.7: 每主题 Dashboard（#185）
+
+- Phase: implementation plan Stage 4 Task 4.7。
+- Scope: getTopicDashboard（未读 Top/收藏/趋势/信源健康/最近简报 5 区）、7/30 天事件/类别/实体/来源质量趋势、服务端聚合、纯 CSS 图表（无图表库依赖）。
+- Alignment: SPEC §5.8。
+- Verification: db dashboard fixture + 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后 Stage 4 全部完成，批量 push。
+- Follow-up: globals.css 类待补（mobile viewport）；实体聚合客户端 Map（大窗口性能后续优化）。
+
+## Stage 4 / Task 4.6: 浏览器 Briefing 详情（#182）
+
+- Phase: implementation plan Stage 4 Task 4.6。
+- Scope: briefings/[briefingId] 详情页（安全 Markdown 渲染、下载、批量已读、Event 跳转）、跨租户拒绝、XSS 防护。
+- Alignment: SPEC §5.8。
+- Verification: web briefing markdown renderer fixture（XSS 覆盖 script/iframe/img onerror/javascript/data:）+ db getBriefingDetail fixture + 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 4 批量 push）；未部署、未关闭 Issue。
+
+## Stage 4 / Task 4.5: 业务时区与过滤统计（#184）
+
+- Phase: implementation plan Stage 4 Task 4.5。
+- Scope: business-window（UTC/Asia-Shanghai/DST 日周月边界）、resolveBusinessTimezone（当前空=UTC，schema 加字段后落地 org/user 级）、filtered-stats（FILTERED item 按原因统计 + 渲染分区）、Briefing metadata 记录 filteredStats + timezone。
+- Alignment: SPEC §4.2/§5.8。
+- Verification: core business-window + filtered-stats fixture + 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 4 批量 push）；未部署、未关闭 Issue。
+- Follow-up: schema 加 timezone 字段后落地 org/user 级配置。
+
+## Stage 4 / Task 4.4: 中文结构化简报（#183）
+
+- Phase: implementation plan Stage 4 Task 4.4。
+- Scope: zh-CN 默认无英文残留、分区展示（重要性/影响对象/可信度/后续动作/多来源）、完整消费 digestStyle（compact/standard/detailed/detailLevel/maxEvents）、Preference 影响选择、不丢 entities/followUpSuggestion/secondarySources。
+- Alignment: SPEC §4.2/§5.1。
+- Verification: core 15 个新 briefing fixture + 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 4 批量 push）；未部署、未关闭 Issue。
+
+## Stage 4 / Task 4.3: Telegram 重试补投（#179）
+
+- Phase: implementation plan Stage 4 Task 4.3。
+- Scope: 查询 FAILED/PENDING/stale 区分 retryable、attempt 上限+退避（基于 updatedAt）、手动补投、SENT 幂等不重复。
+- Alignment: SPEC §5.8 DeliveryLog。
+- Verification: worker telegram-delivery fixture（重试/幂等/退避/attempt 上限）+ 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 4 批量 push）；未部署、未关闭 Issue。
+- Follow-up: 无 schema migration（退避基于 updatedAt）；如需精确 nextAttemptAt 需独立 schema Issue。
+
+## Stage 4 / Task 4.2: 报告正文证据集（#178）
+
+- Phase: implementation plan Stage 4 Task 4.2。
+- Scope: 从 Event/Item.rawContent/Briefing/Source metadata 召回证据、去重压缩保留 evidence IDs/URLs/timestamps/trust、itemCount/briefingCount 真实数量、AI prompt 关键判断关联证据编号禁止联网补全。
+- Alignment: SPEC §5.8。
+- Verification: worker report fixture（7 项：INSUFFICIENT_DATA 终态/幂等/COMPLETED 回归/零事件/真实 itemCount+provenance+dedup/AI prompt 含证据 ID+URL+timestamp+trust+禁止联网/INSUFFICIENT_DATA 持久化 evidenceIds）+ 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 4 批量 push）；未部署、未关闭 Issue。
+
+## Stage 4 / Task 4.1: ReportStatus INSUFFICIENT_DATA（#177）
+
+- Phase: implementation plan Stage 4 Task 4.1。
+- Scope: 证据不足时显式落库 INSUFFICIENT_DATA（非 COMPLETED）、completeInsufficientReport()、状态转换校验、重复执行幂等、UI 显示 coverageNote。
+- Alignment: SPEC §5.8 ReportStatus 状态机。
+- Verification: worker report fixture（4 断言：不足证据落 INSUFFICIENT_DATA、幂等、coverageNote、状态转换）+ 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 4 批量 push）；未部署、未关闭 Issue。
+
+## Stage 3 / Task 3.5: PreferenceMemory 全链路消费（#165）
+
+- Phase: implementation plan Stage 3 Task 3.5。
+- Scope: 偏好回灌 relevance filter（excludeScope/keywords 从 PreferenceMemory 动态合并）、AI event extraction system prompt 注入偏好上下文、source scheduling 偏好影响抓取频率/范围、用户编辑/删除后下一轮生效、探索率硬下限防 filter bubble。闭合 SPEC §7.4 "抓取+筛选"两环。
+- Alignment: SPEC §5.6/§7.4。
+- Verification: core 10 个新 #165 fixture + ai event-extraction + worker fixtures；全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后 Stage 3 全部完成，批量 push。
+- Follow-up: 批量审查在 Stage 3 末尾补；真实 PG worker 端到端周期测试待补。
+
+## Stage 3 / Task 3.4: 增强反馈 UI（#175）
+
+- Phase: implementation plan Stage 3 Task 3.4。
+- Scope: SOURCE_QUALITY_UP/DOWN 与 SCORE_UP/DOWN 可提交、明确绑定 event/source/topic 防双写、成功/错误/撤销语义、键盘可访问。
+- Alignment: SPEC §5.6 增强反馈类型。
+- Verification: web enhanced-feedback-kinds fixture（6 种 kind 绑定+防双写+撤销）+ 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 3 批量 push）；未部署、未关闭 Issue。
+
+## Stage 3 / Task 3.3: 历史与归档（#174）
+
+- Phase: implementation plan Stage 3 Task 3.3。
+- Scope: 已读/忽略/收藏/归档分页筛选、archive/restore 个人状态、组织级 ARCHIVED 与个人明确区分、#172 follow-up（listDashboardEvents 排除个人 ARCHIVED）。
+- Alignment: SPEC §5.5。
+- Verification: db 7 个新 fixture（archive/restore/restore 派生/feed 排除个人 ARCHIVED/history 分页/status 全集/无效 status 安全）+ 全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 3 批量 push）；未部署、未关闭 Issue。
+- Follow-up: history 页面 CSS 类待补（mobile-first）；真实 PG 两用户 archive/restore fixture 待补。
+
+## Stage 3 / Task 3.2: Briefing 批量已读（#173）
+
+- Phase: implementation plan Stage 3 Task 3.2。
+- Scope: 按 briefing snapshot 批量 upsert 当前用户 UserItemState 为 READ、保留 saved、不产生 N+1、重复幂等返回 changed/skipped counts。
+- Alignment: SPEC §5.5 批量标记当日简报已读。
+- Verification: db fixtures（批量 + 幂等 + 保留 saved + changed/skipped）+ web action；全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 3 批量 push）；未部署、未关闭 Issue。
+
+## Stage 3 / Task 3.1: UserItemState 用户隔离（#172）
+
+- Phase: implementation plan Stage 3 Task 3.1。
+- Scope: 分离 Event 生命周期状态和个人阅读状态；Dashboard/Briefing/history 查询按当前用户 UserItemState 派生；updateDashboardEventState 不再写 IntelligenceEvent.status；旧全局状态兼容 fallback；两用户真实 PG 隔离测试。
+- Alignment: SPEC §5.5/§6.5。
+- Verification: db 4 个新隔离测试 + 真实 PostgreSQL 两用户隔离（4 invariant：A read/dismiss/save 不影响 B；B saved 不含 A 收藏；操作不改 IntelligenceEvent.status；B 无 A 的 UserItemState 行）；全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 3 批量 push）；未部署、未关闭 Issue。
+- Follow-up: #174 个人 ARCHIVED 引入时需重新审视 notIn[ARCHIVED] 查询逻辑。
+
+## Stage 2 / Task 2.6: 扩大语义去重覆盖（#171）
+
+- Phase: implementation plan Stage 2 Task 2.6。
+- Scope: canonicalizeTitle 归一化、canonicalizeEntity 别名表、recallDedupCandidates 脱离阅读状态、bounded lookback 基于 createdAt（48h 可配置）、无 AI 时 deterministic fallback 不按 URL 隔绝。
+- Alignment: SPEC §5.4 Deduplication 阶段。
+- Verification: core/ai/db/worker 4 包 typecheck + fixtures 全绿；全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后 Stage 2 全部完成，批量 push。
+- Follow-up: 批量审查在 Stage 2 末尾补；写入期 fuzzy 匹配统一用 canonicalizeTitle 属后续。
+
+## Stage 2 / Task 2.5: 分离综合评分维度（#170）
+
+- Phase: implementation plan Stage 2 Task 2.5。
+- Scope: 分离 relevanceScore/importanceScore/sourceQualityFactor/preferenceAdjustment 独立维度、版本化公式、AI JSON schema/prompt/parser 更新、UI 可解释组成、旧事件兼容。
+- Alignment: SPEC §5.4 AI 情报分析 7 阶段评分维度。
+- Verification: core + ai + worker 三包 typecheck + fixtures 全绿；全仓 typecheck/lint/test/build/diff-check 通过（Node 26 + Prisma generate）。
+- Completion: 本次 commit 后不 push（Stage 2 批量 push）；未部署、未关闭 Issue。
+- Follow-up: 批量审查在 Stage 2 末尾补。
+
+## Stage 2 / Task 2.4: 自然语言 Topic 草案（#167）
+
+- Phase: implementation plan Stage 2 Task 2.4。
+- Scope: AI 生成结构化 TopicProfileDraft（版本化 schema）+ 规则 fallback、两步流程（生成→预览→逐字段修改→重新生成→确认创建）、未确认不写 Topic/Source、AI 输出全链路 sanitize、cookie 传递草案、Worker 读同一版本化契约。
+- Alignment: SPEC §3.1/§5.1/§8.1。
+- Verification: AI 7 测试 + web 6 fixture + Playwright 契约更新；全仓 typecheck/lint/test/build/diff-check 通过；DeepSeek V4 Pro 审计 REQUEST_CHANGES（1 Critical: 2 个 CSS 类未定义）→ 父 Agent 补 globals.css 定义 → build 通过。
+- Completion: 本次 commit 后不 push（Stage 2 批量 push）；未部署、未关闭 Issue。
+- Follow-up: 响应式断点 + loading 状态 + 英文/空描述测试为 Important，属后续体验改进。
+
+## Stage 2 / Task 2.3: Candidate 观察与晋升（#169）
+
+- Phase: implementation plan Stage 2 Task 2.3。
+- Scope: Candidate 隔离 relevance/quality observation 不进正式 pipeline、复用 #176 getSourceQualitySummary + decideAutomaticGovernance、recommendCandidatePromotion 纯函数（APPROVE/OBSERVE/MUTE/REJECT/INSUFFICIENT_SAMPLE）、computeCandidateQualityMetrics 按 source 聚合、14 天默认窗口样本不足继续观察、抓取失败不误拒绝、Candidate Item 不进正式简报。
+- Alignment: SPEC §5.2/§5.3 Candidate Source、§8.1/§8.2 信源发现治理。
+- Verification: db typecheck + 8 分支纯函数测试 + candidate quality 聚合测试；worker governance fixture；全仓 typecheck/lint/test/build/diff-check 通过。
+- Completion: 本次 commit 后不 push（Stage 2 批量 push）；未部署、未关闭 Issue。
+- Follow-up: 批量审查在 Stage 2 末尾补。
+
+## Stage 2 / Task 2.2: WEB 与公告列表页采集（#168）
+
+- Phase: implementation plan Stage 2 Task 2.2。
+- Scope: 统一 SourceAdapter 契约 fetch(source)->NormalizedSourceItem[]、adapter registry 按 kind 分发、RSS 薄包装零行为变更、WEB adapter 静态 HTML 解析（linkedom）、SSRF/body-size/redirect/encoding/限速防护、typed error + 重试、幂等。
+- Alignment: SPEC §5.3 初期信源支持 RSS/Atom、公开网页与官方公告列表页。
+- Verification: sources/worker/db 三包 typecheck + fixtures 全绿；全仓 typecheck/lint/test/build/diff-check 通过；DeepSeek V4 Pro 只读审计 APPROVED（Critical 0 / Important 2: 选择器配置无 UI 入口+RSS body-size 一致性，均非正确性 bug / Minor 3）。
+- Completion: 本次 commit 后不 push（Stage 2 批量 push）；未部署、未关闭 Issue。
+- Follow-up: WEB adapter 选择器配置 UI 入口属后续增强；候选 WEB 观察属 #169 范围。
+
+## Stage 2 / Task 2.1: Source 质量持久化与治理（#176）
+
+- Phase: implementation plan Stage 2 Task 2.1。
+- Scope: Source qualityScore 在 observation transaction 中持久化（写 SourceObservation 历史 + 同事务更新 Source.qualityScore）、公式版本化（SOURCE_QUALITY_FORMULA_VERSION）、最小样本保护（SOURCE_QUALITY_MIN_SAMPLE）、自动降权/建议静默阈值（decideAutomaticGovernance）、高风险状态变化保留人工确认、统一读取接口 getSourceQualitySummary。
+- Alignment: SPEC §5.2 trustScore/qualityScore 边界——qualityScore 持久化在 Source，trustScore 不被 observation 自动改（trustScore 是 discovery/relevance 产物）；§6.2 schema 字段复用，无新 migration。
+- Bugs fixed: listSourceGovernanceReport 动态计算 qualityScore 不持久化；recordSourceQualityObservation 只写 SourceObservation 不更新 Source.qualityScore；噪声推荐主要展示未进入评分和自动降权。
+- Verification: DB 6 个新 fixture（qualityScore 持久化、stale 回退、公式版本、最小样本保护、REJECT 人工确认、统一读接口）+ worker governance fixture；全仓 typecheck/lint/test/build/diff-check 通过；DeepSeek V4 Pro 只读审计 APPROVED（Critical 0 / Important 1: getSourceQualitySummary 尚无外部调用方，建议后续 Issue 迁移 / Minor 3）。
+- Completion: 本次 commit 后不 push（Stage 2 批量 push）；未部署、未关闭 Issue。
+- Follow-up: #169 Candidate 观察与 #170 综合评分需消费 getSourceQualitySummary 统一读接口，闭合 Important #1。
+
+## Stage 1 / Task 1.6: 反馈信号契约修复（#164）
+
+- Phase: implementation plan Stage 1 Task 1.6。
+- Scope: FeedbackSignalRecord 字段完整性（feedbackEventId/eventId/createdAt）、12 种非治理反馈类型纳入查询、按 feedbackEventId 主键幂等、跨 Topic 信号隔离、30 天半衰期时间衰减恢复、MORE_LIKE_THIS category key 重复计算修复。
+- Alignment: SPEC §5.6 全部 15 种 FeedbackKind 中除 SOURCE_APPROVE/SOURCE_REJECT 外均纳入偏好学习；§6.7 PreferenceMemory 的 signalCount/weight 语义与实际累计一致。
+- Bugs fixed: DB mapper 丢失 feedbackEventId/eventId/createdAt 导致 core dedupKey 退化为 eventId+kind（空 eventId 时跨 Topic 吞信号）；查询排除 6 种增强反馈类型；MORE_LIKE_THIS/LESS_LIKE_THIS 的 preferenceKeysForSignal 重复推送 category key 导致单信号双倍计算。
+- Verification: Core 19 个 fixture（含新增 MORE_LIKE_THIS 重复计算回归测试）+ DB repositories fixture（含新增 verifyFeedbackSignalMapperPreservesContractFields）全绿；全仓 typecheck/lint/test/build/db:validate/diff-check 通过；DeepSeek V4 Pro 只读审计 REQUEST_CHANGES（1 Critical: MORE_LIKE_THIS 重复计算）已修复并补回归测试。
+- Completion: 本次 commit 后推送 `feat/spec-alignment-160`；未部署、未关闭 Issue。
+- Follow-up: Stage 1 exit gate 已通过（#161/#153/#166/#162/#163/#164 全部完成）；进入 Stage 2。
+
+## Stage 1 / Task 1.5: 主 Worker 多组织化（#163）
+
+- Phase: implementation plan Stage 1 Task 1.5。
+- Scope: eligible Organization/稳定 actor 查询、单一 main deadline、durable drain 后剩余预算、多组织串行公平调度、per-org outer TaskRun/错误边界/安全摘要、tenant destructive fencing 与真实 PostgreSQL integration。
+- Alignment: fresh self-hosted 默认 workspace 继续由 `ensureDefaultWorkspace` 兼容；ACTIVE actor 按 OWNER→ADMIN→MEMBER/createdAt/id 选择；A 失败不阻断 B；总预算耗尽的剩余组织只返回 `SKIPPED_BUDGET`；workspace pipeline 不自行枚举或创建 outer TaskRun。
+- Bugs fixed: `mergeSemanticEvents` 的 merge target/item/archive 路径此前缺少 organization fence；`markItemFiltered` repository 仅按 item id 更新；dedup catch 曾输出 raw error；standalone budget fixture 曾因 per-org reset 产生假阳性。
+- Verification: DB/Worker fixtures 与 focused typecheck/lint；disposable PostgreSQL 16 replay 0001→0017；真实双组织 suite 覆盖 eligibility、repository/destructive isolation、production workspace pipeline、A fail/B success、TaskRun/UsageEvent/DeliveryLog scope；最终全仓 typecheck/lint/test/build/db validate/diff-check 与 added-lines 安全扫描通过。DeepSeek V4 Pro 两次只读审计均因 provider silent 超过 deadline 被终止，未返回 verdict；父 Agent 完成关键不变量审计。
+- Completion: 已以 `4ca9467 feat:实现主Worker多组织公平调度` 独立提交并推送到 `feat/spec-alignment-160`；本地与远端 SHA 已核对一致，未部署、未关闭 Issue。
+- Follow-up: Task 1.6 / #164 反馈信号契约尚未编码；已完成 Issue、SPEC 和现有 DB/Core/Worker 调用链调研，下一步从 RED fixture 开始。
+
+## Stage 1 / Task 1.4: TaskRun claim / lease / consume（#162）
+
+- Phase: implementation plan Stage 1 Task 1.4。
+- Scope: PostgreSQL active-idempotent enqueue、SKIP LOCKED claim、lease owner/token/expiry/heartbeat、fenced terminal transitions、planned yield、stale recovery、Web producer 与主 Worker consumer。
+- Alignment: Web request lifecycle 只 enqueue；Worker exact-type claim 并按 tenant workspace 执行；数据库约束抵抗并发 producer，lease fencing 防止旧 Worker 覆写；原始错误不进入 durable row。
+- Missing: 全组织扫描、公平调度、per-organization backpressure 与 cron 多组织化属于 Task 1.5 / #163；本任务只消费明确 enqueue 的 tenant task，并保留旧 default fetch cron。
+- Bugs fixed: Web 创建 RUNNING 但无人消费；应用层先查后建无法抵抗并发；status-only ownership 无法阻止 stale executor；source discovery durable handler曾嵌套创建 TaskRun；heartbeat settlement 竞态；legacy TaskRun/fetch 日志 raw error 泄漏；renew exception 误判 ownership loss；yield stale errorMessage；classifier URL `/config/` 误判。
+- Verification: schema/repository/consumer/Web fixtures；DB/Web/Worker focused gates；PostgreSQL 16 replay 0001→0017；真实并发 queue suite；production enqueue→consumer success/failure probe；最终全仓 typecheck/lint/test/build/db validate/diff-check。DeepSeek V4 Pro 第二轮 APPROVED（Critical 0 / Important 0；唯一 Minor reserved `lease_expired` marker 已补边界注释）。
+- Follow-up: Task 1.4 独立 commit/push 后自动进入 Task 1.5 / #163，不部署、不关闭 Issue。
+
+## Stage 1 / Task 1.3: 统一受保护路由认证门（#166）
+
+- Phase: implementation plan Stage 1 Task 1.3。
+- Scope: Next.js proxy 真实 Better Auth Session gate、页面安全 `/login?next=`、受保护 API/Action 401、开放重定向防护、Session 过期与 auth-disabled self-hosted 兼容。
+- Alignment: 认证模式不以 cookie 存在作为信任依据；公开入口使用最小 allowlist；页面/API/Action 共用稳定认证语义；所有认证响应保留既有 nonce CSP 与安全头。
+- Missing: 用户生命周期的 SUSPENDED/DELETION_PENDING/DELETED Session gate、邮箱验证、MFA/OAuth lifecycle 仍属后续独立任务；Task 1.4 TaskRun 队列尚未开始。
+- Bugs fixed: 未登录页面此前进入渲染后才失败；受保护 API 无统一 401；登录页直接信任 callback URL；cookie 指向已删除 DB Session 时缺少 proxy 级拒绝。
+- Verification: 纯策略 RED/GREEN fixture、Web typecheck/test、Next production build、disposable PostgreSQL 上 desktop/mobile auth E2E 10/10、auth-disabled `/`/`/sources`/`/pricing` 200 smoke、全量 typecheck/lint/test/build/diff-check 通过；DeepSeek V4 Pro 独立审计 APPROVED（Critical 0 / Important 0）。
+- Follow-up: Task 1.3 commit/push 后自动进入 Task 1.4 #162。
+
+## Stage 1 / Task 1.2: Better Auth Schema 与认证工作区闭环（#153）
+
+- Phase: implementation plan Stage 1 Task 1.2。
+- Scope: Better Auth 1.6.23 User/Account/Session/Verification schema、0016 migration、User lifecycle repository、真实注册/session、per-user Organization/Membership provisioning。
+- Alignment: schema 与已安装 Better Auth core 契约一致；workspace provisioning 保持 tenant boundary，兼容未启用 auth 的默认工作区模式。
+- Missing: #166 统一受保护路由门、开放重定向防护和 session 过期语义；生命周期 session gate、邮箱验证策略、删除保留期、MFA/OAuth lifecycle 后续实现。
+- Bugs fixed: Next 16 production bundle 下 CJS `require("@wangchao/db")` interop 崩溃；浏览器 client 错误使用 server-only base URL 并被 CSP 阻止；普通 DATABASE_URL 误触发专用 replay；超长 lifecycle fixture。
+- Verification: DB fixtures/typecheck/build、Prisma generate/validate、0015→0016 disposable PostgreSQL replay、Web typecheck/production build、desktop/mobile Better Auth E2E（注册、session reload、登出/重登录、OWNER Membership、双用户组织隔离）通过。
+- Follow-up: Task 1.3 #166 完成时解除 auth smoke 中 protected-route `fixme`。
+
 ## 2026-07-11
 
 ## Phase 15: 高分情报即时推送（#37）

@@ -92,7 +92,7 @@ export default async function UsagePage() {
       prisma.source.count({
         where: {
           organizationId: workspace.organizationId,
-          status: { not: "REJECTED" },
+          status: { in: ["CANDIDATE", "ACTIVE", "MUTED"] },
         },
       }),
     ]);

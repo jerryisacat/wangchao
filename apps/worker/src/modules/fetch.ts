@@ -12,7 +12,14 @@ import {
   type FetchedSourceRecord,
   type NormalizedFetchedItemInput,
 } from "@wangchao/db";
-import { fetchRssFeed, isFetchRssRetryable, fetchArticleMarkdown, type NormalizedSourceItem } from "@wangchao/sources";
+import {
+  fetchRssFeed,
+  isFetchRssRetryable,
+  fetchArticleMarkdown,
+  fetchSource,
+  isFetchRetryable,
+  type NormalizedSourceItem,
+} from "@wangchao/sources";
 import { getMaxFetchAttempts, getFetchConcurrency, getBackoffBaseMs, sleep, pLimit } from "./env.js";
 import type { WorkerFetchCycleResult } from "./types.js";
 import { isCycleShuttingDown, isCycleTimeExhausted } from "./lifecycle.js";
@@ -112,7 +119,7 @@ export async function fetchSourceWithRetries(
 
     lastError = result.lastError;
 
-    if (!isFetchRssRetryable(lastError)) {
+    if (!isFetchRetryable(lastError)) {
       break;
     }
 
@@ -135,6 +142,7 @@ export async function fetchSourceWithRetries(
     generatedWeeklyBriefings: 0,
     insertedOrUpdatedItems: 0,
     lastError,
+    autoMutedSources: 0,
     recordedSourceObservations: 0,
     updatedPreferenceMemories: 0,
   };
@@ -151,7 +159,12 @@ async function fetchSourceAttempt(
   });
 
   try {
-    const items = await fetchRssFeed(source.url);
+    // Issue #168: dispatch by Source.kind. RSS goes through fetchRssFeed
+    // (existing behaviour); WEB and any future kind go through the adapter
+    // registry in @wangchao/sources. Unknown kinds throw a typed
+    // UnknownSourceKindError which is non-retryable - the retry loop above
+    // will stop and the TaskRun records the failure class.
+    const items = await fetchSourceItemsForKind(source, {});
     const writtenItems = await upsertFetchedItems(
       prisma,
       items.map((item) => mapFetchedSourceItem(source, item)),
@@ -174,6 +187,7 @@ async function fetchSourceAttempt(
       generatedMonthlyBriefings: 0,
       generatedWeeklyBriefings: 0,
       insertedOrUpdatedItems: writtenItems.length,
+      autoMutedSources: 0,
       recordedSourceObservations: 0,
       updatedPreferenceMemories: 0,
     };
@@ -194,8 +208,37 @@ async function fetchSourceAttempt(
       generatedWeeklyBriefings: 0,
       insertedOrUpdatedItems: 0,
       lastError: error,
+      autoMutedSources: 0,
       recordedSourceObservations: 0,
       updatedPreferenceMemories: 0,
     };
   }
+}
+
+/**
+ * Dispatch a fetch-scheduling record to the correct adapter by `source.kind`.
+ *
+ * `source.kind` is populated by `listActiveSourcesForFetch` /
+ * `listCandidateRssSourcesForObservation` (both select the `kind` column).
+ * Legacy callers that omit `kind` default to RSS so existing RSS sources keep
+ * their pre-#168 behaviour even if a stale code path does not select `kind`.
+ *
+ * Exposed as a standalone function so unit fixtures can exercise the dispatch
+ * contract without standing up a Prisma client.
+ */
+export async function fetchSourceItemsForKind(
+  source: FetchedSourceRecord,
+  options: { fetchImpl?: typeof fetch } = {},
+): Promise<NormalizedSourceItem[]> {
+  const kind = source.kind ?? "RSS";
+  if (kind === "RSS") {
+    return fetchRssFeed(source.url, options);
+  }
+  return fetchSource({
+    id: source.id,
+    kind,
+    name: source.name,
+    url: source.url,
+    rawMetadata: undefined,
+  }, options);
 }

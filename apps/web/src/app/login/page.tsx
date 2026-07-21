@@ -7,12 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { normalizeAuthReturnPath } from "@/lib/auth-access";
 import { authClient } from "@/lib/auth-client";
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const callbackUrl = searchParams.get("callbackUrl") ?? "/";
+  const returnPath = normalizeAuthReturnPath(
+    searchParams.get("next") ?? searchParams.get("callbackUrl"),
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +38,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push(callbackUrl);
+      router.push(returnPath);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "登录失败，请稍后重试。");

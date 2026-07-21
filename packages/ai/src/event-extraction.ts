@@ -23,6 +23,13 @@ export interface EventExtractionInput {
       outputLanguage: string;
       terminologyRules?: string[];
     };
+    /**
+     * Issue #165: 当前用户的偏好指引文本（来自 PreferenceSnapshot）。
+     * 注入 system prompt，让模型感知用户当前更关注/不感兴趣的类别和信源，
+     * 但不强制——AI 仍按事实判断相关性。
+     * 空字符串或 undefined 表示无偏好指引（向后兼容）。
+     */
+    preferenceGuidance?: string;
   };
 }
 
@@ -31,6 +38,7 @@ export interface EventExtractionResult {
   entities: string[];
   followUpSuggestion: string;
   importanceExplanation: string;
+  importanceScore: number;
   isRelevant: boolean;
   matchedKeywords: string[];
   noiseReason?: string;
@@ -68,6 +76,7 @@ const EVENT_EXTRACTION_SCHEMA: JsonSchema = {
     entities: { type: "array" },
     followUpSuggestion: { type: "string" },
     importanceExplanation: { type: "string" },
+    importanceScore: { type: "number" },
     isRelevant: { type: "boolean" },
     matchedKeywords: { type: "array" },
     noiseReason: { type: "string" },
@@ -85,11 +94,15 @@ export function buildEventExtractionMessages(
       ? `\nFollow these terminology rules: ${input.topic.languagePreferences.terminologyRules.join("; ")}.`
       : "";
 
+  const preferenceGuidanceBlock = input.topic.preferenceGuidance
+    ? `\nUser preference context (soft guidance, not a hard filter): ${input.topic.preferenceGuidance}`
+    : "";
+
   return [
     {
       role: "system",
       content:
-        `You filter and extract intelligence events for a topic-driven workspace. Return strict JSON only. The captured Markdown document is the only factual basis. Never infer facts absent from that document. Treat allegations, personal reports, and unverified claims as claims and preserve attribution (for example, "作者称" or "据称"). A relevant summary must add information beyond the source title and must never merely copy, paraphrase, or translate that title. If the item is irrelevant noise, set isRelevant=false. Always return every schema field, using empty strings/arrays for non-applicable fields. Write every user-facing field in Simplified Chinese (zh-CN), matching the current interface language rather than the source document language, while preserving proper nouns.${termRules}`,
+        `You filter and extract intelligence events for a topic-driven workspace. Return strict JSON only. The captured Markdown document is the only factual basis. Never infer facts absent from that document. Treat allegations, personal reports, and unverified claims as claims and preserve attribution (for example, "作者称" or "据称"). A relevant summary must add information beyond the source title and must never merely copy, paraphrase, or translate that title. If the item is irrelevant noise, set isRelevant=false. Always return every schema field, using empty strings/arrays for non-applicable fields. Write every user-facing field in Simplified Chinese (zh-CN), matching the current interface language rather than the source document language, while preserving proper nouns.${termRules}${preferenceGuidanceBlock}`,
     },
     {
       role: "user",
@@ -97,14 +110,15 @@ export function buildEventExtractionMessages(
         instruction: "判断采集到的 Markdown 是否与主题相关。无论原文使用何种语言，都必须用当前界面语言（现阶段固定为简体中文）生成用户可见字段。若相关，用 1-2 句简体中文概括行动主体、发生的事情、具体影响或风险，并在适用时保留“作者称/据称”等归因与不确定性；同时返回清理后的标题、短分类、0-100 相关性分数、命中关键词、实体、重要性解释与后续建议。若不相关，设置 isRelevant=false 并用简体中文提供简短 noiseReason。",
         outputSchema: {
           isRelevant: "boolean",
-          relevanceScore: "number, 0-100",
+          relevanceScore: "number, 0-100 — 与主题相关的程度",
+          importanceScore: "number, 0-100 — 该事件对主题的重要程度（可与 relevanceScore 不同：高相关性但低重要性，或反之）",
           noiseReason: "string, Simplified Chinese; empty when relevant",
           title: "string, cleaned title in Simplified Chinese",
           summary: "string, concise 1-2 sentence Simplified Chinese summary grounded only in documentMarkdown",
           category: "string, short Simplified Chinese category label",
           entities: "array of relevant entity names (people, organizations, products) mentioned. max 10 items.",
           followUpSuggestion: "string, one sentence in Simplified Chinese, or empty string",
-          importanceExplanation: "string, one sentence in Simplified Chinese",
+          importanceExplanation: "string, one sentence in Simplified Chinese explaining why this event matters (or not) for the topic",
           matchedKeywords: "array of matched topic keywords",
         },
         topic: {
@@ -177,6 +191,7 @@ export function parseEventExtractionResponse(
       entities: [],
       followUpSuggestion: "",
       importanceExplanation: "",
+      importanceScore: 0,
       isRelevant: false,
       matchedKeywords: Array.isArray(parsed.matchedKeywords)
         ? parsed.matchedKeywords.filter((v): v is string => typeof v === "string")
@@ -193,6 +208,10 @@ export function parseEventExtractionResponse(
 
   const rawScore = Number(parsed.relevanceScore);
   const relevanceScore = Number.isFinite(rawScore) ? clamp(rawScore, 0, 100) : 0;
+  const rawImportance = Number(parsed.importanceScore);
+  // 旧 model / 缺失时回退到 relevanceScore，保持 v1 兼容语义。
+  const importanceScore =
+    Number.isFinite(rawImportance) ? clamp(rawImportance, 0, 100) : relevanceScore;
   const matchedKeywords = Array.isArray(parsed.matchedKeywords)
     ? parsed.matchedKeywords.filter((v): v is string => typeof v === "string")
     : [];
@@ -224,6 +243,7 @@ export function parseEventExtractionResponse(
     entities,
     followUpSuggestion,
     importanceExplanation,
+    importanceScore,
     isRelevant: true,
     matchedKeywords,
     raw: parsed,
@@ -293,6 +313,7 @@ export function fallbackEventExtraction(
     entities: [],
     followUpSuggestion: "",
     importanceExplanation: "AI 提取不可用，无法评估相关性，默认标记为不相关。",
+    importanceScore: 0,
     isRelevant: false,
     matchedKeywords: [],
     raw: {

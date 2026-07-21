@@ -1,4 +1,6 @@
 import {
+  Archive,
+  ArchiveRestore,
   ArrowLeft,
   Bookmark,
   Check,
@@ -6,7 +8,10 @@ import {
   Download,
   EyeOff,
   ExternalLink,
+  Gauge,
   RotateCcw,
+  ShieldAlert,
+  ShieldCheck,
   Sparkles,
   ThumbsDown,
   ThumbsUp,
@@ -92,7 +97,7 @@ export default async function EventDetailPage({
 
       <Card variant="work">
         <CardHeader>
-          <div className="flex flex-wrap items-center gap-2 text-xs font-medium text-muted-foreground">
+          <div className="event-detail-kicker">
             <Badge variant="default">{event.category}</Badge>
             {event.entities && event.entities.length > 0
               ? event.entities.map((entity) => (
@@ -106,23 +111,23 @@ export default async function EventDetailPage({
           <CardTitle>{event.title}</CardTitle>
         </CardHeader>
         <CardContent>
-          <article className="grid gap-4">
+          <article className="event-detail-page">
             <p
-              className="m-0 text-base leading-relaxed"
+              className="event-detail-summary"
               data-summary-status={event.summaryStatus}
             >
               {event.summary}
             </p>
 
             {event.explanation ? (
-              <div className="flex items-start gap-2 rounded-[16px] bg-muted p-4 text-sm leading-relaxed text-muted-foreground">
+              <div className="event-detail-reason">
                 <Sparkles aria-hidden="true" size={14} />
                 <span>{event.explanation}</span>
               </div>
             ) : null}
 
             {event.followUpSuggestion ? (
-              <div className="flex items-start gap-2 rounded-[16px] bg-muted p-4 text-sm leading-relaxed text-muted-foreground">
+              <div className="event-detail-reason">
                 <Sparkles aria-hidden="true" size={14} />
                 <span>后续跟踪：{event.followUpSuggestion}</span>
               </div>
@@ -134,22 +139,22 @@ export default async function EventDetailPage({
               </p>
             ) : null}
 
-            <dl className="mt-2 grid grid-cols-1 gap-3 border-t border-border pt-4 sm:grid-cols-3">
-              <div className="rounded-[16px] bg-muted p-4">
-                <dt className="mb-1.5 text-xs font-medium text-muted-foreground">主题</dt>
-                <dd className="m-0 break-words text-sm font-medium text-foreground">{event.topicName}</dd>
+            <dl className="event-detail-grid">
+              <div>
+                <dt>主题</dt>
+                <dd>{event.topicName}</dd>
               </div>
-              <div className="rounded-[16px] bg-muted p-4">
-                <dt className="mb-1.5 text-xs font-medium text-muted-foreground">来源</dt>
-                <dd className="m-0 break-words text-sm font-medium text-foreground">{event.sourceName}</dd>
+              <div>
+                <dt>来源</dt>
+                <dd>{event.sourceName}</dd>
               </div>
-              <div className="rounded-[16px] bg-muted p-4">
-                <dt className="mb-1.5 text-xs font-medium text-muted-foreground">更新时间</dt>
-                <dd className="m-0 break-words text-sm font-medium text-foreground">{formatDateTime(event.updatedAt)}</dd>
+              <div>
+                <dt>更新时间</dt>
+                <dd>{formatDateTime(event.updatedAt)}</dd>
               </div>
             </dl>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="event-detail-actions">
               <form action={updateDashboardEventStateAction}>
                 <input name="eventId" type="hidden" value={event.eventId} />
                 <input name="returnTo" type="hidden" value={returnTo} />
@@ -192,9 +197,40 @@ export default async function EventDetailPage({
                   忽略此条
                 </Button>
               </form>
+              {event.status === "ARCHIVED" ? (
+                <form action={updateDashboardEventStateAction}>
+                  <input name="eventId" type="hidden" value={event.eventId} />
+                  <input name="returnTo" type="hidden" value={returnTo} />
+                  <Button
+                    name="action"
+                    size="sm"
+                    type="submit"
+                    value="restore"
+                    variant="secondary"
+                  >
+                    <ArchiveRestore aria-hidden="true" size={14} />
+                    恢复归档
+                  </Button>
+                </form>
+              ) : (
+                <form action={updateDashboardEventStateAction}>
+                  <input name="eventId" type="hidden" value={event.eventId} />
+                  <input name="returnTo" type="hidden" value={returnTo} />
+                  <Button
+                    name="action"
+                    size="sm"
+                    type="submit"
+                    value="archive"
+                    variant="ghost"
+                  >
+                    <Archive aria-hidden="true" size={14} />
+                    归档
+                  </Button>
+                </form>
+              )}
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="event-detail-actions">
               <form action={updateCategoryPreferenceAction}>
                 <input name="eventId" type="hidden" value={event.eventId} />
                 <input name="returnTo" type="hidden" value={returnTo} />
@@ -255,7 +291,75 @@ export default async function EventDetailPage({
               </form>
             </div>
 
-            <div className="flex flex-wrap gap-2">
+            {/* Issue #175 / SPEC §5.6: 来源质量反馈，影响当前 Topic 的 source 权重 */}
+            <div className="event-detail-actions">
+              <form action={recordEnhancedFeedbackAction}>
+                <input name="topicId" type="hidden" value={event.topicId} />
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="sourceId" type="hidden" value={event.sourceId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <input name="feedbackKind" type="hidden" value="SOURCE_QUALITY_UP" />
+                <Button
+                  size="sm"
+                  type="submit"
+                  variant="ghost"
+                >
+                  <ShieldCheck aria-hidden="true" size={14} />
+                  来源靠谱
+                </Button>
+              </form>
+              <form action={recordEnhancedFeedbackAction}>
+                <input name="topicId" type="hidden" value={event.topicId} />
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="sourceId" type="hidden" value={event.sourceId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <input name="feedbackKind" type="hidden" value="SOURCE_QUALITY_DOWN" />
+                <Button
+                  size="sm"
+                  type="submit"
+                  variant="ghost"
+                >
+                  <ShieldAlert aria-hidden="true" size={14} />
+                  来源存疑
+                </Button>
+              </form>
+            </div>
+
+            {/* Issue #175 / SPEC §5.6: 评分校准反馈，调整当前事件分数相关 category 权重 */}
+            <div className="event-detail-actions">
+              <form action={recordEnhancedFeedbackAction}>
+                <input name="topicId" type="hidden" value={event.topicId} />
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="sourceId" type="hidden" value={event.sourceId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <input name="feedbackKind" type="hidden" value="SCORE_UP" />
+                <Button
+                  size="sm"
+                  type="submit"
+                  variant="ghost"
+                >
+                  <Gauge aria-hidden="true" size={14} />
+                  评分偏低
+                </Button>
+              </form>
+              <form action={recordEnhancedFeedbackAction}>
+                <input name="topicId" type="hidden" value={event.topicId} />
+                <input name="eventId" type="hidden" value={event.eventId} />
+                <input name="sourceId" type="hidden" value={event.sourceId} />
+                <input name="returnTo" type="hidden" value={returnTo} />
+                <input name="feedbackKind" type="hidden" value="SCORE_DOWN" />
+                <Button
+                  size="sm"
+                  type="submit"
+                  variant="ghost"
+                >
+                  <Gauge aria-hidden="true" size={14} />
+                  评分偏高
+                </Button>
+              </form>
+            </div>
+
+            <div className="event-detail-actions">
               <form action={regenerateEventSummaryAction}>
                 <input name="eventId" type="hidden" value={event.eventId} />
                 <input name="returnTo" type="hidden" value={returnTo} />

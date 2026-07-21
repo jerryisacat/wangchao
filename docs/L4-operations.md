@@ -23,6 +23,7 @@ CI=true pnpm build
 CI=true pnpm lint
 CI=true pnpm test
 pnpm worker:health
+pnpm worker:task-runs
 pnpm worker:source-discovery
 pnpm worker:report-generation
 pnpm smoke:web
@@ -32,11 +33,15 @@ pnpm smoke:web
 
 Topic profile 或 analysis 输入变更后，应使用临时 Postgres 验证：更新后的 keywords/entities/include/exclude/importance、当前 Source name 与 Topic 当前 name/description 能从 `listFetchedItemsForAnalysis()` 进入 extraction input / `buildTopicProfileContext()`；使用错误 organizationId 调用 `updateTopic()` 必须失败。不要在真实工作区制造验证数据。
 
+`@wangchao/db` 的普通 `pnpm test` 链式运行 repositories/workspace-auth/user-lifecycle、TaskRun schema 与 TaskRun repository fixtures；普通测试即使环境中存在 `DATABASE_URL` 也不会误触发专用 PostgreSQL suites。Better Auth migration replay 使用 `DATABASE_URL=... pnpm --filter @wangchao/db test:migration-replay`。TaskRun 并发验证必须额外显式设置 `RUN_TASK_RUN_PG_TESTS=1 WANGCHAO_DISPOSABLE_DATABASE=1`，且 DATABASE_URL 只允许 localhost/127.0.0.1、数据库名必须包含 `task_run_pg`，再执行 `pnpm --filter @wangchao/db test:task-run-pg`；该 suite 验证 active-idempotency、SKIP LOCKED claim、stale fencing、yield 与 exact-expiry reaper。
+
+多组织 Worker 真实数据库验证使用 `RUN_ORGANIZATION_CYCLE_PG_TESTS=1 WANGCHAO_DISPOSABLE_DATABASE=1 pnpm --filter @wangchao/worker test:organization-pg`。`DATABASE_URL` 必须指向 localhost/127.0.0.1，数据库名必须包含 `organization_cycle_pg`，并由调用方预先执行 migrations。该 suite 验证 ACTIVE actor 枚举、tenant repository 与 destructive mutation fencing、A 失败/B 继续、真实 workspace pipeline，以及 TaskRun/UsageEvent/DeliveryLog 组织隔离；fixture 不连接外部 RSS/AI，MUTED source 与无凭证配置只验证本地 pipeline 的 graceful isolation。
+
 Relevance 变更必须用 core fixture 覆盖：exclude 与正信号同时命中时 exclude 胜出且不生成 draft；仅 entity 或 includeScope 命中也能生成 event；entity match 保留到 event entities；无任何正信号仍被过滤。Worker filtered 分支必须把具体 rule 或 LLM `noiseReason` 写入 Item rawMetadata 和对应 extraction/relevance TaskRun output，而不是覆盖成泛化文案。
 
 多来源或治理指标变更后，应在临时 Postgres 验证：同标题不同 URL 最终只有一个未归档 IntelligenceEvent；最新 Item 为 PRIMARY/ANALYZED，旧 Item 为 SECONDARY/DUPLICATE；source report 的 hit/noise/duplicate 与唯一 active event 数和 fixture 数据一致。
 
-Worker/导出链路变更后，应在临时 Postgres 中至少验证 `TaskRun.type/status/attempt/maxAttempts/startedAt/finishedAt/output/errorMessage`。AI provider 失败但规则 fallback 成功时，应同时看到失败的 `AI_EVENT_EXTRACTION`、成功且 `llmFallback=true` 的 `AI_RELEVANCE`，并确认 `UsageEvent(type='AI_CALL').quantity` 包含最终失败的逻辑 adapter 调用（内部 HTTP retry 不重复计数）。
+Worker/导出链路变更后，应在临时 Postgres 中至少验证 `TaskRun.type/status/attempt/maxAttempts/startedAt/finishedAt/output/errorMessage`。Durable `SOURCE_FETCH/SOURCE_DISCOVERY` 还必须验证 `idempotencyKey/leaseOwner/leaseToken/leaseExpiresAt/heartbeatAt`：两个 claimant 不得获得同一行，旧 token complete/fail 必须影响 0 行，过期 lease 必须按预算恢复或终止。renew 返回 false 表示明确失去 ownership；renew 请求异常不直接判定丢失，后续 complete/fail 的 fencing 结果才是权威。TaskRun 与 fetch 子 cycle 日志不得保存/输出 raw message、URL 或 stack，只使用固定低基数 class。`pnpm worker:task-runs` 只 drain durable queue；默认 `pnpm railway:worker:start` 会先 drain queue，再继续既有 fetch cron。AI provider 失败但规则 fallback 成功时，应同时看到失败的 `AI_EVENT_EXTRACTION`、成功且 `llmFallback=true` 的 `AI_RELEVANCE`，并确认 `UsageEvent(type='AI_CALL').quantity` 包含最终失败的逻辑 adapter 调用（内部 HTTP retry 不重复计数）。
 
 正文采集链路必须额外验证 `CONTENT_FETCH` TaskRun 与 `Item.contentStatus/contentSource/contentFetchedAt/contentErrorCode`；`CONTENT_FETCH_FAILED/CONTENT_INSUFFICIENT/CONTENT_UNSUPPORTED/AI_FAILED` 占位事件应在首页和详情可见、保留原文链接，但不得被 briefing、instant push、report evidence 或 semantic dedup 查询选中。详情页重新采集只重置状态，下一轮 Worker 执行实际网络/AI 工作。
 
@@ -172,10 +177,12 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 ### Auth（Better Auth）
 
-- `BETTER_AUTH_SECRET` Required for auth。设置后激活 Better Auth（email/password + session），数据访问通过 `getSessionWorkspace()` 校验 session。未设置时应用运行在兼容模式：`getSessionWorkspace()` fallback 到 `ensureDefaultWorkspace()`，使用默认 workspace/user，不要求登录。
+- `BETTER_AUTH_SECRET` Required for auth。设置后激活 Better Auth（email/password + session）：`apps/web/src/proxy.ts` 在进入受保护页面/API/Server Action 前调用 Better Auth `getSession()` 验证数据库 Session，不能只凭 cookie 存在放行；页面无 Session/Session 过期时跳转 `/login?next=<原站内路径+query>`，API/Action 返回 `401 UNAUTHENTICATED`，认证依赖不可用返回 `503 AUTH_UNAVAILABLE`。未设置时 proxy 跳过认证门，`getSessionWorkspace()` fallback 到 `ensureDefaultWorkspace()`，使用默认 workspace/user，不要求登录。
 - `BETTER_AUTH_URL` Required for auth。Better Auth 的 base URL（如 `https://wangchao.jerryiscat.one`），用于 session callback URL 和邮件链接生成。
-- 当 `BETTER_AUTH_SECRET` 未设置时，`/login` 和 `/register` 页面不生效，应用直接使用默认 workspace，适合个人版和本地开发。
-- production 请求由 `apps/web/src/proxy.ts` 生成随机 CSP nonce，并通过 request header 交给 Next.js 为 framework/React Flight 内联脚本加 nonce；根 layout 使用 request-time rendering，因为静态预渲染页面无法获得每请求 nonce。不要把 `script-src` 简化回只有 `'self'`，也不要以 `'unsafe-inline'` 作为长期修复，否则会分别导致永久骨架屏或削弱 XSS 防护。
+- 当 `BETTER_AUTH_SECRET` 未设置时，`/login` 和 `/register` 页面不作为访问前置条件，应用直接使用默认 workspace，适合个人版和本地开发。发布前必须同时 smoke `/` 与 `/sources` 为 200，防止误把 self-hosted 模式锁在登录页外。
+- 公开路由为 `/login`、`/register`、`/pricing`、`/api/auth/*`、`/api/health` 和 CCPayment/Stripe 签名 webhook；checkout、管理页、导出和产品工作台均受保护。新增公开入口时必须显式评审 `auth-access.ts` allowlist，禁止宽泛放行 `/api/*`。
+- 登录 `next` 只接受站内绝对 path；绝对 URL、`//`、反斜杠和控制字符统一回退 `/`。不要在页面或 Action 中直接 `router.push(searchParams.get("next"))`。
+- production 请求由 `apps/web/src/proxy.ts` 生成随机 CSP nonce，并通过 request header 交给 Next.js 为 framework/React Flight 内联脚本加 nonce；redirect/401/503 同样保留 CSP 与全部安全响应头。根 layout 使用 request-time rendering，因为静态预渲染页面无法获得每请求 nonce。不要把 `script-src` 简化回只有 `'self'`，也不要以 `'unsafe-inline'` 作为长期修复。
 
 ### 支付（CCPayment + Stripe）
 
@@ -228,10 +235,10 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 ### Auth E2E 测试
 
-Auth 端到端测试覆盖 Better Auth 注册/登录/登出/路由保护流程。
+Auth 端到端测试覆盖 Better Auth 注册、自动登录、session reload 恢复、登出/重登录、OWNER Membership、多用户 Organization 隔离、未登录访问 `/`/`/sources`/`/admin/settings` 的安全 `next` 跳转、受保护 API `401`、站外 `next` 拒绝，以及 cookie 仍在但数据库 Session 已删除时拒绝访问。redirect/401 还断言安全响应头未丢失；结束时自动清理 fixture。desktop/mobile project 使用 RFC 5737 TEST-NET 地址隔离 Better Auth 内存限流 bucket，不修改产品限流配置。
 
 启用条件：
-- 设置 `BETTER_AUTH_SECRET` 环境变量
+- 服务端设置 `BETTER_AUTH_SECRET`，或测试进程设置 `PLAYWRIGHT_AUTH_ENABLED=1`
 - 设置 `DATABASE_URL`（指向已有 migration 的 Postgres）
 - 可选：设置 `PLAYWRIGHT_AUTH_RUN_ID` 避免测试用户冲突
 
@@ -244,7 +251,7 @@ docker run -d --name wangchao-smoke-pg -e POSTGRES_USER=wangchao -e POSTGRES_PAS
 DATABASE_URL=postgresql://wangchao:wangchao@localhost:5433/wangchao?schema=public pnpm --filter @wangchao/db exec prisma migrate deploy
 
 # 运行 auth e2e 测试
-BETTER_AUTH_SECRET=test-secret BETTER_AUTH_URL=http://localhost:3000 DATABASE_URL=postgresql://wangchao:wangchao@localhost:5433/wangchao?schema=public npx playwright test tests/smoke/auth.spec.ts
+BETTER_AUTH_SECRET=test-secret BETTER_AUTH_URL=http://localhost:3000 DATABASE_URL=postgresql://wangchao:***@localhost:5433/wangchao?schema=public PLAYWRIGHT_AUTH_ENABLED=1 pnpm exec playwright test tests/smoke/auth.spec.ts
 ```
 
-未配置 `BETTER_AUTH_SECRET` 时，auth 测试自动 skip。
+未配置 `BETTER_AUTH_SECRET` 且未设置 `PLAYWRIGHT_AUTH_ENABLED=1`，或缺少 `DATABASE_URL` 时，auth 测试自动 skip。浏览器 client 始终使用同源 `/api/auth`；`BETTER_AUTH_URL` 仅用于服务端 Better Auth base URL，必须与测试 Origin 一致。

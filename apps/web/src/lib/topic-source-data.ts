@@ -423,6 +423,75 @@ export async function getBriefingsPage(
   };
 }
 
+// Issue #182 (Plan Task 4.6) - 浏览器简报详情。
+// web 层封装：session workspace fence + DB getBriefingDetail 调用。
+// 跨租户由 DB 层 organizationId fence 保证（返回 null）。
+export interface BriefingDetailEventSummary {
+  eventId: string;
+  title: string;
+  occurredAt: string | null;
+  topicId: string;
+}
+
+export interface BriefingDetailSummary {
+  body: string;
+  briefingId: string;
+  content: string;
+  events: BriefingDetailEventSummary[];
+  generatedAt: string;
+  markdown: string | null;
+  period: "DAILY" | "WEEKLY" | "MONTHLY";
+  rangeEnd: string;
+  rangeStart: string;
+  title: string;
+  topicId: string;
+  topicName: string;
+}
+
+export async function getBriefingDetail(
+  briefingId: string,
+): Promise<BriefingDetailSummary | null> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not configured. Set DATABASE_URL to connect to Postgres.",
+    );
+  }
+
+  const { getSessionWorkspace } = await import("@/lib/session");
+  const db = await import("@wangchao/db");
+  const prisma = db.getPrismaClient();
+  const workspace = await getSessionWorkspace();
+
+  const detail = await db.getBriefingDetail(prisma, {
+    briefingId,
+    organizationId: workspace.organizationId,
+  });
+
+  if (!detail) {
+    return null;
+  }
+
+  return {
+    body: detail.body,
+    briefingId: detail.briefingId,
+    content: detail.content,
+    events: detail.events.map((event) => ({
+      eventId: event.eventId,
+      title: event.title,
+      occurredAt: event.occurredAt?.toISOString() ?? null,
+      topicId: event.topicId,
+    })),
+    generatedAt: detail.generatedAt.toISOString(),
+    markdown: detail.markdown,
+    period: detail.period,
+    rangeEnd: detail.rangeEnd.toISOString(),
+    rangeStart: detail.rangeStart.toISOString(),
+    title: detail.title,
+    topicId: detail.topicId,
+    topicName: detail.topicName,
+  };
+}
+
 export async function getSavedEventsPage(
   requestedPage: number,
   pageSize = 30,
@@ -459,6 +528,75 @@ export async function getSavedEventsPage(
     total: result.total,
   };
 }
+
+// SPEC §5.5 / Plan Task 3.3 (#174): 个人阅读历史与归档视图。
+// status 筛选 READ/DISMISSED/SAVED/ARCHIVED 四种个人阅读状态，与收藏视图（saved=true）互补。
+// 归档视图可恢复（restore action），恢复不影响其他用户。
+export type HistoryStatus = "READ" | "DISMISSED" | "SAVED" | "ARCHIVED";
+
+export interface HistoryEventsPage {
+  events: DashboardEventSummary[];
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  total: number;
+}
+
+const HISTORY_STATUSES: readonly HistoryStatus[] = [
+  "READ",
+  "DISMISSED",
+  "SAVED",
+  "ARCHIVED",
+] as const;
+
+function parseHistoryStatus(value: string | string[] | undefined): HistoryStatus {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw === "string" && (HISTORY_STATUSES as readonly string[]).includes(raw)) {
+    return raw as HistoryStatus;
+  }
+  return "READ";
+}
+
+export async function getHistoryEventsPage(
+  status: HistoryStatus,
+  requestedPage: number,
+  pageSize = 30,
+): Promise<HistoryEventsPage> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not configured. Set DATABASE_URL to connect to Postgres.",
+    );
+  }
+
+  const { getSessionWorkspace } = await import("@/lib/session");
+  const {
+    getPrismaClient,
+    listUserHistoryEvents,
+  } = await import("@wangchao/db");
+  const prisma = getPrismaClient();
+  const workspace = await getSessionWorkspace();
+  const page = clampPage(requestedPage);
+  const result = await listUserHistoryEvents(
+    prisma,
+    {
+      organizationId: workspace.organizationId,
+      status,
+      userId: workspace.userId,
+    },
+    page,
+    pageSize,
+  );
+
+  return {
+    events: result.events.map((event) => toDashboardEventSummary(event)),
+    page: result.page,
+    pageCount: result.pageCount,
+    pageSize: result.pageSize,
+    total: result.total,
+  };
+}
+
+export { parseHistoryStatus };
 
 export async function getDashboardEventDetail(
   eventId: string,
@@ -605,5 +743,110 @@ export async function getTopicTimeline(
     pageCount: result.pageCount,
     pageSize: result.pageSize,
     total: result.total,
+  };
+}
+
+// Issue #185 (Plan Task 4.7) — 每主题一体化 Dashboard。
+// SPEC §5.8 Dashboard：每主题一个页面，整合未读 Top、已读/收藏、趋势、信源健康、最近简报。
+// 服务端聚合，web 层只做 session workspace fence + DTO 序列化。
+
+export interface TopicDashboardData {
+  topic: {
+    id: string;
+    name: string;
+    description: string | null;
+    status: "ACTIVE" | "PAUSED" | "ARCHIVED";
+    createdAt: string;
+    updatedAt: string;
+    sourceCount: number;
+    eventCount: number;
+    briefingCount: number;
+  };
+  unreadTop: DashboardEventSummary[];
+  savedEvents: DashboardEventSummary[];
+  savedTotal: number;
+  readTotal: number;
+  recentBriefings: Array<{
+    briefingId: string;
+    generatedAt: string;
+    period: "DAILY" | "WEEKLY" | "MONTHLY";
+    title: string;
+    rangeStart: string;
+    rangeEnd: string;
+  }>;
+  sourceHealth: Array<{
+    sourceId: string;
+    name: string;
+    status: "ACTIVE" | "CANDIDATE" | "MUTED" | "REJECTED";
+    qualityScore: number;
+    hitRate: number;
+    noiseRate: number;
+    duplicateRate: number;
+    totalItems: number;
+    eventCount: number;
+    lastFetchedAt: string | null;
+    lastError: string | null;
+    consecutiveFailures: number;
+  }>;
+  trends: {
+    "7": TopicTrendData;
+    "30": TopicTrendData;
+  };
+}
+
+export interface TopicTrendData {
+  rangeDays: 7 | 30;
+  rangeStart: string;
+  rangeEnd: string;
+  totalEvents: number;
+  dailyBuckets: Array<{ date: string; count: number }>;
+  categoryBuckets: Array<{ category: string; count: number }>;
+  entityBuckets: Array<{ entity: string; count: number }>;
+  sourceQuality: Array<{
+    sourceId: string;
+    sourceName: string;
+    qualityScore: number;
+    hitRate: number;
+    noiseRate: number;
+    eventCount: number;
+  }>;
+}
+
+export async function getTopicDashboardData(
+  topicId: string,
+): Promise<TopicDashboardData | null> {
+  if (!process.env.DATABASE_URL) {
+    throw new Error(
+      "DATABASE_URL is not configured. Set DATABASE_URL to connect to Postgres.",
+    );
+  }
+
+  const { getSessionWorkspace } = await import("@/lib/session");
+  const { getPrismaClient, getTopicDashboard } = await import("@wangchao/db");
+  const prisma = getPrismaClient();
+  const workspace = await getSessionWorkspace();
+
+  const dashboard = await getTopicDashboard(prisma, {
+    organizationId: workspace.organizationId,
+    topicId,
+    userId: workspace.userId,
+  });
+
+  if (!dashboard) {
+    return null;
+  }
+
+  return {
+    topic: dashboard.topic,
+    unreadTop: dashboard.unreadTop.map((event) => toDashboardEventSummary(event)),
+    savedEvents: dashboard.savedEvents.map((event) => toDashboardEventSummary(event)),
+    savedTotal: dashboard.savedTotal,
+    readTotal: dashboard.readTotal,
+    recentBriefings: dashboard.recentBriefings,
+    sourceHealth: dashboard.sourceHealth,
+    trends: {
+      "7": dashboard.trends["7"],
+      "30": dashboard.trends["30"],
+    },
   };
 }

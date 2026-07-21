@@ -11,13 +11,13 @@ function requireAuthSecret(): Response | null {
 export async function GET(req: Request) {
   const early = requireAuthSecret();
   if (early) return early;
-  const handler = toNextJsHandler(getAuth());
+  const handler = toNextJsHandler(await getAuth());
   return handler.GET(req);
 }
 
 export async function POST(req: Request) {
   const early = requireAuthSecret();
   if (early) return early;
-  const handler = toNextJsHandler(getAuth());
+  const handler = toNextJsHandler(await getAuth());
   return handler.POST(req);
 }

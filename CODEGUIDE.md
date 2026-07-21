@@ -63,7 +63,7 @@ Postgres
 | 后台任务 | `apps/worker` Node.js worker |
 | 包管理 | `pnpm` workspace |
 | Web app | `apps/web`，Next.js App Router，提供顶部导航产品壳、首页未读情报流、创建主题、信源管理、简报、已收藏、偏好记忆、`/api/health`、loading/error 状态和 shadcn/Radix/Tailwind v4 组件链。按 `FRONTEND.md` 重构为 Kinetic Intelligence 风格。 |
-| Worker | `apps/worker`，Node.js TypeScript worker，支持 fetch、source discovery、instant push cycle 与 `--health` 健康检查 |
+| Worker | `apps/worker`，Node.js TypeScript worker；默认 cycle 在单一总预算内先消费 durable SOURCE_FETCH/SOURCE_DISCOVERY TaskRun，再按稳定顺序与动态公平预算串行执行全部 eligible Organization 的 fetch pipeline；支持独立 `--task-runs`、source discovery、instant push 与 `--health`。 |
 | 共享包 | `packages/core`, `packages/ai`, `packages/db`, `packages/sources` |
 | DB 基础 | `packages/db`，Prisma/Postgres schema、migration、seed、lazy client、tenant/member role guard、usage event 与查询 helper |
 | 情报管线 | `packages/core` + `apps/worker`，提供可解释 relevance/noise、event draft、dedupe hash、gravity ranking、feedback delta 和 preference ranking |
@@ -125,6 +125,8 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 
 - 抓取、AI 分析、简报、导出等长任务必须放在 worker，不放进 request lifecycle。
 - Web app 只 enqueue 任务和读取 durable status，不执行长任务。
+- Durable queue 的所有权不是 `status=RUNNING` 本身，而是未过期的 `leaseOwner + leaseToken`；Worker 的 renew/complete/fail/yield 必须使用同一 fencing tuple，旧 lease 影响 0 行。
+- Web producer 必须提供 tenant-scoped active idempotency key；Worker 只 claim exact supported type allowlist。原始 Error、URL、stack 不得写入 TaskRun 或日志，失败只保留固定低基数分类。
 - Worker 负责抓取、Markdown 正文采集、item normalize、可解释分析、反馈归纳、简报生成和 source quality observation。AI 摘要必须在正文采集 `READY` 后执行。
 - AI 摘要语言跟随当前界面语言而非原文语言；在 i18n 接入前固定为简体中文，topic profile 不得绕过该约束。
 - Next.js route handlers 用于外部 API、webhooks、export downloads、status endpoints。Server Actions 用于内部产品 mutations。
@@ -181,7 +183,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 - 导出内容必须保留来源链接和生成时间。
 - 商业化阶段必须补 tenant isolation、权限测试、usage audit。
 - AI 凭证与搜索凭证相互独立：UI 通过独立表单实例各自管理状态，`upsertAiCredential` 和 `upsertSearchCredential` 分别操作 `Subscription` 表的不同字段，不互相阻断。删除某一类凭证不会影响另一类。
-- Next.js 16 proxy（`apps/web/src/proxy.ts`）强制安全响应头：HSTS、X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy；production CSP 使用每请求随机 nonce 授权 Next.js framework/Flight 内联脚本，根 layout 强制 request-time rendering 以确保所有路由的脚本获得当前 nonce；开发环境不启用 CSP，避免阻断 dev HMR。
+- Next.js 16 proxy（`apps/web/src/proxy.ts`）同时承担 Web 认证门和安全响应头：认证启用时对受保护请求调用 Better Auth `getSession()` 验证数据库 Session，页面缺失/过期 Session 时 `307` 到 `/login?next=<站内路径>`，受保护 API/Server Action 返回稳定 `401 UNAUTHENTICATED`；认证基础设施异常返回 `503 AUTH_UNAVAILABLE`，不误报为登出。`/login`、`/register`、`/pricing`、auth/health 与签名 webhook 保持公开；`next` 必须通过 `auth-access.ts` 站内路径校验。认证关闭时完全保留 self-hosted 默认工作区兼容模式。所有 next/redirect/401/503 response 继续强制 HSTS、X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy；production CSP 使用每请求随机 nonce，根 layout 强制 request-time rendering；开发环境不启用 CSP，避免阻断 dev HMR。
 - 外部 URL 在 fetch 前必须经过 SSRF 防护（`packages/sources/src/ssrf.ts`）：私有 IP、loopback、cloud metadata 一律阻断。
 - 加密模块（`packages/db/src/crypto.ts`）使用 per-credential 随机 salt + scrypt KDF；旧格式密文保持向后兼容。
 - AI 生成内容渲染前需经 HTML entity 逃逸（`sanitizeForDisplay`），入库前剥离危险标签（`sanitizeMarkdownSource`）。
@@ -224,6 +226,9 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 | `packages/db/prisma/migrations/0009_delivery_report_feedback/migration.sql` | 新增 DeliveryLog/Report 模型、Telegram 凭证字段、增强 FeedbackKind 枚举。 |
 | `packages/db/src/extended-repositories.ts` | Telegram 凭证、DeliveryLog、Report CRUD、证据检索和偏好编辑函数。 |
 | `packages/db/src/repositories.fixtures.ts` | Repository runtime fixtures，覆盖收藏、daily briefing、TaskRun、标题模糊合并和 SourceObservation 指标口径。 |
+| `packages/db/src/repositories/workspace.ts` | 默认 workspace 与认证用户独立 workspace 的原子 provisioning。 |
+| `packages/db/src/repositories/user-lifecycle.ts` | User 生命周期原子状态机与稳定领域错误。 |
+| `packages/db/src/migration-replay.fixtures.ts` | Better Auth 0016 migration 的显式 disposable PostgreSQL replay 验证。 |
 | `apps/worker/src/index.fixtures.ts` | Worker runtime fixture，覆盖 rule/LLM filter reason 的选择优先级。 |
 | `apps/web/src/app/admin/usage/page.tsx` | OWNER/ADMIN 工作区成员与近 30 天用量审计页。 |
 | `apps/web/src/app/admin/settings/credential-form.tsx` | AI/搜索凭证表单，模型嗅探下拉、自定义 provider 手动确认、计费提示 |
@@ -232,8 +237,10 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 | `apps/web/src/app/reports/page.tsx` | 专题报告列表页，提交自然语言问题触发异步报告生成。 |
 | `apps/web/src/app/reports/[reportId]/page.tsx` | 专题报告详情页，展示 Markdown 内容和覆盖说明。 |
 | `apps/web/src/lib/report-data.ts` | 报告数据读取 helper（`getReportsPage`/`getReportDetail`）。 |
-| `apps/web/src/proxy.ts` | Next.js 16 request proxy：每请求生成 nonce CSP，并设置 Web 安全响应头。 |
+| `apps/web/src/proxy.ts` | Next.js 16 request proxy：真实 Better Auth Session 认证门、页面安全重定向、API/Action 401、每请求 nonce CSP 与 Web 安全响应头。 |
+| `apps/web/src/lib/auth-access.ts` | 公开路由 allowlist、站内 `next` 归一化、登录路径与 API path 纯策略。 |
 | `apps/web/src/lib/content-security-policy.ts` | Production CSP policy builder，约束 nonce/strict-dynamic 与 script/object 安全边界。 |
+| `apps/web/scripts/auth-access.fixture.mjs` | Auth route policy 与开放重定向防护 fixture。 |
 | `apps/web/scripts/content-security-policy.fixture.mjs` | CSP unit + production server smoke fixture，验证逐请求 nonce 与 framework/Flight script 属性。 |
 
 关键调用链索引：

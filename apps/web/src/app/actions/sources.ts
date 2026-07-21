@@ -44,13 +44,13 @@ async function createCandidateSource(formData: FormData) {
   const {
     assertMembershipRole,
     createCandidateRssSource,
-    getActiveSourceCount,
     getPrismaClient,
     getSubscriptionPlanView,
+    reserveSourceSlot,
     recordUsageEvent,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
-  const { checkSourceQuota } = await import("@wangchao/core");
+  const { checkSourceQuota, PLAN_LIMITS, resolveEffectivePlanFromView } = await import("@wangchao/core");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -64,9 +64,20 @@ async function createCandidateSource(formData: FormData) {
   );
 
   const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
-  const sourceCount = await getActiveSourceCount(prisma, { organizationId: workspace.organizationId });
-  const sourceQuota = checkSourceQuota(subscription.plan, sourceCount, subscription.isSelfHosted);
-  if (!sourceQuota.allowed) throw new Error(sourceQuota.reason ?? "Source limit reached.");
+  const effectivePlan = resolveEffectivePlanFromView(subscription);
+  const limit = subscription.isSelfHosted ? null : PLAN_LIMITS[effectivePlan].maxSources;
+
+  // Issue #181: Atomic reserve prevents concurrent over-selling.
+  // Issue #181: CANDIDATE sources now count toward quota (not just ACTIVE).
+  const reservation = await reserveSourceSlot(
+    prisma,
+    { organizationId: workspace.organizationId },
+    limit,
+  );
+  if (!reservation.reserved) {
+    const sourceQuota = checkSourceQuota(effectivePlan, reservation.currentCount, subscription.isSelfHosted);
+    throw new Error(sourceQuota.reason ?? "Source limit reached.");
+  }
 
   const source = await createCandidateRssSource(prisma, {
     description,
@@ -116,10 +127,13 @@ async function runSourceDiscoveryFromDashboard() {
 
   const {
     assertMembershipRole,
-    createTaskRun,
+    enqueueTaskRun,
     getPrismaClient,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
+  const { buildManualTaskRunIdempotencyKey } = await import(
+    "@/lib/task-run-enqueue"
+  );
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -132,10 +146,15 @@ async function runSourceDiscoveryFromDashboard() {
     ["OWNER", "ADMIN"],
   );
 
-  await createTaskRun(prisma, {
+  await enqueueTaskRun(prisma, {
     organizationId: workspace.organizationId,
     type: "SOURCE_DISCOVERY",
     input: { mode: "manual", userId: workspace.userId },
+    maxAttempts: 3,
+    idempotencyKey: buildManualTaskRunIdempotencyKey({
+      type: "SOURCE_DISCOVERY",
+      userId: workspace.userId,
+    }),
   });
 
   return { candidateSourcesWritten: 0, existingSourcesObserved: 0, enqueued: true };
@@ -165,10 +184,13 @@ async function runFetchCycleFromDashboard() {
 
   const {
     assertMembershipRole,
-    createTaskRun,
+    enqueueTaskRun,
     getPrismaClient,
   } = await import("@wangchao/db");
   const { getSessionWorkspace } = await import("@/lib/session");
+  const { buildManualTaskRunIdempotencyKey } = await import(
+    "@/lib/task-run-enqueue"
+  );
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -181,10 +203,15 @@ async function runFetchCycleFromDashboard() {
     ["OWNER", "ADMIN", "MEMBER"],
   );
 
-  await createTaskRun(prisma, {
+  await enqueueTaskRun(prisma, {
     organizationId: workspace.organizationId,
     type: "SOURCE_FETCH",
     input: { mode: "manual", userId: workspace.userId },
+    maxAttempts: 3,
+    idempotencyKey: buildManualTaskRunIdempotencyKey({
+      type: "SOURCE_FETCH",
+      userId: workspace.userId,
+    }),
   });
 }
 

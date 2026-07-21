@@ -55,6 +55,10 @@ export function toUserActionError(error: unknown): string {
       return "AI Base URL 必须是有效的 HTTP 或 HTTPS 地址。";
     case "UNAUTHENTICATED":
       return "登录状态已失效，请刷新页面重新登录后再操作。";
+    case "WORKSPACE_SWITCH_REQUIRES_AUTH":
+      return "工作区切换需要开启认证模式。";
+    case "WORKSPACE_NOT_ACCESSIBLE":
+      return "你无权访问该工作区。";
   }
 
   if (message.startsWith("INSTANT_PUSH_TELEGRAM_MISSING")) {
@@ -233,8 +237,15 @@ export function readJsonRecord(value: unknown): Record<string, unknown> {
 
 export function readSafeReturnPath(formData: FormData, key: string): string | null {
   const value = readOptionalField(formData, key);
-  if (!value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return null;
-  return value;
+  if (!value.startsWith("/") || value.startsWith("//")) return null;
+  if (value.includes("\\") || /[\u0000-\u001f\u007f]/.test(value)) return null;
+  try {
+    const url = new URL(value, "http://wangchao.internal");
+    if (url.origin !== "http://wangchao.internal") return null;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return null;
+  }
 }
 
 export function readRequiredUrl(formData: FormData, key: string): string {
@@ -251,19 +262,21 @@ export function readRequiredUrl(formData: FormData, key: string): string {
 export function readDashboardEventAction(
   formData: FormData,
   key: string,
-): "read" | "save" | "unsave" | "dismiss" {
+): "read" | "save" | "unsave" | "dismiss" | "archive" | "restore" {
   const value = readRequiredField(formData, key);
 
   if (
     value === "read" ||
     value === "save" ||
     value === "unsave" ||
-    value === "dismiss"
+    value === "dismiss" ||
+    value === "archive" ||
+    value === "restore"
   ) {
     return value;
   }
 
-  throw new Error(`${key} must be read, save, unsave, or dismiss.`);
+  throw new Error(`${key} must be read, save, unsave, dismiss, archive, or restore.`);
 }
 
 export function readCategoryPreferenceAction(

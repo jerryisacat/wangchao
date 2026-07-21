@@ -17,6 +17,9 @@ export async function runEventExtractionFixtures(): Promise<void> {
   fixturePromptUsesCurrentInterfaceLanguage();
   fixtureThinkingTagsSanitized();
   fixtureTypeEnumMismatchThrows();
+  fixtureImportanceScoreParsedWhenPresent();
+  fixtureImportanceScoreDefaultsWhenAbsent();
+  fixturePromptRequestsImportanceScore();
 }
 
 function fixtureMalformedJsonThrows(): void {
@@ -272,6 +275,84 @@ function fixtureTypeEnumMismatchThrows(): void {
         JSON.stringify({ isRelevant: "yes" }),
       ),
     "String instead of boolean should throw.",
+  );
+}
+
+// ===== Issue #170 RED: parser 必须解析 importanceScore 独立维度 =====
+
+function fixtureImportanceScoreParsedWhenPresent(): void {
+  const content = JSON.stringify({
+    isRelevant: true,
+    noiseReason: "",
+    relevanceScore: 70,
+    importanceScore: 92,
+    title: "政策变化",
+    summary: "监管机构发布新规，影响行业格局与相关企业。",
+    category: "政策",
+    entities: ["监管机构"],
+    followUpSuggestion: "",
+    importanceExplanation: "新规影响行业格局。",
+    matchedKeywords: [],
+  });
+
+  const result = parseEventExtractionResponse(content, {
+    itemTitle: "Original",
+  });
+
+  assert(
+    result.importanceScore === 92,
+    "importanceScore must be parsed when AI returns it.",
+  );
+  assert(
+    result.relevanceScore === 70,
+    "relevanceScore and importanceScore must remain independent.",
+  );
+}
+
+function fixtureImportanceScoreDefaultsWhenAbsent(): void {
+  // 旧格式 / 老 model 不返回 importanceScore 时，parser 必须给出安全默认值
+  // （等于 relevanceScore，保持向后兼容），而不是 undefined。
+  const content = JSON.stringify({
+    isRelevant: true,
+    noiseReason: "",
+    relevanceScore: 75,
+    title: "默认重要性",
+    summary: "某事件发生，涉及具体主体与影响。",
+    category: "一般",
+    entities: [],
+    followUpSuggestion: "",
+    importanceExplanation: "",
+    matchedKeywords: [],
+  });
+
+  const result = parseEventExtractionResponse(content, {
+    itemTitle: "Original",
+  });
+
+  assert(
+    typeof result.importanceScore === "number",
+    "importanceScore must always be a number even when AI omits it.",
+  );
+  assert(
+    result.importanceScore === 75,
+    "Absent importanceScore must default to relevanceScore for backward compatibility.",
+  );
+}
+
+function fixturePromptRequestsImportanceScore(): void {
+  const messages = buildEventExtractionMessages({
+    item: {
+      id: "1",
+      rawContent: "# Evidence\n\nDocument content.",
+      title: "Source",
+      url: "https://example.com/x",
+    },
+    topic: { keywords: ["AI"], name: "AI" },
+  });
+  const combined = messages.map((m) => m.content).join("\n");
+  assert(
+    combined.includes("importanceScore"),
+    "Prompt must explicitly request an importanceScore field from the model.",
   );
 }
 

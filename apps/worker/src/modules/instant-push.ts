@@ -1,4 +1,4 @@
-import { resolveEffectivePlan, checkInstantPushQuota } from "@wangchao/core";
+import { resolveEffectivePlanFromView, checkInstantPushQuota } from "@wangchao/core";
 import {
   completeTaskRun,
   createTaskRun,
@@ -39,12 +39,7 @@ export async function runInstantPushCycle(): Promise<InstantPushCycleResult> {
     });
     try {
       const settings = await getInstantPushSettings(prisma, { organizationId: organization.organizationId });
-      const effectivePlan = resolveEffectivePlan({
-        plan: settings.plan,
-        status: settings.status,
-        isSelfHosted: settings.isSelfHosted,
-        currentPeriodEnd: settings.currentPeriodEnd,
-      });
+      const effectivePlan = resolveEffectivePlanFromView(settings);
       const access = checkInstantPushQuota(effectivePlan, settings.isSelfHosted);
       const credential = access.allowed
         ? await getDecryptedTelegramCredential(prisma, { organizationId: organization.organizationId })

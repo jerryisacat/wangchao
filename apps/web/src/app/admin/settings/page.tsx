@@ -91,9 +91,9 @@ export default async function AdminSettingsPage({
   const ccpaymentCredential = await getCcpaymentCredentialView(prisma, {
     organizationId: workspace.organizationId,
   });
-  const { checkInstantPushQuota, resolveEffectivePlan } = await import("@wangchao/core");
+  const { checkInstantPushQuota, resolveEffectivePlanFromView } = await import("@wangchao/core");
   const instantPushAllowed = checkInstantPushQuota(
-    resolveEffectivePlan(instantPushSettings),
+    resolveEffectivePlanFromView(instantPushSettings),
     instantPushSettings.isSelfHosted,
   ).allowed;
 
@@ -117,7 +117,7 @@ export default async function AdminSettingsPage({
 
   return (
     <>
-      <PageHeader eyebrow="管理后台" title="API Key 配置">
+      <PageHeader eyebrow="工作区设置" title="API Key 配置">
         <Button asChild size="sm" variant="secondary">
           <Link href="/admin/usage">
             <Activity aria-hidden="true" size={14} />

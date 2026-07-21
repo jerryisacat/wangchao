@@ -4,11 +4,15 @@ import {
   type EventExtractionResult,
 } from "@wangchao/ai";
 import {
+  buildPreferenceSnapshot,
   buildTopicProfileContext,
   evaluateRelevance,
   createIntelligenceEventDraft,
   createIntelligenceEventDraftFromExtraction,
+  renderPreferenceGuidance,
   type AiEventExtraction,
+  type PreferenceMemoryEntry,
+  type PreferenceSnapshot,
   type RelevanceDecision,
 } from "@wangchao/core";
 import {
@@ -16,7 +20,9 @@ import {
   completeTaskRun,
   failTaskRun,
   getPrismaClient,
+  getSourceQualitySummary,
   listFetchedItemsForAnalysis,
+  listPreferenceMemoryForDashboard,
   markItemFiltered,
   upsertIntelligenceEventFromItem,
   recordUsageEvent,
@@ -54,6 +60,7 @@ function buildExtractionInput(
     topicName: string;
   },
   topicProfile: unknown,
+  preferenceGuidance?: string,
 ): {
   item: {
     id: string;
@@ -76,6 +83,7 @@ function buildExtractionInput(
       outputLanguage: string;
       terminologyRules?: string[];
     };
+    preferenceGuidance?: string;
   };
 } {
   const context = buildTopicProfileContext(topicProfile, {
@@ -96,6 +104,7 @@ function buildExtractionInput(
     topic: {
       ...context,
       languagePreferences: context.languagePreferences,
+      preferenceGuidance,
     },
   };
 }
@@ -132,6 +141,7 @@ function extractionToAiEventExtraction(
     entities: extraction.entities ?? [],
     followUpSuggestion: extraction.followUpSuggestion ?? "",
     importanceExplanation: extraction.importanceExplanation,
+    importanceScore: extraction.importanceScore,
     isRelevant: extraction.isRelevant,
     matchedKeywords: extraction.matchedKeywords,
     noiseReason: extraction.noiseReason,
@@ -155,6 +165,16 @@ export async function runAnalysisCycle(
     ? { adapter: aiRuntime.adapter as EventExtractionAdapter, model: aiRuntime.model }
     : null;
   const aiSource = aiRuntime?.source ?? "official";
+
+  // Issue #165: 加载该 workspace 全量 preference memory，按 topicId 构建 snapshot。
+  // snapshot 每轮每 topic 共享一次 RNG（explorationRollout 一致），
+  // 规则路径与 AI 路径使用同一 snapshot，保证 filter 与 prompt 偏好一致。
+  const preferenceSnapshotByTopic = await loadPreferenceSnapshotsByTopic(
+    prisma,
+    organizationId,
+    userId,
+  );
+
   const result = {
     analyzedItems: 0,
     createdOrUpdatedEvents: 0,
@@ -199,11 +219,24 @@ export async function runAnalysisCycle(
         });
 
         try {
-          const extractionInput = buildExtractionInput(item, item.topicProfile);
+          // Issue #165: 注入偏好指引到 AI extraction system prompt。
+          const snapshot = preferenceSnapshotByTopic.get(item.topicId) ?? null;
+          const preferenceGuidance = snapshot ? renderPreferenceGuidance(snapshot) : undefined;
+          const extractionInput = buildExtractionInput(
+            item,
+            item.topicProfile,
+            preferenceGuidance,
+          );
           const extraction = await extractEvent(extractionInput, {
             adapter: ai.adapter,
             model: ai.model,
           });
+          // Issue #170: 接入 #176 的 Source 质量数据作为独立维度。
+          const sourceQualityFactor = await resolveSourceQualityFactor(
+            prisma,
+            item.organizationId,
+            item.sourceId,
+          );
           draft = createIntelligenceEventDraftFromExtraction(
             {
               fetchedAt: item.fetchedAt,
@@ -215,8 +248,13 @@ export async function runAnalysisCycle(
               url: item.url,
             },
             extractionToAiEventExtraction(extraction),
+            { sourceQualityFactor },
           );
-          rawAiResponse = { mode: "llm", extraction };
+          rawAiResponse = {
+            mode: "llm",
+            extraction,
+            scoring: draft?.scoringBreakdown,
+          };
           llmNoiseReason = extraction.noiseReason;
           usedLlm = true;
           summaryStatus = "READY";
@@ -236,15 +274,20 @@ export async function runAnalysisCycle(
       }
 
       if (!usedLlm) {
-        ruleDecision = evaluateRelevance({
-          fetchedAt: item.fetchedAt,
-          id: item.id,
-          publishedAt: item.publishedAt,
-          summary: item.summary,
-          title: item.title,
-          topicProfile: item.topicProfile,
-          url: item.url,
-        });
+        // Issue #165: 规则路径同样注入偏好 snapshot（mute/boost 影响筛选门槛）。
+        const snapshot = preferenceSnapshotByTopic.get(item.topicId) ?? null;
+        ruleDecision = evaluateRelevance(
+          {
+            fetchedAt: item.fetchedAt,
+            id: item.id,
+            publishedAt: item.publishedAt,
+            summary: item.summary,
+            title: item.title,
+            topicProfile: item.topicProfile,
+            url: item.url,
+          },
+          { preferenceSnapshot: snapshot },
+        );
         draft = createIntelligenceEventDraft(
           {
             fetchedAt: item.fetchedAt,
@@ -261,6 +304,7 @@ export async function runAnalysisCycle(
           mode: hasReadyContent ? "explainable-rules-ai-failed" : "explainable-rules-content-gate",
           relevance: ruleDecision,
           contentStatus: item.contentStatus,
+          scoring: draft?.scoringBreakdown,
           ...(usedFallback ? { llmFallback: true } : {}),
         };
         summaryStatus = hasReadyContent ? "AI_FAILED" : summaryStatusForContent(item.contentStatus);
@@ -279,7 +323,7 @@ export async function runAnalysisCycle(
           ruleDecision,
           usedFallback,
         });
-        await markItemFiltered(prisma, item.id, noiseReason);
+        await markItemFiltered(prisma, { organizationId }, item.id, noiseReason);
         result.filteredItems += 1;
         await completeTaskRun(prisma, relevanceTask.id, {
           llmFallback: usedFallback,
@@ -344,4 +388,96 @@ export async function runAnalysisCycle(
   }
 
   return result;
+}
+
+/**
+ * Issue #170: 从 #176 持久化的 Source.qualityScore 派生 sourceQualityFactor。
+ *
+ * qualityScore 是 0-1 区间的命中率/噪声率综合分（见 getSourceQualitySummary）。
+ * 映射策略：
+ *   - qualityScore >= 0.6（高命中）→ factor 1.0（中性偏正，不过度奖励）
+ *   - qualityScore 0.3-0.6 → factor 0.7（轻度降权）
+ *   - qualityScore < 0.3 或 CANDIDATE/MUTED/REJECTED 状态 → factor 0.5（显著降权）
+ *   - 无数据 / 查询失败 → factor 1.0（中性，不惩罚未知来源）
+ *
+ * 计算 fallback 安全：任何异常返回 1.0，不阻塞分析主流程。
+ */
+async function resolveSourceQualityFactor(
+  prisma: ReturnType<typeof getPrismaClient>,
+  organizationId: string,
+  sourceId: string,
+): Promise<number> {
+  try {
+    const summary = await getSourceQualitySummary(prisma, {
+      organizationId,
+      sourceId,
+    });
+    if (!summary) {
+      return 1;
+    }
+    // MUTED/REJECTED 来源的内容理论上不应进入分析，但防御性降权。
+    if (summary.status === "MUTED" || summary.status === "REJECTED") {
+      return 0.5;
+    }
+    const q = summary.qualityScore;
+    if (!Number.isFinite(q) || q === 0) {
+      // qualityScore=0 且 stale=true 表示数据未就绪，按中性处理。
+      return 1;
+    }
+    if (q >= 0.6) return 1;
+    if (q >= 0.3) return 0.7;
+    return 0.5;
+  } catch (error) {
+    process.stderr.write(
+      `[analysis-cycle] getSourceQualitySummary failed for source ${sourceId}: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return 1;
+  }
+}
+
+/**
+ * Issue #165: 加载 workspace 全量 preference memory 并按 topicId 构建 snapshot。
+ *
+ * 每轮分析周期调用一次。每个 topic 共享一次 RNG（explorationRollout 在本轮
+ * 对该 topic 的所有 item 一致），确保 filter 与 prompt 偏好一致。
+ *
+ * 失败安全：任何异常返回空 Map（不注入偏好，退化到旧行为），不阻塞分析主流程。
+ * 上限 1000 条 preference memory 覆盖典型 workspace；超出按 updatedAt 排序取最新。
+ */
+async function loadPreferenceSnapshotsByTopic(
+  prisma: ReturnType<typeof getPrismaClient>,
+  organizationId: string,
+  userId: string,
+): Promise<Map<string, PreferenceSnapshot>> {
+  try {
+    const memories = await listPreferenceMemoryForDashboard(
+      prisma,
+      { organizationId, userId },
+      1000,
+    );
+    const entriesByTopic = new Map<string, PreferenceMemoryEntry[]>();
+    for (const memory of memories) {
+      const list = entriesByTopic.get(memory.topicId) ?? [];
+      list.push({
+        explanation: memory.explanation,
+        key: memory.key,
+        topicId: memory.topicId,
+        weight: memory.weight,
+      });
+      entriesByTopic.set(memory.topicId, list);
+    }
+    const snapshots = new Map<string, PreferenceSnapshot>();
+    for (const [topicId, entries] of entriesByTopic) {
+      snapshots.set(
+        topicId,
+        buildPreferenceSnapshot(entries, { topicId }),
+      );
+    }
+    return snapshots;
+  } catch (error) {
+    process.stderr.write(
+      `[analysis-cycle] loadPreferenceSnapshotsByTopic failed for org ${organizationId}: ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+    return new Map();
+  }
 }

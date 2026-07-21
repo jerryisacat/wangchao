@@ -1,8 +1,12 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
+import { classifyTaskRunError } from "./task-run.js";
 import {
+  SOURCE_QUALITY_FORMULA_VERSION,
+  SOURCE_QUALITY_MIN_SAMPLE,
   calculateSourceQualityScore,
   canonicalizeUrl,
   clamp,
+  decideAutomaticGovernance,
   isRecord,
   ratio,
   readObservationReason,
@@ -14,17 +18,20 @@ import type {
   AttachRssSourceInput,
   BatchSourceGovernanceInput,
   BatchSourceGovernanceResult,
+  CountFilteredItemsInput,
   CreateCandidateRssSourceInput,
   CreateSourceFetchTaskRunOptions,
   CreateTaskRunInput,
   CreateTopicWithRssSourceInput,
   ExpiredCandidateSourceRecord,
   FetchedSourceRecord,
+  FilteredItemsCountResult,
   NormalizedFetchedItemInput,
   PendingAnalysisItem,
   RecordSourceQualityObservationInput,
   SourceDiscoveryPageRecord,
   SourceGovernanceRecord,
+  SourceQualitySummary,
   TenantScope,
   TopicScope,
   UpdateSourceGovernanceStatusInput,
@@ -285,12 +292,16 @@ export async function listSourceGovernanceReport(
     const hitRate = ratio(hitItems, totalItems);
     const noiseRate = ratio(filteredItems, totalItems);
     const duplicateRate = ratio(duplicateItems, totalItems);
-    const qualityScore = calculateSourceQualityScore({
+    const derivedQualityScore = calculateSourceQualityScore({
       duplicateRate,
       hitRate,
       noiseRate,
       trustScore: source.trustScore,
     });
+    // 持久化值优先；为 0（从未跑过 observation）时回退到派生值，保证 UI 不空白。
+    const persistedQualityScore = source.qualityScore;
+    const stale = persistedQualityScore === 0;
+    const qualityScore = stale ? derivedQualityScore : persistedQualityScore;
     const recommendation = recommendSourceStatus(
       source.status,
       qualityScore,
@@ -302,6 +313,7 @@ export async function listSourceGovernanceReport(
     return {
       discoveryChannel: source.discoveryChannel,
       duplicateRate,
+      derivedQualityScore,
       eventCount,
       filteredItems,
       hitRate,
@@ -312,11 +324,13 @@ export async function listSourceGovernanceReport(
       mutedReason: readObservationReason(observation?.evidence),
       name: source.name,
       noiseRate,
+      persistedQualityScore,
       qualityScore,
       recommendation,
       recommendationReason: source.recommendationReason,
       sourceId: source.id,
       status: source.status,
+      stale,
       topicId: source.topicId,
       topicName: source.topic.name,
       totalItems,
@@ -543,8 +557,162 @@ export async function listCandidateRssSourcesForObservation(
       topicId: true,
       name: true,
       url: true,
+      kind: true,
     },
   });
+}
+
+/**
+ * 列出 Candidate 源下用于隔离观察评估的 Item（Issue #169）。
+ *
+ * 与 {@link listFetchedItemsForAnalysis} 的关键区别：本查询**不**要求
+ * `source.status === "ACTIVE"`，因此 Candidate 源的 Item 能被读到。
+ * 这些 Item 只用于隔离的相关性/质量评估，**不会**进入正式 analysis pipeline
+ * （后者仍受 ACTIVE 过滤约束），也不会进入 briefing/dashboard/instant-push
+ * （这些查询都强制 `primaryItem.source.status === "ACTIVE"`）。
+ *
+ * 返回字段刻意精简：只包含规则 relevance 评估需要的输入，避免泄漏
+ * topic profile 之外的信息到观察路径。
+ */
+export async function listCandidateItemsForObservation(
+  prisma: PrismaClient,
+  scope: TenantScope,
+  limit = 200,
+): Promise<
+  Array<{
+    id: string;
+    sourceId: string;
+    topicId: string;
+    title: string;
+    summary: string | null;
+    url: string;
+    contentStatus: "PENDING" | "READY" | "INSUFFICIENT" | "FETCH_FAILED" | "UNSUPPORTED";
+    status: "FETCHED" | "FILTERED" | "ANALYZED" | "DUPLICATE" | "ERROR";
+    publishedAt: Date | null;
+    fetchedAt: Date;
+    topicProfile: unknown;
+  }>
+> {
+  const items = await prisma.item.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      source: {
+        status: "CANDIDATE",
+        topic: { status: "ACTIVE" },
+      },
+    },
+    select: {
+      id: true,
+      sourceId: true,
+      topicId: true,
+      title: true,
+      summary: true,
+      url: true,
+      contentStatus: true,
+      status: true,
+      publishedAt: true,
+      fetchedAt: true,
+      topic: { select: { profile: true } },
+    },
+    orderBy: [{ fetchedAt: "desc" }],
+    take: limit,
+  });
+
+  return items.map((item) => ({
+    contentStatus: item.contentStatus,
+    fetchedAt: item.fetchedAt,
+    id: item.id,
+    publishedAt: item.publishedAt,
+    sourceId: item.sourceId,
+    status: item.status,
+    summary: item.summary,
+    title: item.title,
+    topicId: item.topicId,
+    topicProfile: item.topic.profile,
+    url: item.url,
+  }));
+}
+
+export interface CandidateQualityMetrics {
+  topicId: string;
+  sourceId: string;
+  totalItems: number;
+  hitItems: number;
+  filteredItems: number;
+  duplicateItems: number;
+  hitRate: number;
+  noiseRate: number;
+  duplicateRate: number;
+}
+
+/**
+ * 为 Candidate 源计算隔离的质量指标（Issue #169）。
+ *
+ * 复用 {@link getSourceQualitySummary} 已经持久化的 qualityScore/trustScore，
+ * 但 hit/noise/duplicate 在这里**独立重算**：Candidate 的 Item 永远不会关联
+ * IntelligenceEvent（analysis pipeline 受 ACTIVE 过滤约束），所以不能用正式
+ * hitRate 定义（"关联未归档事件的比例"）。这里用隔离的规则 relevance 决策
+ * 作为 hit 判据——@wangchao/core 的 evaluateRelevance 是确定性规则 fallback，
+ * 与正式 analysis 的 LLM 决策分离，不污染正式事件链。
+ *
+ * 返回按 sourceId 分组的指标聚合，供 recordSourceQualityObservation 持久化。
+ */
+export function computeCandidateQualityMetrics(
+  relevanceResults: Array<{
+    sourceId: string;
+    topicId: string;
+    isRelevant: boolean;
+    isNoise: boolean;
+    isDuplicate: boolean;
+  }>,
+): Map<string, CandidateQualityMetrics> {
+  const bySource = new Map<string, {
+    topicId: string;
+    totalItems: number;
+    hitItems: number;
+    filteredItems: number;
+    duplicateItems: number;
+  }>();
+
+  for (const result of relevanceResults) {
+    let bucket = bySource.get(result.sourceId);
+    if (!bucket) {
+      bucket = {
+        topicId: result.topicId,
+        totalItems: 0,
+        hitItems: 0,
+        filteredItems: 0,
+        duplicateItems: 0,
+      };
+      bySource.set(result.sourceId, bucket);
+    }
+    bucket.totalItems += 1;
+    if (result.isDuplicate) {
+      bucket.duplicateItems += 1;
+    }
+    if (result.isNoise) {
+      bucket.filteredItems += 1;
+    }
+    if (result.isRelevant && !result.isDuplicate) {
+      bucket.hitItems += 1;
+    }
+  }
+
+  const out = new Map<string, CandidateQualityMetrics>();
+  for (const [sourceId, bucket] of bySource) {
+    out.set(sourceId, {
+      topicId: bucket.topicId,
+      sourceId,
+      totalItems: bucket.totalItems,
+      hitItems: bucket.hitItems,
+      filteredItems: bucket.filteredItems,
+      duplicateItems: bucket.duplicateItems,
+      hitRate: ratio(bucket.hitItems, bucket.totalItems),
+      noiseRate: ratio(bucket.filteredItems, bucket.totalItems),
+      duplicateRate: ratio(bucket.duplicateItems, bucket.totalItems),
+    });
+  }
+  return out;
 }
 
 export async function recordSourceFetchFailure(
@@ -609,20 +777,172 @@ export async function recordSourceQualityObservation(
   prisma: PrismaClient,
   input: RecordSourceQualityObservationInput,
 ) {
-  return prisma.sourceObservation.create({
-    data: {
-      organizationId: input.organizationId,
-      topicId: input.topicId,
-      sourceId: input.sourceId,
-      duplicateRate: input.duplicateRate,
-      hitRate: input.hitRate,
-      noiseRate: input.noiseRate,
-      evidence: {
-        ...input.evidence,
-        source: "source-quality-report",
-      },
+  // SPEC §5.2 / §6.2：qualityScore 持久化在 Source 上，trustScore 不被
+  // observation 自动改（trustScore 是 discovery/relevance 产物）。
+  // 同事务写 SourceObservation 历史 + 更新 Source.qualityScore，保证报告、
+  // 评分、调度读到的都是同一份当前质量视图。
+  const persistedQualityScore = calculateSourceQualityScore({
+    duplicateRate: input.duplicateRate,
+    hitRate: input.hitRate,
+    noiseRate: input.noiseRate,
+    trustScore: input.trustScore,
+  });
+
+  return prisma.$transaction(async (transaction) => {
+    const [observation, updatedSource] = await Promise.all([
+      transaction.sourceObservation.create({
+        data: {
+          organizationId: input.organizationId,
+          topicId: input.topicId,
+          sourceId: input.sourceId,
+          duplicateRate: input.duplicateRate,
+          hitRate: input.hitRate,
+          noiseRate: input.noiseRate,
+          evidence: {
+            ...input.evidence,
+            formulaVersion: SOURCE_QUALITY_FORMULA_VERSION,
+            persistedQualityScore,
+            source: "source-quality-report",
+          },
+        },
+      }),
+      transaction.source.update({
+        data: {
+          qualityScore: persistedQualityScore,
+        },
+        where: { id: input.sourceId },
+        select: { id: true, status: true, qualityScore: true, trustScore: true },
+      }),
+    ]);
+
+    return {
+      observation,
+      persistedQualityScore,
+      source: updatedSource,
+    };
+  });
+}
+
+/**
+ * 统一读取接口：给事件评分、候选晋升、信源调度提供单一入口。
+ *
+ * 读 Source.qualityScore（持久化值，SPEC §6.2），不在此处重算或写库——
+ * 避免读路径副作用。如果 qualityScore 仍是 schema 默认 0 且有历史 observation，
+ * 返回 stale=true 让调用方决定是否触发刷新。
+ */
+export async function getSourceQualitySummary(
+  prisma: PrismaClient,
+  scope: TenantScope & { sourceId: string },
+): Promise<SourceQualitySummary | null> {
+  const source = await prisma.source.findFirst({
+    where: {
+      id: scope.sourceId,
+      organizationId: scope.organizationId,
+    },
+    select: {
+      id: true,
+      qualityScore: true,
+      trustScore: true,
+      status: true,
     },
   });
+
+  if (!source) {
+    return null;
+  }
+
+  const latestObservation = await prisma.sourceObservation.findFirst({
+    where: { sourceId: scope.sourceId },
+    orderBy: { observedAt: "desc" },
+    take: 1,
+    select: {
+      hitRate: true,
+      noiseRate: true,
+      duplicateRate: true,
+      observedAt: true,
+    },
+  });
+
+  // stale = 持久化 qualityScore 还是 schema 默认 0，但有 observation 历史，
+  // 说明 recordSourceQualityObservation 还没跑过（或 source 是旧数据）。
+  const stale =
+    source.qualityScore === 0 &&
+    latestObservation !== null;
+
+  return {
+    sourceId: source.id,
+    qualityScore: source.qualityScore,
+    trustScore: source.trustScore,
+    status: source.status,
+    latestHitRate: latestObservation?.hitRate ?? null,
+    latestNoiseRate: latestObservation?.noiseRate ?? null,
+    latestDuplicateRate: latestObservation?.duplicateRate ?? null,
+    latestObservedAt: latestObservation?.observedAt ?? null,
+    stale,
+  };
+}
+
+/**
+ * 自动治理：在 observation 写入后，按 recommendation 决定是否自动降权/静默。
+ *
+ * SPEC §5.2「自动发现不等于自动信任」+ Issue #176 约束：
+ * - 小样本（< SOURCE_QUALITY_MIN_SAMPLE）不自动降权。
+ * - 只自动 MUTE，不自动 REJECT（高风险保留人工确认）。
+ * - REJECTED 受保护，不自动变更；MUTED 不重复降权。
+ * - 写一条 source-governance-auto observation 作为审计轨迹，不写 FeedbackEvent
+ *   （避免污染偏好信号——自动动作不是用户反馈）。
+ *
+ * 返回被自动变更的 sourceId 列表（空表示本轮无人被降权）。
+ */
+export async function applyAutomaticSourceGovernance(
+  prisma: PrismaClient,
+  input: TenantScope & {
+    sources: Array<{
+      recommendation: "APPROVE" | "OBSERVE" | "MUTE" | "REJECT";
+      sourceId: string;
+      status: "ACTIVE" | "CANDIDATE" | "MUTED" | "REJECTED";
+      topicId: string;
+      totalItems: number;
+    }>;
+  },
+): Promise<{ autoMuted: string[] }> {
+  const autoMuted: string[] = [];
+
+  for (const source of input.sources) {
+    const decision = decideAutomaticGovernance(
+      source.status,
+      source.recommendation,
+      source.totalItems,
+    );
+
+    if (!decision) continue;
+
+    await prisma.$transaction(async (transaction) => {
+      await transaction.source.update({
+        data: { status: decision.status },
+        where: { id: source.sourceId },
+      });
+      await transaction.sourceObservation.create({
+        data: {
+          organizationId: input.organizationId,
+          topicId: source.topicId,
+          sourceId: source.sourceId,
+          evidence: {
+            action: "auto-mute",
+            formulaVersion: SOURCE_QUALITY_FORMULA_VERSION,
+            minSample: SOURCE_QUALITY_MIN_SAMPLE,
+            reason: decision.reason,
+            source: "source-governance-auto",
+            totalItems: source.totalItems,
+          },
+        },
+      });
+    });
+
+    autoMuted.push(source.sourceId);
+  }
+
+  return { autoMuted };
 }
 
 export async function listActiveRssSourcesForFetch(
@@ -645,6 +965,38 @@ export async function listActiveRssSourcesForFetch(
       topicId: true,
       name: true,
       url: true,
+      kind: true,
+    },
+  });
+}
+
+/**
+ * Unified fetch-scheduling query for Issue #168: returns ACTIVE sources of
+ * every supported kind (RSS, WEB) whose parent Topic is ACTIVE. The worker
+ * dispatches each record to its adapter by `record.kind`. Replaces the
+ * RSS-only `listActiveRssSourcesForFetch` for the main fetch cycle; the RSS
+ * variant is retained for candidate observation which is still RSS-only.
+ */
+export async function listActiveSourcesForFetch(
+  prisma: PrismaClient,
+  scope: TenantScope,
+): Promise<FetchedSourceRecord[]> {
+  return prisma.source.findMany({
+    where: {
+      organizationId: scope.organizationId,
+      status: "ACTIVE",
+      topic: {
+        status: "ACTIVE",
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      organizationId: true,
+      topicId: true,
+      name: true,
+      url: true,
+      kind: true,
     },
   });
 }
@@ -732,7 +1084,7 @@ export async function failTaskRun(
     data: {
       status: "FAILED",
       finishedAt: new Date(),
-      errorMessage: error instanceof Error ? error.message : String(error),
+      errorMessage: classifyTaskRunError(error),
     },
   });
 }
@@ -1013,17 +1365,18 @@ export async function listRecentActiveSourcePagesForDiscovery(
 
 export async function markItemFiltered(
   prisma: PrismaClient,
+  scope: TenantScope,
   itemId: string,
   reason: string,
 ) {
-  const item = await prisma.item.findUnique({
-    where: { id: itemId },
+  const item = await prisma.item.findFirst({
+    where: { id: itemId, organizationId: scope.organizationId },
     select: { rawMetadata: true },
   });
   const rawMetadata = isRecord(item?.rawMetadata) ? item.rawMetadata : {};
 
   return prisma.item.update({
-    where: { id: itemId },
+    where: { id: itemId, organizationId: scope.organizationId },
     data: {
       rawMetadata: toInputJson({
         ...rawMetadata,
@@ -1032,4 +1385,43 @@ export async function markItemFiltered(
       status: "FILTERED",
     },
   });
+}
+
+// Issue #184 (Plan Task 4.5) - SPEC §4.2/§5.8 低价值过滤统计。
+// 聚合指定业务窗口内 status='FILTERED' 的 Item，按 rawMetadata.filteredReason 分组。
+// 窗口用 [rangeStart, rangeEnd) 半开区间，与 listEventsForDailyBriefing 一致。
+// reason 缺失/空归入 "unspecified"（与 core 层 summarizeFilteredStats 语义一致，
+// 这里在 DB 侧预先归一，避免调用方重复处理）。
+const FILTERED_REASON_UNSPECIFIED = "unspecified";
+
+export async function countFilteredItemsInRange(
+  prisma: PrismaClient,
+  input: CountFilteredItemsInput,
+): Promise<FilteredItemsCountResult> {
+  const items = await prisma.item.findMany({
+    select: { rawMetadata: true },
+    where: {
+      organizationId: input.organizationId,
+      topicId: input.topicId,
+      status: "FILTERED",
+      // SPEC §4.2：窗口按 Item.fetchedAt 落在 [rangeStart, rangeEnd) 内。
+      // 用 fetchedAt 而非 createdAt，因为 filteredReason 由 analysis 写入、
+      // fetchedAt 更贴近「该窗口内抓取并判定为低价值」的语义。
+      fetchedAt: { gte: input.rangeStart, lt: input.rangeEnd },
+    },
+  });
+
+  const byReason: Record<string, number> = {};
+  let count = 0;
+  for (const item of items) {
+    count += 1;
+    const meta = isRecord(item.rawMetadata) ? item.rawMetadata : {};
+    const rawReason = meta["filteredReason"];
+    const reason =
+      typeof rawReason === "string" && rawReason.trim() !== ""
+        ? rawReason
+        : FILTERED_REASON_UNSPECIFIED;
+    byReason[reason] = (byReason[reason] ?? 0) + 1;
+  }
+  return { byReason, count };
 }

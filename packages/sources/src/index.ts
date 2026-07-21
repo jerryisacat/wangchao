@@ -16,6 +16,22 @@ export {
 } from "./adapters.js";
 
 export {
+  fetchSource,
+  fetchWebListPage,
+  parseWebListPage,
+  getAdapter,
+  rssAdapter,
+  webAdapter,
+  FetchWebError,
+  UnknownSourceKindError,
+  isFetchRetryable,
+  isFetchWebRetryable,
+  type SourceAdapter,
+  type AdapterSourceInput,
+  type FetchSourceOptions,
+} from "./web-source.js";
+
+export {
   BraveSearchProvider,
   SearXngSearchProvider,
   SerperSearchProvider,

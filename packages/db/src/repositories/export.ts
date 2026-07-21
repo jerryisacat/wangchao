@@ -21,6 +21,7 @@ export async function recordMarkdownExport(
   prisma: PrismaClient,
   input: RecordMarkdownExportInput,
 ) {
+  const format = input.format ?? "MARKDOWN";
   const operations: Prisma.PrismaPromise<unknown>[] = [
     prisma.exportEvent.create({
       data: {
@@ -29,7 +30,7 @@ export async function recordMarkdownExport(
         userId: input.userId,
         eventId: input.eventId,
         briefingId: input.briefingId,
-        format: "MARKDOWN",
+        format,
         fileName: input.fileName,
         contentHash: input.contentHash,
         metadata: toInputJson(input.metadata),
@@ -49,7 +50,8 @@ export async function recordMarkdownExport(
           value: 2,
           metadata: {
             fileName: input.fileName,
-            source: "markdown-export",
+            format,
+            source: "export-route",
           },
         },
       }),

@@ -31,8 +31,18 @@ export function resolveEffectivePlan(input: {
   status: SubscriptionStatus;
   isSelfHosted: boolean;
   currentPeriodEnd?: string | Date | null;
+  /** #159: temporary plan override from platform admin (highest priority). */
+  tempPlanOverride?: Plan | null;
+  tempPlanExpiresAt?: string | Date | null;
   now?: Date;
 }): Plan {
+  // #159: temp plan override takes highest priority (platform admin grant).
+  if (input.tempPlanOverride) {
+    const now = input.now ?? new Date();
+    if (!input.tempPlanExpiresAt || new Date(input.tempPlanExpiresAt).getTime() > now.getTime()) {
+      return input.tempPlanOverride;
+    }
+  }
   if (input.isSelfHosted) return input.plan;
   if (input.status === "EXPIRED") return "FREE";
   if (input.status !== "CANCELED") return input.plan;
@@ -42,6 +52,73 @@ export function resolveEffectivePlan(input: {
   return periodEnd.getTime() > (input.now ?? new Date()).getTime()
     ? input.plan
     : "FREE";
+}
+
+/**
+ * Issue #180 (Plan Task 6.1): Unified entitlement context for all Web/Worker
+ * quota checks.
+ *
+ * Accepts a shape compatible with `SubscriptionPlanView` (as returned by
+ * `getSubscriptionPlanView` from `@wangchao/db`), where `status` is nullable
+ * (null when no subscription record exists). Normalises null → "ACTIVE" and
+ * delegates to `resolveEffectivePlan`.
+ *
+ * Every Web/Worker entry point that performs a quota check must call this
+ * function — never pass the raw stored `plan` directly to a `check*Quota`
+ * function.
+ */
+export function resolveEffectivePlanFromView(
+  view: {
+    plan: Plan;
+    status: SubscriptionStatus | null;
+    isSelfHosted: boolean;
+    currentPeriodEnd?: string | Date | null;
+    tempPlanOverride?: Plan | null;
+    tempPlanExpiresAt?: string | Date | null;
+  },
+  now?: Date,
+): Plan {
+  return resolveEffectivePlan({
+    plan: view.plan,
+    status: view.status ?? "ACTIVE",
+    isSelfHosted: view.isSelfHosted,
+    currentPeriodEnd: view.currentPeriodEnd,
+    tempPlanOverride: view.tempPlanOverride,
+    tempPlanExpiresAt: view.tempPlanExpiresAt,
+    now,
+  });
+}
+
+/**
+ * Issue #188 (Plan Task 6.3): Server-derived ad display policy.
+ *
+ * Implements docs/business-model.md §14.3 `shouldShowAds`:
+ *
+ * 1. If isSelfHosted == true -> return showAdsInSelfHosted (default true).
+ *    Admins see ads by default to experience the Free user journey.
+ *    OWNER/ADMIN can opt out from a deep-fold settings toggle.
+ * 2. Otherwise derive the effective plan (stored plan + status) and show ads
+ *    only when the effective plan is FREE. PLUS / PRO / EXPIRED-paid -> FREE
+ *    degradation still shows ads because degraded == FREE.
+ *
+ * The function accepts a SubscriptionPlanView-compatible shape so that Web
+ * layout / Server Actions can call it after a single DB read without a
+ * second query. It is pure (no I/O) so it composes with the existing
+ * resolveEffectivePlanFromView pipeline.
+ */
+export function shouldShowAds(view: {
+  plan: Plan;
+  status: SubscriptionStatus | null;
+  isSelfHosted: boolean;
+  showAdsInSelfHosted?: boolean;
+  currentPeriodEnd?: string | Date | null;
+  now?: Date;
+}): boolean {
+  if (view.isSelfHosted) {
+    return view.showAdsInSelfHosted ?? true;
+  }
+  const effectivePlan = resolveEffectivePlanFromView(view, view.now);
+  return effectivePlan === "FREE";
 }
 
 export function checkInstantPushQuota(
@@ -90,6 +167,23 @@ export function checkTopicQuota(
     limit: limits.maxTopics,
   };
 }
+
+/**
+ * Issue #181 (Plan Task 6.2): Source statuses that occupy a quota slot.
+ *
+ * SPEC §6.2 defines four Source statuses: CANDIDATE, ACTIVE, MUTED, REJECTED.
+ * A source occupies a quota slot in every status EXCEPT REJECTED — REJECTED is
+ * the only status that fully releases the slot (the source is no longer
+ * contributing to the user's intelligence pipeline in any capacity).
+ *
+ * This aligns with the usage dashboard, which already counts
+ * `status: { not: "REJECTED" }`.
+ */
+export const QUOTA_SUBJECT_SOURCE_STATUSES = [
+  "CANDIDATE",
+  "ACTIVE",
+  "MUTED",
+] as const;
 
 export function checkSourceQuota(
   plan: Plan,

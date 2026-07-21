@@ -24,6 +24,28 @@ export interface OrganizationMembershipRecord {
   userId: string;
 }
 
+/**
+ * Issue #155 — 用户跨工作区 Membership 概览。
+ * 用于工作区切换 UI：列出当前用户可访问的所有 Organization 及其 role。
+ */
+export interface UserMembershipSummary {
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  role: "OWNER" | "ADMIN" | "MEMBER";
+}
+
+/**
+ * Issue #155 — 解析后的 active workspace 信息。
+ * 与 WorkspaceSeed 结构一致但不含 userEmail/userId（调用方已知）。
+ */
+export interface ResolvedWorkspace {
+  organizationId: string;
+  organizationName: string;
+  organizationSlug: string;
+  role: "OWNER" | "ADMIN" | "MEMBER";
+}
+
 export interface CreateTopicInput {
   name: string;
   description?: string;
@@ -52,12 +74,19 @@ export interface CreateTopicWithRssSourceInput extends TenantScope {
   source: Omit<AttachRssSourceInput, "organizationId" | "topicId">;
 }
 
+/**
+ * Shape returned by fetch-scheduling queries (listActiveSourcesForFetch and
+ * listCandidateRssSourcesForObservation). `kind` drives adapter dispatch in the
+ * worker (RSS vs WEB). The field is optional only for legacy callers that
+ * never read it; new code must populate it from the `Source.kind` column.
+ */
 export interface FetchedSourceRecord {
   id: string;
   organizationId: string;
   topicId: string;
   name: string;
   url: string;
+  kind?: "RSS" | "WEB";
 }
 
 export interface NormalizedFetchedItemInput extends TopicScope {
@@ -151,13 +180,22 @@ export interface DashboardEventPage {
 
 export interface FeedbackSignalRecord {
   category: string | null;
+  createdAt: Date;
+  eventId: string | null;
+  feedbackEventId: string;
   kind:
     | "READ"
     | "SAVE"
     | "DISMISS"
     | "EXPORT"
     | "CATEGORY_UP"
-    | "CATEGORY_DOWN";
+    | "CATEGORY_DOWN"
+    | "MORE_LIKE_THIS"
+    | "LESS_LIKE_THIS"
+    | "SOURCE_QUALITY_UP"
+    | "SOURCE_QUALITY_DOWN"
+    | "SCORE_UP"
+    | "SCORE_DOWN";
   sourceId: string | null;
   sourceName: string | null;
   topicId: string;
@@ -218,6 +256,32 @@ export interface DashboardBriefingPage {
   total: number;
 }
 
+// Issue #182 (Plan Task 4.6) — 浏览器简报详情。
+// getBriefingDetail 返回的完整简报记录：元数据 + 正文（markdown 优先，content fallback）
+// + 关联 events 列表（供 Event 跳转）。严格 organization fenced。
+export interface BriefingDetailEventRecord {
+  eventId: string;
+  title: string;
+  occurredAt: Date | null;
+  topicId: string;
+}
+
+export interface BriefingDetailRecord {
+  briefingId: string;
+  content: string;
+  // body = markdown ?? content ?? "" — 页面渲染用，避免每个调用方自己判空。
+  body: string;
+  events: BriefingDetailEventRecord[];
+  generatedAt: Date;
+  markdown: string | null;
+  period: "DAILY" | "WEEKLY" | "MONTHLY";
+  rangeEnd: Date;
+  rangeStart: Date;
+  title: string;
+  topicId: string;
+  topicName: string;
+}
+
 export interface SourceGovernanceRecord {
   discoveryChannel: string | null;
   duplicateRate: number;
@@ -230,7 +294,15 @@ export interface SourceGovernanceRecord {
   consecutiveFailures: number;
   mutedReason: string | null;
   noiseRate: number;
+  // qualityScore = 展示给用户的当前质量分，优先取 Source 持久化值。
+  // 若持久化值为 0（从未跑过 observation），回退到本轮派生值，保证 UI 不空白。
   qualityScore: number;
+  // 本轮从 hit/noise/duplicate/trust 重算的派生值，用于和持久化值做漂移诊断。
+  derivedQualityScore: number;
+  // persistedQualityScore = Source.qualityScore 原值（未做回退）。
+  persistedQualityScore: number;
+  // stale = 持久化 qualityScore 仍是 schema 默认 0，需要触发 observation 持久化。
+  stale: boolean;
   recommendation: "APPROVE" | "OBSERVE" | "MUTE" | "REJECT";
   recommendationReason: string | null;
   sourceId: string;
@@ -257,15 +329,138 @@ export interface SourceDiscoveryPageRecord {
   url: string;
 }
 
+// Issue #185 (Plan Task 4.7) — 每主题一体化 Dashboard 与趋势视图。
+// SPEC §5.8 Dashboard：每主题一个页面，整合未读 Top、已读/收藏、趋势、信源状态。
+// 趋势维度：7/30 天事件/类别/实体/来源质量。
+// 所有查询严格 organization + topic fenced；DB 聚合用 Prisma groupBy。
+export type TrendRangeDays = 7 | 30;
+
+export interface TrendDailyBucket {
+  date: string; // ISO date (YYYY-MM-DD)
+  count: number;
+}
+
+export interface TrendCategoryBucket {
+  category: string;
+  count: number;
+}
+
+export interface TrendEntityBucket {
+  entity: string;
+  count: number;
+}
+
+export interface TrendSourceQualityBucket {
+  sourceId: string;
+  sourceName: string;
+  qualityScore: number;
+  hitRate: number;
+  noiseRate: number;
+  eventCount: number;
+}
+
+export interface TopicTrendSummary {
+  rangeDays: TrendRangeDays;
+  rangeStart: string; // ISO datetime
+  rangeEnd: string; // ISO datetime
+  totalEvents: number;
+  dailyBuckets: TrendDailyBucket[];
+  categoryBuckets: TrendCategoryBucket[];
+  entityBuckets: TrendEntityBucket[];
+  sourceQuality: TrendSourceQualityBucket[];
+}
+
+export interface TopicDashboardBriefingRecord {
+  briefingId: string;
+  generatedAt: string; // ISO datetime
+  period: "DAILY" | "WEEKLY" | "MONTHLY";
+  title: string;
+  rangeStart: string; // ISO datetime
+  rangeEnd: string; // ISO datetime
+}
+
+export interface TopicDashboardSourceHealthRecord {
+  sourceId: string;
+  name: string;
+  status: "ACTIVE" | "CANDIDATE" | "MUTED" | "REJECTED";
+  qualityScore: number;
+  hitRate: number;
+  noiseRate: number;
+  duplicateRate: number;
+  totalItems: number;
+  eventCount: number;
+  lastFetchedAt: string | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+}
+
+export interface TopicDashboardSummary {
+  topic: {
+    id: string;
+    name: string;
+    description: string | null;
+    status: "ACTIVE" | "PAUSED" | "ARCHIVED";
+    createdAt: string;
+    updatedAt: string;
+    sourceCount: number;
+    eventCount: number;
+    briefingCount: number;
+  };
+  unreadTop: DashboardEventRecord[];
+  savedEvents: DashboardEventRecord[];
+  savedTotal: number;
+  readTotal: number;
+  recentBriefings: TopicDashboardBriefingRecord[];
+  sourceHealth: TopicDashboardSourceHealthRecord[];
+  trends: {
+    "7": TopicTrendSummary;
+    "30": TopicTrendSummary;
+  };
+}
+
 export type SourceGovernanceAction = "approve" | "mute" | "reject" | "observe";
 
-export type DashboardEventAction = "read" | "save" | "unsave" | "dismiss";
+export type DashboardEventAction = "read" | "save" | "unsave" | "dismiss" | "archive" | "restore";
 
 export interface UpdateDashboardEventStateInput {
   action: DashboardEventAction;
   eventId: string;
   organizationId: string;
   userId: string;
+}
+
+// SPEC §5.5 / Plan Task 3.3 (#174): 个人阅读历史与归档视图。
+// status 筛选作用于当前用户 UserItemState.status（个人阅读状态），
+// 与 IntelligenceEvent.status（组织级事件生命周期）明确区分。
+// 组织级 ARCHIVED 事件不进入个人历史视图（count/where 双重 fence）。
+export type UserHistoryStatus = "READ" | "DISMISSED" | "SAVED" | "ARCHIVED";
+
+export interface UserHistoryScope extends TenantScope {
+  status: UserHistoryStatus;
+  userId: string;
+}
+
+export interface UserHistoryPage {
+  events: DashboardEventRecord[];
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  total: number;
+}
+
+// SPEC §5.5 / Plan Task 3.2 (#173): 按 briefing snapshot 批量标记当前用户已读。
+// briefing snapshot = Briefing.events 关系表当时固定的 event IDs 集合。
+// 复用 #172 UserItemState 隔离：只写 UserItemState + FeedbackEvent(READ)，
+// 不写 IntelligenceEvent.status；保留 saved（双轨，对齐 updateDashboardEventState）。
+export interface MarkBriefingEventsReadInput {
+  briefingId: string;
+  organizationId: string;
+  userId: string;
+}
+
+export interface MarkBriefingEventsReadResult {
+  changed: number;
+  skipped: number;
 }
 
 export interface RecordCategoryPreferenceFeedbackInput extends TenantScope {
@@ -299,11 +494,26 @@ export interface CreatePeriodBriefingInput extends CreateDailyBriefingInput {
 
 export type BriefingPeriod = "DAILY" | "WEEKLY" | "MONTHLY";
 
+// Issue #184 (Plan Task 4.5) — 低价值过滤统计查询输入/输出。
+// 聚合指定业务窗口内 status='FILTERED' 的 Item，按 rawMetadata.filteredReason 分组。
+// 窗口边界由 core 层 createBusinessWindowRange 计算（业务时区感知），
+// 本函数只负责按 [rangeStart, rangeEnd) 过滤 + 聚合。
+export interface CountFilteredItemsInput extends TopicScope {
+  rangeEnd: Date;
+  rangeStart: Date;
+}
+
+export interface FilteredItemsCountResult {
+  byReason: Record<string, number>;
+  count: number;
+}
+
 export interface RecordMarkdownExportInput extends TenantScope {
   briefingId?: string;
   contentHash: string;
   eventId?: string;
   fileName: string;
+  format?: "MARKDOWN" | "JSON" | "PDF";
   metadata?: Record<string, unknown>;
   topicId: string;
   userId?: string;
@@ -322,6 +532,28 @@ export interface RecordSourceQualityObservationInput extends TopicScope {
   hitRate: number;
   noiseRate: number;
   sourceId: string;
+  // SPEC §5.2/§6.2：trustScore 持久化在 Source 上，是 discovery/relevance 产物，
+  // observation 不修改它，但持久化 qualityScore 时需要它作为公式输入（参见
+  // calculateSourceQualityScore）。调用方从 Source.trustScore 读取传入。
+  trustScore: number;
+}
+
+/**
+ * 统一读取接口的返回形状（SPEC §5.2/§6.2）。
+ * 给事件评分、候选晋升、信源调度提供单一入口，避免每个调用方各自重算。
+ */
+export interface SourceQualitySummary {
+  sourceId: string;
+  qualityScore: number;
+  trustScore: number;
+  status: "ACTIVE" | "CANDIDATE" | "MUTED" | "REJECTED";
+  latestHitRate: number | null;
+  latestNoiseRate: number | null;
+  latestDuplicateRate: number | null;
+  latestObservedAt: Date | null;
+  // stale = Source.qualityScore 还是 schema 默认 0 但有 observation 历史，
+  // 说明持久化还没跑过；调用方可决定是否触发 recordSourceQualityObservation。
+  stale: boolean;
 }
 
 export interface RecordUsageEventInput extends TenantScope {

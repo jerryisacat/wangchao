@@ -6,6 +6,13 @@ datasource db {
   provider = "postgresql"
 }
 
+enum UserAccountStatus {
+  ACTIVE
+  SUSPENDED
+  DELETION_PENDING
+  DELETED
+}
+
 enum MembershipRole {
   OWNER
   ADMIN
@@ -131,20 +138,33 @@ enum UsageEventType {
 }
 
 model User {
-  id               String             @id @default(cuid())
-  email            String             @unique
-  name             String?
-  memberships      Membership[]
-  topics           Topic[]
-  itemStates       UserItemState[]
-  feedbackEvents   FeedbackEvent[]
-  preferenceMemory PreferenceMemory[]
-  exportEvents     ExportEvent[]
-  usageEvents      UsageEvent[]
-  accounts         Account[]
-  sessions         Session[]
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id                  String             @id @default(cuid())
+  email               String             @unique
+  name                String
+  emailVerified       Boolean            @default(false)
+  image               String?
+  accountStatus       UserAccountStatus  @default(ACTIVE)
+  suspendedAt         DateTime?
+  suspendedReason     String?
+  suspendEndsAt       DateTime?
+  deletionRequestedAt DateTime?
+  deletedAt           DateTime?
+  lastLoginAt         DateTime?
+  lastActivityAt      DateTime?
+  memberships         Membership[]
+  topics              Topic[]
+  itemStates          UserItemState[]
+  feedbackEvents      FeedbackEvent[]
+  preferenceMemory    PreferenceMemory[]
+  exportEvents        ExportEvent[]
+  usageEvents         UsageEvent[]
+  accounts            Account[]
+  sessions            Session[]
+  platformAdmin       PlatformAdmin?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  @@index([accountStatus])
 }
 
 model Organization {
@@ -231,10 +251,11 @@ model Subscription {
   id             String @id @default(cuid())
   organizationId String @unique
 
-  plan            Plan               @default(FREE)
-  status          SubscriptionStatus @default(ACTIVE)
-  billingInterval BillingInterval    @default(MONTHLY)
-  isSelfHosted    Boolean            @default(false)
+  plan               Plan               @default(FREE)
+  status             SubscriptionStatus @default(ACTIVE)
+  billingInterval    BillingInterval    @default(MONTHLY)
+  isSelfHosted       Boolean            @default(false)
+  showAdsInSelfHosted Boolean           @default(true)
 
   stripeCustomerId     String?
   stripeSubscriptionId String?
@@ -243,6 +264,14 @@ model Subscription {
   currentPeriodEnd   DateTime?
   canceledAt         DateTime?
   metadata           Json?
+
+  // Issue #159: temporary plan override (限时权益).
+  // When non-null, the effective plan is tempPlanOverride instead of `plan`.
+  // tempPlanExpiresAt controls auto-revert: once passed, the override is stale
+  // and the base `plan` takes effect again. Both are nullable: null = no override.
+  tempPlanOverride  Plan?
+  tempPlanExpiresAt DateTime?
+  tempPlanReason    String?
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt    DateTime     @default(now())
@@ -581,33 +610,49 @@ model SourceObservation {
 }
 
 model TaskRun {
-  id             String             @id @default(cuid())
+  id             String        @id @default(cuid())
   organizationId String
   topicId        String?
   sourceId       String?
   itemId         String?
   eventId        String?
   type           TaskRunType
-  status         TaskRunStatus      @default(PENDING)
-  attempt        Int                @default(0)
-  maxAttempts    Int                @default(3)
-  scheduledAt    DateTime           @default(now())
+  status         TaskRunStatus @default(PENDING)
+  attempt        Int           @default(0)
+  maxAttempts    Int           @default(3)
+  scheduledAt    DateTime      @default(now())
   startedAt      DateTime?
   finishedAt     DateTime?
   errorMessage   String?
   input          Json?
   output         Json? // Truncated at 100KB before persistence to prevent row size overflow.
-  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  topic          Topic?             @relation(fields: [topicId], references: [id], onDelete: SetNull)
-  source         Source?            @relation(fields: [sourceId], references: [id], onDelete: SetNull)
-  item           Item?              @relation(fields: [itemId], references: [id], onDelete: SetNull)
-  event          IntelligenceEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+
+  // Issue #162 Lane 1A — lease/idempotency contract.
+  // All five fields are nullable: absent on PENDING rows that have not yet been
+  // claimed, and cleared on terminal rows so the same business key can be reused.
+  // The partial unique active-idempotency constraint is migration-owned (see
+  // migration 0017) because Prisma cannot express WHERE-filtered @@unique.
+  idempotencyKey String?
+  leaseOwner     String?
+  leaseToken     String?
+  leaseExpiresAt DateTime?
+  heartbeatAt    DateTime?
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  topic        Topic?             @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  source       Source?            @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  item         Item?              @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  event        IntelligenceEvent? @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
 
   @@index([organizationId, status, scheduledAt])
   @@index([topicId, type])
   @@index([sourceId, status])
+  // Due scan for the worker claim loop: pick the oldest PENDING task of a
+  // given type whose scheduledAt has passed. status leads so the index can
+  // also serve status-filtered lookups.
+  @@index([status, type, scheduledAt])
 }
 
 model UsageEvent {
@@ -700,17 +745,20 @@ model Report {
 }
 
 model Account {
-  id           String    @id @default(cuid())
-  userId       String
-  providerId   String
-  accountId    String
-  refreshToken String?
-  accessToken  String?
-  expiresAt    DateTime?
-  password     String?
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                    String    @id @default(cuid())
+  userId                String
+  providerId            String
+  accountId             String
+  refreshToken          String?
+  accessToken           String?
+  expiresAt             DateTime? // Better Auth accessTokenExpiresAt, mapped via auth.ts account.fields
+  refreshTokenExpiresAt DateTime?
+  idToken               String?
+  scope                 String?
+  password              String?
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 
   @@unique([userId, providerId])
   @@index([providerId, accountId])
@@ -728,6 +776,18 @@ model Session {
   updatedAt DateTime @updatedAt
 
   @@index([userId])
+  @@index([expiresAt])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  value      String
+  identifier String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
   @@index([expiresAt])
 }
 
@@ -763,4 +823,60 @@ model WebhookEvent {
 
   @@unique([provider, recordId])
   @@index([organizationId])
+}
+
+enum PlatformAdminRole {
+  PLATFORM_OWNER
+  PLATFORM_ADMIN
+  PLATFORM_AUDITOR
+}
+
+enum AuditActorType {
+  PLATFORM_ADMIN
+  SYSTEM
+  USER
+}
+
+model PlatformAdmin {
+  id           String             @id @default(cuid())
+  userId       String             @unique
+  role         PlatformAdminRole  @default(PLATFORM_AUDITOR)
+  mfaEnabled   Boolean?
+  lastReauthAt DateTime?
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([role])
+}
+
+model AuditLog {
+  id         String          @id @default(cuid())
+  actorType  AuditActorType
+  actorId    String
+  action     String
+  targetType String
+  targetId   String
+  reason     String?
+  before     Json?
+  after      Json?
+  requestId  String?
+  createdAt  DateTime        @default(now())
+
+  @@index([actorType, actorId, createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@index([action, createdAt])
+}
+
+model PlatformNote {
+  id         String   @id @default(cuid())
+  targetType String
+  targetId   String
+  authorId   String
+  content    String
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId, createdAt])
+  @@index([authorId, createdAt])
 }

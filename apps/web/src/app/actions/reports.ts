@@ -34,7 +34,7 @@ export async function createReportAction(formData: FormData): Promise<void> {
       recordUsageEvent,
     } = await import("@wangchao/db");
     const { getSessionWorkspace } = await import("@/lib/session");
-    const { checkAiCallQuota } = await import("@wangchao/core");
+    const { checkAiCallQuota, resolveEffectivePlanFromView } = await import("@wangchao/core");
     const prisma = getPrismaClient();
     const workspace = await getSessionWorkspace();
 
@@ -50,7 +50,7 @@ export async function createReportAction(formData: FormData): Promise<void> {
     const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
     const todayAiCalls = await getTodayAiCallCount(prisma, { organizationId: workspace.organizationId });
     const monthAiCalls = await getMonthAiCallCount(prisma, { organizationId: workspace.organizationId });
-    const aiQuota = checkAiCallQuota(subscription.plan, todayAiCalls, monthAiCalls, subscription.isSelfHosted);
+    const aiQuota = checkAiCallQuota(resolveEffectivePlanFromView(subscription), todayAiCalls, monthAiCalls, subscription.isSelfHosted);
     if (!aiQuota.allowed) throw new Error(aiQuota.reason ?? "AI call limit reached.");
 
     const report = await createReport(

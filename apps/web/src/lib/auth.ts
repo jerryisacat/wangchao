@@ -6,10 +6,10 @@ export function isAuthEnabled(): boolean {
   return Boolean(process.env.BETTER_AUTH_SECRET);
 }
 
-let _auth: ReturnType<typeof createAuth> | null = null;
+let authPromise: ReturnType<typeof createAuth> | null = null;
 
-function createAuth() {
-  const { getPrismaClient } = require("@wangchao/db") as typeof import("@wangchao/db");
+async function createAuth() {
+  const { getPrismaClient } = await import("@wangchao/db");
   return betterAuth({
     appName: "望潮 Wangchao",
     secret: process.env.BETTER_AUTH_SECRET,
@@ -23,19 +23,6 @@ function createAuth() {
       minPasswordLength: 8,
       maxPasswordLength: 128,
     },
-    user: {
-      additionalFields: {
-        emailVerified: {
-          type: "boolean",
-          required: false,
-          defaultValue: false,
-        },
-        image: {
-          type: "string",
-          required: false,
-        },
-      },
-    },
     account: {
       fields: {
         accessTokenExpiresAt: "expiresAt",
@@ -46,8 +33,11 @@ function createAuth() {
 }
 
 export function getAuth() {
-  if (!_auth) {
-    _auth = createAuth();
+  if (!authPromise) {
+    authPromise = createAuth().catch((error: unknown) => {
+      authPromise = null;
+      throw error;
+    });
   }
-  return _auth;
+  return authPromise;
 }

@@ -67,11 +67,37 @@ export default async function ReportDetailPage({ params }: ReportDetailPageProps
         />
       ) : null}
       {report.status === "INSUFFICIENT_DATA" ? (
-        <StatusBanner
-          icon={<CircleAlert aria-hidden="true" size={16} />}
-          message={report.coverageNote ?? "情报库覆盖不足。"}
-          tone="warning"
-        />
+        <Card variant="work">
+          <CardContent>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-start gap-2">
+                <CircleAlert aria-hidden="true" className="mt-0.5 shrink-0 text-amber-600" size={16} />
+                <div className="flex flex-col gap-2">
+                  <p className="text-sm font-medium text-amber-900">情报库覆盖不足，未能生成完整报告。</p>
+                  {report.coverageNote ? (
+                    <p className="text-xs text-muted-foreground">{report.coverageNote}</p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex flex-col gap-2 border-t border-amber-200 pt-3">
+                <p className="text-xs font-medium text-muted-foreground">下一步建议</p>
+                <ul className="ml-4 list-disc text-xs text-muted-foreground">
+                  <li>创建更精准的关注主题，覆盖该问题涉及的方向。</li>
+                  <li>为相关主题补充更多信源，提升情报库覆盖面。</li>
+                  <li>等待后续抓取周期积累更多信息后重新生成。</li>
+                </ul>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Button asChild size="sm" variant="outline">
+                    <Link href="/topics/new">创建主题</Link>
+                  </Button>
+                  <Button asChild size="sm" variant="ghost">
+                    <Link href="/reports">返回报告列表</Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       ) : null}
       {report.status === "FAILED" ? (
         <StatusBanner
@@ -101,6 +127,12 @@ export default async function ReportDetailPage({ params }: ReportDetailPageProps
                 <dt className="w-20 shrink-0 text-muted-foreground">事件数</dt>
                 <dd className="text-muted-foreground">{report.eventCount}</dd>
               </div>
+              {report.itemCount > 0 ? (
+                <div className="flex gap-2">
+                  <dt className="w-20 shrink-0 text-muted-foreground">情报正文</dt>
+                  <dd className="text-muted-foreground">{report.itemCount}</dd>
+                </div>
+              ) : null}
               {report.topicIds.length > 0 ? (
                 <div className="flex gap-2">
                   <dt className="w-20 shrink-0 text-muted-foreground">涉及主题</dt>

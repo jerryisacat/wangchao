@@ -1,4 +1,373 @@
+## 2026-07-18
+
+### Feat: Issue #187 支持完整时间线与收藏集合导出
+
+- Cause: briefings/topics export route 缺 ?format= 支持；Timeline >100 截断；无 Saved collection 导出。
+- Changed:
+  - `apps/web/src/app/exports/briefings/[briefingId]/route.ts`：补 ?format=json|pdf|markdown 三格式。
+  - `apps/web/src/app/exports/topics/[topicId]/route.ts`：补 ?format= + take:10000 消除截断。
+  - `apps/web/src/app/exports/timelines/[topicId]/route.ts`：新建，Timeline 全量导出，>500 返回 202+TaskRun。
+  - `apps/web/src/app/exports/saved/route.ts`：新建，user-scoped saved 三格式。
+  - `packages/core/src/{export-schema,render-pdf}.ts`：新增 buildTimelineExportJson/buildSavedExportJson + renderTimelinePdf/renderSavedPdf。
+  - `packages/db/src/repositories/event.ts`：新增 listTimelineEventsForExport（take 10000）/ listSavedEventsForExport（user-scoped）。
+  - `apps/worker/src/modules/dedup.fixtures.ts`：修复时间依赖（固定 2026-07-18 改相对 now-Xh，#171 引入的 fixture bug）。
+- Files: `apps/web/src/app/exports/{briefings,topics,timelines,saved}/*`, `packages/core/src/{export-schema,render-pdf,index.fixtures}.ts`, `packages/db/src/repositories/{event,types}.ts`, `packages/db/src/index.ts`, `apps/worker/src/modules/dedup.fixtures.ts`。
+- Verification: core export-schema + render-pdf fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: >500 deferred 的 Worker EXPORT_GENERATION handler 待补；saved topicId fallback。未部署、未关闭 Issue。Stage 5 批量 push。
+
+### Feat: Issue #186 实现 JSON 与 PDF 导出
+
+- Cause: SPEC §5.7 说"JSON 已落地"是不实契约；三条 export 路由全部硬编码 MARKDOWN。
+- Changed:
+  - `packages/core/src/export-schema.ts`：稳定版本化 JSON schema（schemaVersion=1），buildEventExportJson/buildBriefingExportJson/buildTopicExportJson/serializeExportJson/parseExportJson。
+  - `packages/core/src/render-pdf.ts`：pdfkit PDF renderer（中文字体 fallback 链 env→仓库资产→系统字体→Helvetica，分页，链接 annotation），renderEventPdf/renderBriefingPdf/renderTopicPdf。
+  - `packages/core/src/{pdf-types,export-test-helpers}.ts`：pdfkit 最小类型 shim + 测试字体路径解析。
+  - `packages/core/src/index.ts`：render-pdf 不从 index 导出（Node-only，避免浏览器 bundle 破坏）；package.json exports 加 `./dist/*` 子路径。
+  - `packages/db/src/repositories/export.ts`：recordMarkdownExport 泛化接受 format 参数（默认 MARKDOWN）。
+  - `apps/web/src/app/exports/events/[eventId]/route.ts`：支持 ?format=json|pdf|markdown query param，正确 MIME/filename/ExportEvent.format。
+  - 父 Agent 修复：runCoreFixtures 改 async、render-pdf.fixtures 直接 import render-pdf.js（不经 index）、package.json exports 加 dist 子路径。
+- Files: `packages/core/src/{export-schema,render-pdf,pdf-types,export-test-helpers,index,index.fixtures}.ts`, `packages/core/src/{export-schema,render-pdf}.fixtures.ts`, `packages/core/package.json`, `packages/db/src/repositories/{export,types}.ts`, `apps/web/src/app/exports/events/[eventId]/route.ts`, `pnpm-lock.yaml`。
+- Verification: core export-schema 6 fixture + render-pdf 8 fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: pdfkit 动态 import 仅在 server route handler（不进浏览器 bundle）；字体 8.3MB OTF 不 commit，runtime fallback；briefings/topics route ?format= 支持留给 #187。未部署、未关闭 Issue。Stage 5 批量 push。
+
+### Feat: Issue #185 实现主题一体化 Dashboard 与趋势
+
+- Cause: 缺少每主题一体化 Dashboard（未读/收藏/趋势/信源健康/简报）。
+- Changed:
+  - `packages/db/src/repositories/dashboard.ts`：新增 `getTopicDashboard`（8 并发查询：topic + 未读 Top + 收藏 + 7/30 天趋势 + 信源健康 + 最近简报）。
+  - `packages/db/src/repositories/types.ts`：TopicDashboardRecord/TopicTrendData 类型。
+  - `apps/web/src/lib/topic-source-data.ts`：`getTopicDashboardData` web 封装。
+  - `apps/web/src/components/intelligence/{trend-chart,topic-dashboard-view}.tsx`：纯 CSS 图表（TrendBarChart/DailyTrendChart/SourceHealthList）+ Dashboard 视图。
+  - `apps/web/src/app/topics/[topicId]/page.tsx`：重写调用 Dashboard。
+  - 父 Agent 修复：移除未定义的 `adaptEventForCard` 引用（数据已是 DTO 格式）。
+- Files: `packages/db/src/repositories/{dashboard,types,event}.ts`, `packages/db/src/{index,repositories.fixtures,repositories}.ts`, `apps/web/src/{lib/topic-source-data,components/intelligence/{trend-chart,topic-dashboard-view},app/topics/[topicId]/page}.tsx`。
+- Verification: db dashboard fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 纯 CSS 图表无图表库依赖；实体聚合客户端 Map；globals.css 待补。未部署、未关闭 Issue。Stage 4 批量 push。
+
+### Feat: Issue #182 增加浏览器简报详情页
+
+- Cause: 缺少浏览器内简报正文详情与阅读操作。
+- Changed:
+  - `packages/db/src/repositories/event.ts`：新增 `getBriefingDetail`（tenant-scoped，跨租户拒绝）。
+  - `apps/web/src/lib/briefing-markdown.ts`：自定义安全 Markdown renderer（白名单标签/属性 + 全量 HTML escape，不引入第三方库）。
+  - `apps/web/src/app/briefings/[briefingId]/page.tsx`：详情页（安全渲染、下载、批量已读复用 #173、Event 跳转、空正文兜底）。
+  - `apps/web/scripts/briefing-detail.fixture.mjs`：XSS 测试（script/iframe/img onerror/javascript/data:）。
+- Files: `packages/db/src/repositories/{event,types}.ts`, `packages/db/src/{index,repositories.fixtures}.ts`, `apps/web/src/lib/{briefing-markdown,topic-source-data}.ts`, `apps/web/src/app/briefings/[briefingId]/page.tsx`, `apps/web/scripts/briefing-detail.fixture.mjs`, `apps/web/package.json`。
+- Verification: web briefing markdown renderer fixture ✓ + db getBriefingDetail fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: `dangerouslySetInnerHTML` 经白名单+escape+XSS fixture 覆盖；globals.css 类待补；批量审查 Stage 末尾补。未部署、未关闭 Issue。Stage 4 批量 push。
+
+### Feat: Issue #184 简报支持业务时区与过滤统计
+
+- Cause: SPEC §4.2 可配置业务时区未实现（固定 UTC）；低价值过滤统计未在简报呈现。
+- Changed:
+  - `packages/core/src/business-window.ts`：`createBusinessWindowRange`（UTC/Asia-Shanghai/DST 日周月边界）、`resolveBusinessTimezone`（当前空=UTC）。
+  - `packages/core/src/filtered-stats.ts`：`summarizeFilteredStats`（按原因聚合）、`renderFilteredStatsSection`（zh-CN 分区渲染）。
+  - `packages/db/src/repositories/source.ts`：`countFilteredItemsInRange`（FILTERED item 按窗口+原因统计）。
+  - `apps/worker/src/modules/briefing.ts`：`buildFilteredStatsMetadata`（父 Agent 补全 subagent 半成品）；Briefing metadata 记录 filteredStats + timezone。
+- Files: `packages/core/src/{business-window,filtered-stats,index.fixtures,index}.ts`, `packages/db/src/repositories/{source,types}.ts`, `packages/db/src/index.ts`, `apps/worker/src/modules/briefing.ts`。
+- Verification: core business-window + filtered-stats fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: timezone 当前空=UTC（schema 加字段后落地）；无 schema migration。未部署、未关闭 Issue。Stage 4 批量 push。
+
+### Refactor: Issue #183 按 SPEC 重构中文结构化简报
+
+- Cause: 简报渲染不完整消费 Topic.digestStyle，可能有英文模板残留，结构不符合 SPEC §4.2 分区展示。
+- Changed:
+  - `packages/core/src/render-briefing.ts`：zh-CN 默认；分区展示（重要性/影响对象/可信度/后续动作/多来源）；完整消费 digestStyle（compact/standard/detailed structure + brief/standard/comprehensive detailLevel + maxEvents 上限）；不丢 entities/followUpSuggestion/secondarySources；Preference 影响事件选择。
+  - `apps/worker/src/modules/briefing.ts`：消费新渲染器。
+  - `packages/core/src/index.fixtures.ts`：15 个新 briefing fixture。
+- Files: `packages/core/src/{render-briefing,index.fixtures}.ts`, `apps/worker/src/modules/briefing.ts`。
+- Verification: core 15 新 fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 无 schema migration；批量审查 Stage 末尾补。未部署、未关闭 Issue。Stage 4 批量 push。
+
+### Fix: Issue #179 完善 Telegram 简报重试与补投
+
+- Cause: 第一次 500 后第二轮永不重试，FAILED 永久漏投。
+- Changed:
+  - `packages/db/src/repositories/delivery-log.ts`：新增 `claimDeliveryLog`（原子 claim，SENT/SKIPPED 返回 null，并发靠唯一约束）、`markDeliveryFailed`（attempt+1，退避基于 updatedAt，attempt 上限后 SKIPPED）。
+  - `apps/worker/src/modules/telegram-delivery.ts`：cycle 查询 FAILED/PENDING/stale 区分 retryable，claim→send→markSent/markFailed，SENT 幂等。
+  - `apps/worker/src/{index.fixtures,modules/types}.ts`：fixture + 类型。
+- Files: `packages/db/src/repositories/delivery-log.ts`, `packages/db/src/index.ts`, `apps/worker/src/modules/{telegram-delivery,types}.ts`, `apps/worker/src/index.fixtures.ts`。
+- Verification: worker telegram-delivery fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 无 schema migration（退避基于 updatedAt）；如需精确 nextAttemptAt 需独立 Issue。未部署、未关闭 Issue。Stage 4 批量 push。
+
+### Feat: Issue #178 专题报告接入可追溯正文证据集
+
+- Cause: 报告 itemCount 硬编码 events.length；无 briefingCount/evidenceIds；AI prompt 无 provenance；未禁止联网补全。
+- Changed:
+  - `packages/db/src/repositories/report.ts`：新增 `collectReportEvidence()`（从 Event/Item.rawContent/Briefing/Source metadata 召回，去重压缩，保留 evidenceIds/URLs/timestamps/trust）。
+  - `apps/worker/src/modules/report.ts`：itemCount/briefingCount 真实数量；AI prompt 每条证据带编号+ID+URL+timestamp+trust，禁止联网补全；INSUFFICIENT_DATA 持久化 evidenceIds。
+  - `apps/worker/src/modules/report.fixtures.ts`：7 项 fixture。
+- Files: `packages/db/src/repositories/report.ts`, `packages/db/src/index.ts`, `apps/worker/src/modules/{report,report.fixtures}.ts`。
+- Verification: worker report 7 fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: briefingCount/evidenceIds 存 Report.metadata JSON（不改 schema）；真实 PG 三层 include 验证待补。未部署、未关闭 Issue。Stage 4 批量 push。
+
+### Fix: Issue #177 专题报告正确记录证据不足状态
+
+- Cause: 报告证据不足时未正确落库 INSUFFICIENT_DATA，可能错误标记 COMPLETED。
+- Changed:
+  - `packages/db/src/repositories/report.ts`：新增 `completeInsufficientReport()`（显式终态参数，状态转换校验，幂等）。
+  - `apps/worker/src/modules/report.ts`：证据不足时调 completeInsufficientReport 而非 completeReport，写 coverageNote。
+  - `apps/worker/src/modules/report.fixtures.ts`：4 断言 fixture。
+  - `apps/web/src/app/reports/[reportId]/page.tsx`：UI 显示 INSUFFICIENT_DATA + coverageNote + 下一步。
+- Files: `packages/db/src/repositories/report.ts`, `packages/db/src/index.ts`, `apps/worker/src/modules/{report,report.fixtures}.ts`, `apps/worker/src/index.fixtures.ts`, `apps/web/src/app/reports/[reportId]/page.tsx`。
+- Verification: worker report fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 无 schema migration；批量审查 Stage 末尾补。未部署、未关闭 Issue。Stage 4 批量 push。
+
+### Feat: Issue #165 闭合反馈到采集分析简报的偏好学习
+
+- Cause: SPEC §5.6 明确"待闭合"：偏好未回灌到 relevance filter、AI event extraction prompt、source scheduling。§7.4 "抓取+筛选"两环未闭合。
+- Changed:
+  - `packages/core/src/preference.ts`：新增 `loadPreferenceSnapshotsByTopic`/`loadPreferenceSnapshotsForScheduling`（版本化 preference snapshot，可解释）。
+  - `packages/core/src/relevance.ts`：relevance filter 从 PreferenceMemory 动态合并 excludeScope/keywords（探索率硬下限防 filter bubble）。
+  - `packages/ai/src/event-extraction.ts`：system prompt 注入当前偏好上下文。
+  - `apps/worker/src/modules/{analysis,fetch-cycle}.ts`：source scheduling 偏好影响抓取频率/范围；用户编辑/删除偏好后下一轮生效。
+  - `packages/core/src/index.fixtures.ts`：10 个新 #165 fixture（偏好影响筛选/AI/调度/探索率/删除恢复）。
+- Files: `packages/core/src/{preference,relevance,index.fixtures}.ts`, `packages/ai/src/event-extraction.ts`, `apps/worker/src/modules/{analysis,fetch-cycle}.ts`。
+- Verification: core 10 新 fixture + ai event-extraction + worker fixtures ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 探索率硬下限防 filter bubble；真实 PG worker 端到端周期测试待补；批量审查 Stage 末尾补。未部署、未关闭 Issue。Stage 3 批量 push。
+
+### Feat: Issue #175 补齐来源质量与评分校准反馈入口
+
+- Cause: events/[eventId] 详情页缺 SOURCE_QUALITY_UP/DOWN 入口；增强反馈未完整绑定。
+- Changed:
+  - `apps/web/src/app/actions/events.ts`：补齐 SOURCE_QUALITY_UP/DOWN action（复用 #164 FeedbackKind），明确绑定 event/source/topic，防双写。
+  - `apps/web/src/app/events/[eventId]/page.tsx` 或组件：反馈按钮（成功/错误/撤销语义，键盘可访问）。
+  - `apps/web/scripts/enhanced-feedback-kinds.fixture.mjs`：6 种 kind 绑定+防双写+撤销 fixture。
+- Files: `apps/web/src/app/actions/events.ts`, `apps/web/src/app/events/[eventId]/*`, `apps/web/scripts/enhanced-feedback-kinds.fixture.mjs`, `apps/web/package.json`。
+- Verification: web enhanced-feedback-kinds fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 无 source 的 event 提交 SOURCE_QUALITY 时 core 静默不产生 delta（既有安全行为）；批量审查 Stage 末尾补。未部署、未关闭 Issue。Stage 3 批量 push。
+
+### Feat: Issue #174 增加个人阅读历史与归档恢复
+
+- Cause: 无已读/忽略/归档历史视图；个人 ARCHIVED 状态未实现。
+- Changed:
+  - `packages/db/src/repositories/event.ts`：新增 `archiveDashboardEvent`/`restoreDashboardEvent`（archive 不产生 FeedbackEvent；restore 派生 saved→SAVED/readAt→READ/否则 UNREAD）、`listUserHistoryEvents`（分页 + status 单值筛选 + 组织级 ARCHIVED notIn）；`listDashboardEvents` NOT 子句加入个人 ARCHIVED（#172 follow-up）。
+  - `packages/db/src/repositories/util.ts`：新增 `resolveRestoredStatus` 派生函数。
+  - `apps/web/src/lib/topic-source-data.ts`：history 数据映射。
+  - `packages/db/src/repositories.fixtures.ts`：7 个新 fixture。
+- Files: `packages/db/src/repositories/{event,types,util}.ts`, `packages/db/src/{index,repositories.fixtures}.ts`, `apps/web/src/{app/actions/_shared,lib/topic-source-data}.ts`。
+- Verification: db 7 新 fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: archive 不产生 FeedbackEvent（不污染偏好学习）；history CSS 类待补；真实 PG archive/restore fixture 待补。未部署、未关闭 Issue。Stage 3 批量 push。
+
+### Feat: Issue #173 支持按当日 Briefing 批量标记事件已读
+
+- Cause: 无批量已读功能，用户需逐条标记。
+- Changed:
+  - `packages/db/src/repositories/event.ts`：新增 `markBriefingEventsAsRead()` 批量 upsert UserItemState 为 READ（保留 saved=true，createMany skipDuplicates 幂等，返回 changed/skipped counts）。
+  - `apps/web/src/app/actions/events.ts`：新增 `markBriefingAsReadAction` server action。
+  - `packages/db/src/repositories.fixtures.ts`：批量 + 幂等 + 保留 saved + changed/skipped fixture。
+- Files: `packages/db/src/repositories/{event,types}.ts`, `packages/db/src/{index,repositories.fixtures}.ts`, `apps/web/src/app/actions/events.ts`。
+- Verification: db fixtures ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 无 schema migration；批量审查 Stage 末尾补。未部署、未关闭 Issue。Stage 3 批量 push。
+
+### Fix: Issue #172 按 UserItemState 隔离情报阅读与收藏状态
+
+- Cause: Event 生命周期状态和个人阅读状态混在 IntelligenceEvent.status；用户 A read/dismiss 影响用户 B 信息流；Dashboard/Briefing 查询未按当前用户 UserItemState 派生。
+- Changed:
+  - `packages/db/src/repositories/event.ts`：`updateDashboardEventState` 移除 `intelligenceEvent.update({data:{status}})`，只 upsert UserItemState + 写 feedback；`listDashboardEvents` where 改为 `status notIn [ARCHIVED]` + NOT EXISTS 当前用户 READ/DISMISSED UserItemState；`listEventsForDailyBriefing`/`listTimelineEvents` 改为 `status notIn [ARCHIVED]`（briefing 是组织级产物）；`mapDashboardEventRecord` 返回派生 status（`userState?.status ?? "UNREAD"`）+ userSaved 完全来自 userState。
+  - `packages/db/src/repositories.fixtures.ts`：4 个新隔离测试（A read 不影响 B、A dismiss 不影响 B、A save 不进 B saved、操作不改 IntelligenceEvent.status）+ 旧全局状态兼容 fallback 测试。
+  - `packages/db/src/user-item-state-pg.fixtures.ts`：真实 PostgreSQL 两用户隔离 opt-in fixture（4 invariant）。
+- Files: `packages/db/src/repositories/{event,types}.ts`, `packages/db/src/{repositories.fixtures,user-item-state-pg.fixtures}.ts`。
+- Verification: db 4 新隔离测试 + 真实 PG 两用户隔离 4 invariant ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 无 schema migration（UserItemState 已存在）；旧全局 READ/SAVED/DISMISSED 兼容 fallback（当无当前用户 UserItemState 但 event.status 是旧值时视为历史状态）；#174 个人 ARCHIVED 需重新审视 notIn 查询。未部署、未关闭 Issue。Stage 3 批量 push。
+
+### Fix: Issue #171 扩大跨源语义去重覆盖
+
+- Cause: 不同 URL/标题同一事件无法合并；已读旧事件无法与新报道合并；别名实体无法匹配；晚到报道漏入窗口；无 AI 时按 URL 隔绝跨源候选。
+- Changed:
+  - `packages/core/src/{index,index.fixtures}.ts`：新增 `canonicalizeTitle`（去前缀噪声/标点/全角半角归一化）、`canonicalizeEntity`（内置 12 常见科技公司中英别名 + 去法人后缀）、`shareCanonicalEntity`。
+  - `apps/worker/src/modules/dedup.ts`：`recallDedupCandidates` 去掉 `status: "UNREAD"` 过滤（脱离阅读状态）；bounded lookback 基于 `createdAt`（默认 48h，可配置 `WANGCHAO_DEDUP_LOOKBACK_HOURS`）；无 AI 时 `deterministicDedupDecision` 安全 fallback（canonical title 0.9 + alias+时间窗 0.75）；新增可选 `deps` 参数支持 fixture 注入。
+- Files: `packages/core/src/{index,index.fixtures}.ts`, `apps/worker/src/modules/dedup.ts`。
+- Verification: core/ai/db/worker typecheck + fixtures ✓；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: 内置别名表仅 12 条（长尾需后续补充）；写入期 fuzzy 匹配未同步升级（属后续）；真实 PG 端到端缺失（mock 精确模拟）。未部署、未关闭 Issue。Stage 2 批量 push。
+
+### Refactor: Issue #170 分离情报相关性重要性与综合评分
+
+- Cause: gravityScore 是单一混合分数，相关性相同的 item 但重要性/来源质量不同时 gravityScore 仍相同。
+- Changed:
+  - `packages/core/src/relevance.ts`：新增 `relevanceScore`/`importanceScore`/`sourceQualityFactor`/`preferenceAdjustment` 独立维度；版本化 `SCORING_FORMULA_VERSION`；`calculateGravityScore` 组合四维度，旧事件兼容懒重算。
+  - `packages/ai/src/event-extraction.ts`：AI JSON schema 新增独立分数字段，prompt 更新，parser 解析 + fallback。
+  - `packages/ai/src/event-extraction.fixtures.ts`：新增评分维度 fixture。
+  - `packages/core/src/index.fixtures.ts`：新增评分维度测试（相关性相同但重要性/来源质量不同，gravityScore 不同）。
+  - `apps/worker/src/modules/analysis.ts`：分析 cycle 消费新维度，resolveSourceQualityFactor 复用 #176 getSourceQualitySummary。
+- Files: `packages/core/src/{relevance,index.fixtures}.ts`, `packages/ai/src/{event-extraction,event-extraction.fixtures}.ts`, `apps/worker/src/modules/analysis.ts`。
+- Verification: core + ai + worker typecheck + fixtures ✓；全仓 typecheck/lint/test/build/diff-check ✓（Node 26）。
+- Notes / Risk: 无 schema migration（独立维度存 rawAiResponse JSON + gravityScore 组合）；批量审查在 Stage 2 末尾补。未部署、未关闭 Issue。Stage 2 批量 push。
+
+### Feat: Issue #167 自然语言 Topic 草案生成与确认流程
+
+- Cause: `topics/new/page.tsx` 提交后直接创建；`topic-profile.ts` 只是分词和固定模板；没有草案状态、预览、确认/修改步骤。
+- Changed:
+  - `packages/ai/src/index.ts`：新增 `generateTopicProfileDraft()` AI 生成 + `fallbackTopicProfileDraft()` 规则 fallback，版本化 schemaVersion，generationMode 标识。
+  - `apps/web/src/app/actions/topics.ts`：新增 `generateTopicDraftAction`（AI 生成草案 → cookie 传递）和 `confirmCreateTopicAction`（确认 → 创建 Topic + 匹配信源），全链路 sanitize（sanitizeShortText/sanitizeStringList/readDigestStyle），AI 失败 try/catch fallback，cookie httpOnly+sameSite=lax+15min maxAge。
+  - `apps/web/src/app/topics/new/page.tsx`：Step 1 输入页。
+  - `apps/web/src/app/topics/new/preview/{page,topic-draft-preview-form}.tsx`：Step 2 预览确认页（逐字段编辑、重新生成、确认创建、cookie 过期/损坏错误状态）。
+  - `apps/web/src/app/globals.css`：补 `.topic-draft-mode-hint` 和 `.topic-regenerate-form` 定义（DeepSeek 审计 C1 修复）。
+  - `tests/smoke/web.spec.ts`：Playwright 契约从单步改为两步流程。
+- Files: `packages/ai/src/index.ts`, `packages/ai/package.json`, `apps/web/src/app/actions/topics.ts`, `apps/web/src/app/topics/new/{page,preview/page,preview/topic-draft-preview-form}.tsx`, `apps/web/src/app/globals.css`, `apps/web/package.json`, `tests/smoke/web.spec.ts`。
+- Verification: AI 7 测试 + web 6 fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓；DeepSeek V4 Pro 审计 Critical 1（CSS 未定义）已修复。
+- Notes / Risk: 响应式断点/loading 状态/英文空描述测试为 Important 后续改进；Playwright smoke 需 live server+PG，环境未跑。未部署、未关闭 Issue。Stage 2 批量 push。
+
+### Feat: Issue #169 重建 Candidate 观察与晋升闭环
+
+- Cause: Candidate observation 可抓 Item 但分析查询要求 ACTIVE；到期审核以 IntelligenceEvent 为依据导致正常 Candidate 全部 REJECTED。
+- Changed:
+  - `packages/db/src/repositories/util.ts`：新增 `recommendCandidatePromotion()` 纯函数（APPROVE/OBSERVE/MUTE/REJECT/INSUFFICIENT_SAMPLE），样本不足/抓取失败保护，阈值基于 hitRate/noiseRate/qualityScore。
+  - `packages/db/src/repositories/source.ts`：新增 `computeCandidateQualityMetrics()` 按 source 聚合 relevance 结果为 hit/noise/duplicate 指标。
+  - `apps/worker/src/modules/governance.ts`：Candidate 隔离 observation cycle，不进正式 Event/Briefing；到期审核走 recommendCandidatePromotion 而非 IntelligenceEvent 判据；样本不足延长观察期。
+  - `apps/worker/src/{index.fixtures,modules/fetch-cycle}.ts`：集成 + fixture。
+  - `packages/db/src/{index,repositories.fixtures}.ts`：导出 + 2 个新 fixture（8 分支纯函数 + 聚合）。
+- Files: `packages/db/src/repositories/{util,source}.ts`, `packages/db/src/{index,repositories.fixtures}.ts`, `apps/worker/src/modules/{governance,fetch-cycle}.ts`, `apps/worker/src/index.fixtures.ts`。
+- Verification: db 8 分支纯函数 + 聚合 fixture；worker governance fixture；全仓 typecheck/lint/test/build/diff-check ✓。
+- Notes / Risk: Candidate Item 隔离由 listFetchedItemsForAnalysis 的 source.status=ACTIVE 过滤保证；批量审查在 Stage 2 末尾补。未部署、未关闭 Issue。Stage 2 批量 push。
+
+### Feat: Issue #168 接入 WEB 与公告列表页采集
+
+- Cause: `listActiveRssSourcesForFetch()` 仅查 RSS，Worker 统一调 `fetchRssFeed()`，SourceKind.WEB 只有 Schema 预留。
+- Changed:
+  - `packages/sources/src/index.ts`：统一 `SourceAdapter` 契约 `fetch(source, options) -> NormalizedSourceItem[]`，registry 按 kind 分发；RSS adapter 薄包装 `fetchRssFeed`；WEB adapter 用 linkedom 静态解析，支持 itemSelector/titleSelector/linkSelector 配置 + 通用锚点 fallback，`<meta charset>` 复解码兜底。
+  - `packages/sources/package.json`：新增 linkedom 依赖。
+  - `apps/worker/src/modules/fetch.ts`：`fetchSourceItemsForKind` 统一 dispatch，kind 缺省默认 RSS；`FetchWebError`(带 status)/`UnknownSourceKindError`(非重试)，`isFetchRetryable` 覆盖 408/429/5xx/Abort/TypeError。
+  - `packages/db/src/repositories/source.ts`：`listActiveSourcesForFetch` 支持所有 kind（不再仅 RSS）。
+  - `apps/worker/src/{index.fixtures,modules/{fetch-cycle,governance}}.ts`、`packages/db/src/{index,repositories/types}.ts`：集成 + 5 个新 dispatch fixture。
+- Files: `packages/sources/src/index.ts`, `packages/sources/package.json`, `apps/worker/src/{modules/fetch,fetch-cycle,governance,index.fixtures}.ts`, `packages/db/src/repositories/{source,types}.ts`, `packages/db/src/index.ts`。
+- Verification: sources/worker/db typecheck + fixtures ✓；全仓 typecheck/lint/test/build/diff-check ✓；DeepSeek V4 Pro APPROVED（Critical 0 / Important 2 均非正确性 / Minor 3）。
+- Notes / Risk: WEB adapter 选择器配置无 Admin UI 入口（走通用 fallback，功能可用精度低），UI 属后续增强；候选 WEB 观察属 #169。未部署、未关闭 Issue。Stage 2 批量 push。
+
+### Fix: Issue #176 持久化 Source 质量分并闭合自动降权/静默治理
+
+- Cause: `listSourceGovernanceReport()` 动态计算 qualityScore 不持久化；`recordSourceQualityObservation()` 只写 SourceObservation 不更新 Source.qualityScore；噪声推荐主要展示未进入评分和自动降权。
+- Changed:
+  - `packages/db/src/repositories/util.ts`：新增 `SOURCE_QUALITY_FORMULA_VERSION`、`SOURCE_QUALITY_MIN_SAMPLE`、`decideAutomaticGovernance()`（按阈值自动降权/建议静默，最小样本保护，REJECT 保留人工确认）。
+  - `packages/db/src/repositories/source.ts` `recordSourceQualityObservation()`：改为单一 `$transaction` 内 `Promise.all` 写 SourceObservation 历史 + 更新 Source.qualityScore，evidence 记录 formulaVersion 和 persistedQualityScore；trustScore 不被 observation 自动改。`listSourceGovernanceReport()` 读持久化 qualityScore（为 0 时回退派生值，暴露 persisted/derived/stale 三值）。新增 `getSourceQualitySummary()` 统一读取接口。
+  - `packages/db/src/repositories/types.ts`：新增 `SourceQualitySummary` 类型。
+  - `packages/db/src/index.ts`：导出 `getSourceQualitySummary`。
+  - `apps/worker/src/modules/governance.ts`：governance cycle 消费新接口。
+  - `apps/worker/src/modules/{fetch-cycle,fetch,types}.ts`：集成新类型。
+  - `packages/db/src/repositories.fixtures.ts`：6 个新 fixture（qualityScore 持久化、stale 回退、公式版本、最小样本保护、REJECT 人工确认、统一读接口）。
+- Files: `packages/db/src/repositories/{source,types,util}.ts`, `packages/db/src/{index,repositories.fixtures}.ts`, `apps/worker/src/modules/{governance,fetch-cycle,fetch,types}.ts`, `docs/L3-modules.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification:
+  - DB 6 个新 fixture + worker governance fixture ✓；全仓 typecheck/lint/test/build/diff-check ✓（Node 26 + Prisma generate）。
+  - DeepSeek V4 Pro 只读审计 APPROVED（Critical 0 / Important 1: getSourceQualitySummary 尚无外部调用方 / Minor 3）。
+- Notes / Risk: 无 schema migration（复用现有 Source.qualityScore/trustScore 字段）；真实 PostgreSQL fixture 为已知环境限制，mock 精确模拟 $transaction 并行写。未部署、未关闭 Issue。Stage 2 批量 push。
+
+### Fix: Issue #164 反馈信号字段完整性、跨 Topic 隔离与时间衰减
+
+- Cause: `listRecentFeedbackSignals` mapper 丢失 `feedbackEventId`/`eventId`/`createdAt`，`generatePreferenceDeltas` dedupKey 退化为 `eventId+kind`（空 eventId 时跨 Topic 吞信号），查询排除 6 种增强反馈类型，30 天半衰期因缺失 createdAt 失效；MORE_LIKE_THIS/LESS_LIKE_THIS 的 preferenceKeysForSignal 重复推送 category key 导致单信号双倍计算。
+- Changed:
+  - `packages/db/src/repositories/event.ts` `listRecentFeedbackSignals`：查询 `kind.in` 扩展为全部 12 种非治理反馈（READ/SAVE/DISMISS/EXPORT/CATEGORY_UP/CATEGORY_DOWN/MORE_LIKE_THIS/LESS_LIKE_THIS/SOURCE_QUALITY_UP/SOURCE_QUALITY_DOWN/SCORE_UP/SCORE_DOWN）；include 新增 `source` 关系；mapper 返回 `feedbackEventId`(=id)/`eventId`/`createdAt`/`topicId`/`sourceId`/`sourceName`/`category`/`value`，eventId 缺失时 fallback 到 `feedbackEvent.sourceId`/`feedbackEvent.source.name`。
+  - `packages/db/src/repositories/types.ts` `FeedbackSignalRecord`：新增 `feedbackEventId: string`、`eventId: string | null`、`createdAt: Date`，kind 联合类型扩展为 12 种。
+  - `packages/core/src/preference.ts` `FeedbackSignal`：新增 `feedbackEventId?: string | null`、`createdAt?: Date | null`；`generatePreferenceDeltas` dedupKey 改为 `${feedbackEventId}::${kind}::${topicId}`，防止跨 Topic 吞信号；`preferenceKeysForSignal` MORE/LESS_LIKE_THIS 分支委托给 `preferenceKeysForEvent` 避免重复 category key。
+  - `packages/core/src/index.fixtures.ts`：新增 5 个测试（同 Topic 三次 DISMISS 累积、跨 Topic 隔离、replay 幂等、31 天衰减、增强反馈不跨 Topic 合并、缺失 feedbackEventId 安全、MORE_LIKE_THIS 不重复计算）。
+  - `packages/db/src/repositories.fixtures.ts`：新增 `verifyFeedbackSignalMapperPreservesContractFields`，验证 mapper 在 Prisma 返回形状下正确映射全部字段。
+- Files: `packages/core/src/{preference,index.fixtures}.ts`, `packages/db/src/repositories/{event,types}.ts`, `packages/db/src/repositories.fixtures.ts`, `docs/L3-modules.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification:
+  - Core fixtures 19 测试（含新增回归）✓；DB repositories fixture ✓。
+  - 全仓 `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` / `git diff --check` ✓（Node 26 + Prisma generate）。
+  - DeepSeek V4 Pro 只读审计：首轮 REQUEST_CHANGES（1 Critical: MORE_LIKE_THIS category key 重复计算）→ 父 Agent 修复 + 补回归测试 → Core fixtures 重跑全绿。
+- Notes / Risk: DB mapper 的真实 PostgreSQL 集成证明依赖 disposable PG，当前用精确 mock 覆盖；Stage 2/#176 会重建 Source 质量 fixture 时补真实 PG 链路。未部署、未关闭 Issue。
+
+### Docs: 同步 SPEC 对齐 Stage 1 已完成进度
+
+- Cause: Task 1.1–1.5 已分别完成、验证并推送，但实施计划缺少当前完成检查点，且 `DEVELOPE_LOGS.md` 的 Task 1.5 Follow-up 仍停留在提交前状态。
+- Changed: 在实施计划 Stage 1 顶部新增 Task/Issue/状态/已验证 commit 表；只将已有独立远端提交的 Task 1.1–1.5 标为完成。修正 Task 1.5 最终门禁、commit/push 与远端核验记录；明确 Task 1.6 仅完成需求调研、尚未进入 RED→GREEN，不计为完成。
+- Files: `.hermes/plans/2026-07-17_183453-spec-alignment-implementation-plan.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification: 对照 `git log` 核验五个任务 commit；检查工作树仅包含上述文档；执行 `git diff --check`。
+- Notes / Risk: 本次仅同步事实性开发进度，不修改产品 SPEC、代码、Schema、运行命令或部署配置；推送 feature branch 不部署、不关闭 Issue。
+
+### Feat: Issue #163 主 Worker 多组织公平调度与 tenant fencing
+
+- Cause: 默认 Worker fetch 仍只执行 default workspace；durable queue drain 与 cron fetch 没有共享总 deadline，也缺少稳定 actor、per-org 审计/错误边界和真实双组织隔离证明。
+- Changed:
+  - `listEligibleWorkerWorkspaces()` 只枚举含 ACTIVE 用户的 Organization，按 Organization createdAt/id 稳定排序，并按 OWNER→ADMIN→MEMBER、Membership createdAt/id 选一个 actor。
+  - 默认 main cycle 只初始化一次总预算，先 drain durable queue，再将剩余预算传给多组织 orchestrator；每组织获得动态公平预算和独立 SOURCE_FETCH outer TaskRun。总预算耗尽时剩余组织仅返回 `SKIPPED_BUDGET`，不创建 TaskRun；摘要只含 organizationId/status/fixed errorClass。
+  - `runFetchCycleForWorkspace()` 保持 exact workspace 业务函数；standalone `runFetchCycle()` 移至 organization orchestrator 并初始化独立预算。新增 deterministic main/organization fixtures 与 fail-closed PostgreSQL integration。
+  - tenant 审计修复 `mergeSemanticEvents()` 全读写路径和 `markItemFiltered()` 的 organization fencing；dedup 日志改为固定低基数 error class。
+- Files: `packages/db/src/{index,repositories.fixtures,worker-workspace.fixtures}.ts`, `packages/db/src/repositories/{workspace,event,source}.ts`, `packages/db/package.json`, `apps/worker/src/{index,index.fixtures}.ts`, `apps/worker/src/modules/{organization-cycle,organization-cycle.fixtures,organization-cycle-pg.fixtures,main-cycle.fixtures,lifecycle,types,fetch-cycle,analysis,dedup}.ts`, `apps/worker/package.json`, `CODEGUIDE.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`。
+- Verification:
+  - DB/Worker focused typecheck、fixtures、lint、`git diff --check` ✓。
+  - Disposable PostgreSQL 16 完整 replay 0001→0017 ✓；真实双组织 integration 覆盖 ACTIVE actor、repository/destructive mutation fencing、production workspace pipeline、A fail/B success、TaskRun/UsageEvent/DeliveryLog isolation ✓。
+  - 最终全仓 `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` / `pnpm db:validate` / `git diff --check` ✓。
+  - DeepSeek V4 Pro 两次只读审计因 provider silent 超过 15/10 分钟 deadline 被终止，均无 verdict；未伪称 APPROVED。父 Agent 复核 main deadline、actor enum ordering、consumer 无二次 reset、TaskRun settlement、循环依赖与 PG fail-closed guard。
+- Notes / Risk: disposable DB 未配置外部 AI credential，analysis/dedup 子 cycle 按设计以固定 `configuration` class graceful isolation；真实外部 provider 质量不属于本任务。未部署、未关闭 Issue。
+
+### Feat: Issue #162 TaskRun claim / lease / consume durable queue
+
+- Cause: Web 手动抓取/信源发现此前直接创建 `RUNNING` TaskRun，但主 Worker 不消费这些行；缺少原子 claim、lease fencing、stale recovery 与数据库级 active idempotency，并发 Worker 可能重复执行或让旧执行者覆盖新结果。
+- Changed:
+  - Prisma `TaskRun` 新增 `idempotencyKey`、`leaseOwner`、`leaseToken`、`leaseExpiresAt`、`heartbeatAt`；migration `0017_task_run_lease_queue` 新增 due-scan index 和仅约束 `PENDING/RUNNING` 的 tenant/type/key partial unique index，不改写历史 RUNNING 数据。
+  - 新增 durable repository：active-idempotent enqueue、单 CTE `FOR UPDATE SKIP LOCKED` claim、lease renew、fenced complete/fail/yield、bounded expired-lease reaper。fail/reaper 在同一 SQL statement 内按 attempt budget 选择 PENDING/FAILED；planned yield 原子返还 claim attempt。JSON 按 UTF-8 100KB 上限校验，错误只保存固定低基数 class。
+  - Worker 抽取显式 workspace fetch/discovery execution；新增 exact-type consumer、严格 `{mode,userId}` parser、lease heartbeat、指数退避和 ownership-loss metrics。默认主 cycle 先 drain queue 再保留旧 fetch cron，另提供 `pnpm worker:task-runs`。Durable discovery 不创建嵌套 TaskRun。
+  - Web source actions 改用 `enqueueTaskRun()` 创建 PENDING task；60 秒 UTC 时间桶 idempotency key 抑制双击/请求重试，保留 discovery OWNER/ADMIN 与 fetch OWNER/ADMIN/MEMBER 权限边界。
+- Files: `packages/db/prisma/{schema.prisma,migrations/0017_task_run_lease_queue/migration.sql}`, `packages/db/src/repositories/{task-run,source}.ts`, `packages/db/src/{task-run*.fixtures,repositories.fixtures,index}.ts`, `packages/db/package.json`, `apps/worker/src/{index.ts,index.fixtures.ts,modules/{task-run-consumer,task-run-consumer.fixtures,fetch-cycle,discovery,types}.ts}`, `apps/worker/package.json`, `apps/web/src/{app/actions/sources.ts,lib/task-run-enqueue.ts}`, `apps/web/scripts/task-run-enqueue.fixture.mjs`, `apps/web/package.json`, root `package.json`, `CODEGUIDE.md`, `docs/L2-domain.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`.
+- Verification:
+  - DB/Web/Worker focused typecheck, tests、lint 与 `git diff --check` ✓；Prisma format/generate/validate ✓。
+  - Disposable PostgreSQL 16 完整 replay `0001→0017` ✓；真实并发 suite 覆盖 8 路 enqueue 单 winner、SKIP LOCKED claim 唯一性、stale token、retry/finalize、budget-neutral yield、exact-expiry reaper、终态 key 复用 ✓。
+  - 真实 production API probe：`enqueueTaskRun` → production Worker consumer；合法 SOURCE_DISCOVERY 为 `claimed=1/succeeded=1`，非法 payload 为 `claimed=1/failed=1`，两者 lease 均清理 ✓。
+  - DeepSeek V4 Pro 首轮发现 1 Important / 4 Minor：legacy TaskRun raw error、fetch 子 cycle raw stderr、renew exception 误判 ownership loss、yield stale errorMessage、URL `/config/` classifier 误判；全部修复并补 regression fixtures。第二轮审计 APPROVED（Critical 0 / Important 0 / Minor 1）；唯一 Minor `lease_expired` reserved marker 已按建议加代码注释明确边界。
+  - 最终全仓 `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` / `pnpm db:validate` / `git diff --check` ✓；added-lines 安全扫描 5 类均为 0。
+- Notes / Risk: 默认 Worker 一轮会先消费最多 50 个 durable task，再执行既有 default fetch；完整多组织公平调度属于后续 Task 1.5 / #163。本轮尚未部署、未关闭 Issue。
+
+### Fix: Issue #166 统一 Better Auth 受保护路由门与安全登录回跳
+
+- Cause: 页面此前只在渲染期间通过 `getSessionWorkspace()` 间接发现无 Session，`proxy.ts` 仅设置 CSP/安全头；未登录访问工作台、受保护 API 和 Session 过期缺少统一边界。登录页还直接信任 `callbackUrl` 并 `router.push()`，存在开放重定向风险。
+- Changed:
+  - `apps/web/src/proxy.ts` 改为 async 真实 Session gate。认证启用时调用 Better Auth `getSession()` 查询数据库 Session；除 login/register/pricing、auth/health 与签名 webhook 的显式 allowlist 外，页面无 Session 返回 `307 /login?next=<path+query>`，受保护 API/Server Action 返回稳定 `401 UNAUTHENTICATED`，认证依赖异常返回 `503 AUTH_UNAVAILABLE`。认证关闭时完全跳过 gate。
+  - 新增 `apps/web/src/lib/auth-access.ts`：集中公开路由、API path、安全站内 `next` 归一化与登录路径构造；拒绝绝对 URL、protocol-relative URL、反斜杠和控制字符。登录页消费安全 `next`，旧 `callbackUrl` 仅作受同一校验的兼容输入。
+  - 所有 next/redirect/401/503 response 继续经统一 helper 设置 HSTS、X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy 与 production nonce CSP；正常请求仍把同一 nonce 注入 request headers，未削弱既有 Next/Flight CSP。
+  - `getSessionWorkspace()` 使用稳定 `UNAUTHENTICATED` 常量；Server Action `readSafeReturnPath()` 同步拒绝反斜杠/控制字符并以 URL parser 归一化站内路径。
+  - 新增 `auth-access.fixture.mjs` 并接入 Web test；解除 auth Playwright 的 #166 `fixme`，增加三页面/query、受保护 API 401、站外 `next`、数据库 Session 删除、redirect/401 安全头与 desktop/mobile 覆盖。
+- Files: `apps/web/src/proxy.ts`, `apps/web/src/lib/{auth-access,session}.ts`, `apps/web/src/app/login/page.tsx`, `apps/web/src/app/actions/_shared.ts`, `apps/web/scripts/auth-access.fixture.mjs`, `apps/web/package.json`, `tests/smoke/auth.spec.ts`, `CODEGUIDE.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `DEVELOPE_LOGS.md`, `AGENTS_CHANGELOGS.md`
+- Verification:
+  - RED: 新策略 fixture 在 `auth-access.ts` 不存在时以 `ERR_MODULE_NOT_FOUND` 失败；GREEN: Web typecheck + 全部 Web fixtures 通过。
+  - Next 16 production build ✓；真实 disposable PostgreSQL + production server 的 auth Playwright desktop/mobile 共 10/10 passed（无 skip）。
+  - auth-disabled production smoke：`/`、`/sources`、`/pricing` 均 200 且不跳转登录。
+  - 全量 `pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` / `git diff --check` ✓。
+  - DeepSeek V4 Pro 独立只读审计：APPROVED，Critical 0 / Important 0；仅记录共享 internal origin 常量与编码控制字符 fixture 两项非阻塞 Minor。
+- Notes / Risk: GLM-5.2 编码子 Agent 运行约 14 分钟无输出且未留下 diff，按用户约定停止后由父 Agent 接管。首个 DeepSeek 审计进程误启动长期 server 后卡住且无报告，清理后以禁止测试/server 的窄只读审计成功完成。公开路由采用最小显式 allowlist，未来新增公开入口需单独评审；本轮未部署、未关闭 Issue。
+
+### Feat: Issue #153 Lane 1 Better Auth Schema 对齐 + User lifecycle 数据层收口
+
+- Cause: Issue #153 Lane 1 要求将 `packages/db` 的 schema、migration、repository 对齐 Better Auth 1.6.23 core 契约（User/Account/Session/Verification）并实现 User 生命周期状态机数据层。此前 Agent 已留下未提交 diff，本轮做最终收口与验证。
+- Changed:
+  - Schema（`packages/db/prisma/schema.prisma`）：新增 `enum UserAccountStatus { ACTIVE; SUSPENDED; DELETION_PENDING; DELETED }`；`User` 模型新增 `emailVerified Boolean @default(false)`、`image String?`、`accountStatus UserAccountStatus @default(ACTIVE)`、`suspendedAt`/`suspendedReason`/`suspendEndsAt`/`deletionRequestedAt`/`deletedAt`/`lastLoginAt`/`lastActivityAt` DateTime?，`name` 由 `String?` 改为 `String`（NOT NULL，匹配 Better Auth 1.6.23 core ZodString required），`@@index([accountStatus])`。`Account` 模型新增 `refreshTokenExpiresAt`/`idToken`/`scope`（`expiresAt` 保留并映射到 Better Auth `accessTokenExpiresAt`，映射由 `apps/web/src/lib/auth.ts` `account.fields.accessTokenExpiresAt: "expiresAt"` 完成）。新增 `Verification` 模型（id/value/identifier/expiresAt/createdAt/updatedAt + identifier/expiresAt 索引）。
+  - Migration 0016（`packages/db/prisma/migrations/0016_better_auth_schema_alignment/migration.sql`）：`CREATE TABLE Verification`、`ALTER TABLE User ADD emailVerified/image`、`UPDATE User SET name=email WHERE name IS NULL` + `ALTER COLUMN name SET NOT NULL`、`ALTER TABLE Account ADD refreshTokenExpiresAt/idToken/scope`、`DO $$ CREATE TYPE UserAccountStatus AS ENUM (...)`、`ALTER TABLE User ADD` 7 个生命周期字段（`accountStatus` 带 `NOT NULL DEFAULT 'ACTIVE'`）、`CREATE INDEX User_accountStatus_idx`。全部使用 `IF NOT EXISTS`，对已部分应用的环境幂等。
+  - Repository（`packages/db/src/repositories/user-lifecycle.ts`，320 行）：`getUserLifecycleStatus`/`suspendUser`/`reactivateUser`/`requestUserDeletion`/`markUserDeleted`/`recordUserLogin`/`recordUserActivity`。状态机：ACTIVE->SUSPENDED；SUSPENDED->ACTIVE；ACTIVE|SUSPENDED->DELETION_PENDING；DELETION_PENDING->DELETED（终态）。所有转换使用原子 `updateMany` + `where.accountStatus` 谓词（无 read-before-write 竞态）；`count=0` 时 `findUnique` 区分 `USER_NOT_FOUND` vs `INVALID_TRANSITION`。稳定错误码 `USER_NOT_FOUND`/`INVALID_TRANSITION`/`INVALID_REASON`，错误消息不含 "Prisma"/"prisma"。`suspendUser` reject 空/whitespace reason（`INVALID_REASON`），在 DB 调用前校验。`requestUserDeletion` 进入 `DELETION_PENDING` 时清空 suspension metadata。`markUserDeleted` 设置 `deletedAt` 但不动 suspension/deletion-request 审计字段。`recordUserLogin` 只更新 `lastLoginAt`，`recordUserActivity` 只更新 `lastActivityAt`，两者都拒绝 `DELETED` 用户。所有时间函数接受 `now` 参数注入便于测试。
+  - Exports（`packages/db/src/index.ts`、`packages/db/src/repositories.ts`）：导出 user-lifecycle repository 的公共类型和函数。
+  - Fixtures：状态机 fixture 拆为 `user-lifecycle.fixtures.ts`（782 行）与 `user-lifecycle-schema.fixtures.ts`（166 行），符合单文件 `<800` 行规则；新增 `workspace-auth.fixtures.ts` 覆盖 Membership 复用、hashed slug、OWNER 和多用户隔离；`migration-replay.fixtures.ts` 显式验证 0015→0016 旧用户回填、PG enum、Better Auth 字段和新用户默认值。
+  - Runtime auth：`auth.ts` 改为 Promise-backed ESM 动态加载 DB，修复 Next 16 production bundle 中 `require("@wangchao/db")` 导致 `getPrismaClient is not a function`；初始化 Promise 拒绝时重置单例供后续请求重试；移除 Better Auth core 字段的重复 additionalFields。`auth-client.ts` 改为同源 client，避免非默认端口/反向代理下请求错误 origin 并被 CSP 拦截。`session.ts` 调用 `ensureUserWorkspace`；Membership 读取与 `SHA-256(userId)` 确定性 Organization/Membership upsert 位于同一事务，唯一键保证并发幂等。
+  - Tests：普通 DB `test` 只运行 repositories/workspace-auth/user-lifecycle fixtures，即使设置普通 `DATABASE_URL` 也不误跑 replay；新增显式 `test:migration-replay`。Auth Playwright 直接断言 Membership/Organization，覆盖注册、自动登录、reload session 恢复、登出/重登录和两用户隔离并自动清理；#166 路由门用例暂标 `fixme`。
+- Files: `packages/db/prisma/schema.prisma`, `packages/db/prisma/migrations/0016_better_auth_schema_alignment/migration.sql`, `packages/db/src/repositories/{user-lifecycle,workspace}.ts`, `packages/db/src/{user-lifecycle,user-lifecycle-schema,workspace-auth,migration-replay}.fixtures.ts`, `packages/db/src/index.ts`, `packages/db/package.json`, `apps/web/src/lib/{auth,auth-client,session}.ts`, `apps/web/src/app/api/auth/[...all]/route.ts`, `tests/smoke/auth.spec.ts`, `CODEGUIDE.md`, `docs/L2-domain.md`, `docs/L3-modules.md`, `docs/L4-operations.md`, `AGENTS_CHANGELOGS.md`
+- 官方依据：Better Auth 1.6.23 安装包 `node_modules/.pnpm/better-auth@1.6.23/...` 与 `@better-auth/core@1.6.23` 的 `dist/db/schema/{user,account,session,verification}.d.mts` 与 `dist/db/get-tables.mjs`。User: `name: z.ZodString`（required, NOT nullable）、`emailVerified: z.ZodDefault<z.ZodBoolean>`、`image: z.ZodOptional<z.ZodNullable<z.ZodString>>`。Account: `accessTokenExpiresAt`/`refreshTokenExpiresAt`/`idToken`/`scope` 均为 Optional Nullable；`auth.ts account.fields.accessTokenExpiresAt: "expiresAt"` 完成 accessTokenExpiresAt->expiresAt 列映射。Verification: `id`/`value`/`identifier`/`expiresAt`/`createdAt`/`updatedAt`。Session 字段未变。
+- Verification:
+  - `pnpm --filter @wangchao/db run db:format` ✓（prisma format）
+  - `pnpm --filter @wangchao/db run db:generate` ✓（prisma generate，Prisma Client v7.8.0）
+  - `pnpm --filter @wangchao/db run db:validate` ✓（schema valid）
+  - `pnpm --filter @wangchao/db run typecheck` ✓（tsc --noEmit）
+  - `pnpm --filter @wangchao/db run build` ✓（tsc emit dist/）
+  - `pnpm --filter @wangchao/db test` ✓（repositories + workspace-auth + user-lifecycle/schema fixtures）
+  - `pnpm --filter @wangchao/web typecheck` ✓；production `next build` ✓
+  - Auth Playwright desktop/mobile：各 2 passed、1 skipped（#166 已知后续边界）
+  - `git diff --check` ✓
+  - 真实 PostgreSQL replay（disposable PG 16）：顺序应用 0001→0015，在 0015 状态插入 `preexisting-replay-user`（name=NULL），应用 0016，再执行 `pnpm --filter @wangchao/db test:migration-replay` ✓。
+- Notes / Risk: #153 的 schema、migration、生命周期 repository、真实注册/session 和单用户自动 workspace 已完成；统一受保护路由门、开放重定向防护与 session 过期语义属于紧随其后的 #166。后续生命周期 runtime 仍包括 SUSPENDED/DELETION_PENDING/DELETED session gate、邮箱验证策略、删除保留期、MFA 与 OAuth lifecycle。未部署。
+
 ## 2026-07-17
+
+### Fix: 修复 AES-256-GCM 随机 salt 未参与加密 KDF 导致凭证无法解密（含旧密文兼容与严格校验）
+
+- Cause: `encryptCredential` 先用 `deriveKey(encryptionKey)` 以 STATIC_SALT 派生 key 加密，之后才生成随机 salt 存入密文；`decryptCredential` 却以存储的随机 salt 派生 key 解密。两次 KDF 使用不同 salt，key 不匹配导致 AES-GCM auth tag 验证失败，所有新加密的凭证无法解密。此外，修复前已有大量四段旧密文存在于 DB 中，这些记录的 ciphertext 实际用 STATIC_SALT 派生 key 加密，新逻辑按 stored random salt 解密必然失败。
+- Changed:
+  - `encryptCredential` 调整为先生成随机 salt，再用 `deriveKey(encryptionKey, salt)` 派生 key 加密，确保加密和解密使用同一 salt。四段格式 `salt:iv:ciphertext:tag` 不变。
+  - `decryptCredential` 对四段格式先按 stored salt 解密；若 AES-GCM auth 失败，再仅为兼容旧 bug 尝试 STATIC_SALT 派生 key。fallback 仅适用于修复前四段旧密文；新格式密文 salt 被篡改时两条路径均失败，不得降级绕过认证。代码注释明确 fallback 只用于旧密文，旧记录在后续重新保存时升级格式，不声明自动迁移已发生。
+  - I1 窄 authenticated-decrypt helper（`tryAuthenticatedDecrypt`）：在 component 长度、base64 和 encryptionKey 长度前置校验通过后，deriveKey/createDecipheriv/setAuthTag/update 在 catch 外执行，仅围绕 `decipher.final()` 捕获认证失败并返回 discriminated result `{ ok, plaintext? }`。此时 `final()` 失败代表 auth 不通过，配置/编程/KDF 错误不被 fallback 吞掉。
+  - I2 稳定安全错误：stored salt 和 STATIC_SALT 两次认证均失败时抛固定 `new Error("Credential decryption failed")`，不泄露 `Unsupported state or unable to authenticate data` 等 Node/OpenSSL 内部字符串。格式/base64/长度错误仍保留明确 `Invalid...` 类错误，不全部吞成认证失败。三段路径同样使用窄 helper，认证失败也返回固定安全错误。
+  - I3 payload 上限：`decryptCredential()` 入口在 split/base64 decode 之前检查 `encrypted` UTF-8 byte 长度。新增 `MAX_ENCRYPTED_CREDENTIAL_LENGTH = 16384`（注释说明依据：plaintext 最大 8192 bytes × base64 膨胀 4/3 + metadata segments ≈ 10990 bytes，16384 为保守上限）。超限立即抛 `Encrypted credential exceeds maximum allowed length`，不执行 base64/KDF。
+  - 严格校验 decoded component：四段 salt === 16 bytes、iv === 12、tag === 16；三段 iv === 12、tag === 16；ciphertext 不得为空。新增 `decodeBase64Strict` helper，通过 round-trip re-encode 检测拒绝非 canonical base64（Node `Buffer.from(x, 'base64')` 宽松接受垃圾字符）。`STATIC_SALT` 不导出为公共 API。
+  - `cryptoSmokeTest()` 纳入 `repositories.fixtures.ts` 测试套件执行。共 11 项 crypto fixture 覆盖：(1) 随机 salt round-trip + 四段格式；(2) 同明文多次加密密文不同；(3) 错误 key 失败；(4) ciphertext/tag/salt/IV 篡改失败（含 IV）；(5) legacy 三段格式兼容；(6) 旧 bug 四段密文兼容 fallback + 错误 key 失败；(7) malformed payload 拒绝（2/5 段、空串）；(8) 严格 component 校验（短 salt/IV/tag、非法 base64、空 ciphertext、空 salt，四段与三段各覆盖）；(9) 认证失败稳定错误（错误 key/篡改密文/旧 bug 错误 key/三段错误 key 均等于 `"Credential decryption failed"` 且不含 Node 内部字符串）；(10) 格式/长度/base64 错误不被 fallback 吞掉（短 salt/非法 base64/短 key 保留各自明确错误）；(11) 超大 payload 拒绝（超 16384 bytes 立即抛长度错误，不执行 base64/KDF）。
+- Files: `packages/db/src/crypto.ts`, `packages/db/src/repositories.fixtures.ts`, `docs/L3-modules.md`, `AGENTS_CHANGELOGS.md`
+- Verification: `pnpm --filter @wangchao/db test`（含 `tsc` 编译 + fixture 执行）✓；`pnpm --filter @wangchao/db typecheck` ✓；`git diff --check` ✓。未执行全量 `pnpm typecheck/lint/test/build`（父 Agent 负责）。
+- Notes / Risk: 修复前已加密并存储在 DB 中的四段格式凭证可通过 STATIC_SALT fallback 正常解密，无需重新输入。新加密的凭证使用 stored random salt，fallback 路径不影响新密文安全性。legacy 三段格式凭证仍可正常解密。窄 helper 确保 deriveKey 等前置操作的异常不会被 fallback 吞掉。超大 payload 在入口被拦截，防止 DoS。测试中硬编码 legacy salt `wangchao-credential-salt-v1` 是刻意冻结兼容契约，若生产常量被误改则测试应失败。本次未执行 git commit/push/部署。
 
 ### Fix: 摘要语言固定跟随当前中文界面
 

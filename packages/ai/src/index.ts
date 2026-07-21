@@ -46,3 +46,15 @@ export {
   type SemanticDedupInput,
   type SemanticDedupResult,
 } from "./semantic-dedup.js";
+export {
+  TOPIC_PROFILE_DRAFT_SCHEMA_VERSION,
+  buildTopicProfileDraftMessages,
+  fallbackTopicProfileDraft,
+  generateTopicProfileDraft,
+  parseTopicProfileDraftResponse,
+  type TopicProfileDraft,
+  type TopicProfileDraftAdapter,
+  type TopicProfileDraftInput,
+  type TopicProfileDigestStyle,
+  type TopicProfileLanguagePreferences,
+} from "./topic-profile-draft.js";

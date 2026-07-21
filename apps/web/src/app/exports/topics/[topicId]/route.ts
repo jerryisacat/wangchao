@@ -1,11 +1,18 @@
-import { createContentHash } from "@wangchao/core";
+// Issue #187 - Topic batch export route with ?format=json|pdf|markdown support.
+// 参考 events route 模式：复用同一 snapshot 生成三格式输出。
+// 不再静默截断 100 条（take: 100 移除），全量导出上限 10000。
+import type { ExportFormat } from "@wangchao/core";
 
 interface TopicExportContext {
   params: Promise<{ topicId: string }> | { topicId: string };
 }
 
-export async function GET(_request: Request, context: TopicExportContext) {
+export async function GET(request: Request, context: TopicExportContext) {
   const { topicId } = await Promise.resolve(context.params);
+  const url = new URL(request.url);
+  const formatParam = (url.searchParams.get("format") ?? "markdown").toLowerCase();
+  const format: ExportFormat = formatParam === "json" ? "JSON" : formatParam === "pdf" ? "PDF" : "MARKDOWN";
+  const generatedAt = new Date();
 
   if (!process.env.DATABASE_URL) {
     return new Response("Workspace is not ready for export.", { status: 503 });
@@ -23,7 +30,14 @@ export async function GET(_request: Request, context: TopicExportContext) {
     recordMarkdownExport,
     recordUsageEvent,
   } = await import("@wangchao/db");
-  const { checkExportQuota } = await import("@wangchao/core");
+  const {
+    checkExportQuota,
+    createContentHash,
+    buildTopicExportJson,
+    serializeExportJson,
+    renderEventMarkdown,
+    resolveEffectivePlanFromView,
+  } = await import("@wangchao/core");
   const prisma = getPrismaClient();
   const workspace = await getSessionWorkspace();
 
@@ -38,7 +52,7 @@ export async function GET(_request: Request, context: TopicExportContext) {
 
   const subscription = await getSubscriptionPlanView(prisma, { organizationId: workspace.organizationId });
   const monthExports = await getMonthExportCount(prisma, { organizationId: workspace.organizationId });
-  const exportQuota = checkExportQuota(subscription.plan, monthExports, subscription.isSelfHosted);
+  const exportQuota = checkExportQuota(resolveEffectivePlanFromView(subscription), monthExports, subscription.isSelfHosted);
   if (!exportQuota.allowed) return new Response(exportQuota.reason ?? "Export limit reached.", { status: 429 });
 
   const topic = await prisma.topic.findFirst({
@@ -51,13 +65,14 @@ export async function GET(_request: Request, context: TopicExportContext) {
   }
 
   const taskRun = await createTaskRun(prisma, {
-    input: { format: "MARKDOWN", mode: "batch-topic" },
+    input: { format, mode: "batch-topic" },
     organizationId: workspace.organizationId,
     topicId: topic.id,
     type: "EXPORT_GENERATION",
   });
 
   try {
+    // Issue #187: 不再静默截断 100 条。全量导出上限 10000。
     const events = await prisma.intelligenceEvent.findMany({
       where: {
         organizationId: workspace.organizationId,
@@ -74,7 +89,7 @@ export async function GET(_request: Request, context: TopicExportContext) {
         },
       },
       orderBy: [{ occurredAt: "desc" }, { gravityScore: "desc" }],
-      take: 100,
+      take: 10_000,
     });
 
     if (events.length === 0) {
@@ -85,21 +100,81 @@ export async function GET(_request: Request, context: TopicExportContext) {
       return new Response("No events available for export.", { status: 404 });
     }
 
-    const generatedAt = new Date();
-    const datePrefix = generatedAt.toISOString().slice(0, 10);
-    const markdown = buildBatchMarkdown(topic.name, events, generatedAt);
-    const fileName = `${datePrefix}-batch-${slugify(topic.name)}.md`;
+    const exportEvents = events.map((event) => ({
+      eventId: event.id,
+      title: event.title,
+      summary: event.summary,
+      category: event.category,
+      score: event.score,
+      explanation: event.explanation,
+      followUpSuggestion: event.followUpSuggestion,
+      occurredAt: event.occurredAt,
+      entities: event.entities ?? [],
+      sourceName: event.primaryItem?.source.name ?? null,
+      sourceUrl: event.primaryItem?.source.url ?? null,
+      url: event.primaryItem?.url ?? null,
+    }));
 
+    let content: string | Uint8Array;
+    let fileName: string;
+    let contentType: string;
+
+    const slug = slugify(topic.name);
+    const datePrefix = generatedAt.toISOString().slice(0, 10);
+
+    if (format === "JSON") {
+      const json = buildTopicExportJson({
+        exportedAt: generatedAt,
+        topic: { id: topic.id, name: topic.name },
+        events: exportEvents,
+      });
+      content = serializeExportJson(json);
+      fileName = `${datePrefix}-batch-${slug}.json`;
+      contentType = "application/json; charset=utf-8";
+    } else if (format === "PDF") {
+      const { renderTopicPdf } = await import("@wangchao/core/dist/render-pdf.js");
+      const pdfEvents = exportEvents.map((e) => ({
+        title: e.title,
+        summary: e.summary,
+        category: e.category,
+        score: e.score,
+        explanation: e.explanation,
+        followUpSuggestion: e.followUpSuggestion,
+        occurredAt: e.occurredAt ? e.occurredAt.toISOString() : null,
+        entities: e.entities,
+        sourceName: e.sourceName,
+        sourceUrl: e.sourceUrl,
+        url: e.url,
+        generatedAt: generatedAt.toISOString(),
+        topicName: topic.name,
+      }));
+      content = await renderTopicPdf({
+        topicName: topic.name,
+        generatedAt: generatedAt.toISOString(),
+        events: pdfEvents,
+      });
+      fileName = `${datePrefix}-batch-${slug}.pdf`;
+      contentType = "application/pdf";
+    } else {
+      content = buildBatchMarkdown(topic.name, exportEvents, generatedAt);
+      fileName = `${datePrefix}-batch-${slug}.md`;
+      contentType = "text/markdown; charset=utf-8";
+    }
+
+    const contentHash = typeof content === "string"
+      ? createContentHash(content)
+      : createContentHash("");
     await recordMarkdownExport(prisma, {
-      contentHash: createContentHash(markdown),
+      contentHash,
       fileName,
+      format,
       metadata: { eventCount: events.length, mode: "batch-topic", source: "topic-batch-route" },
       organizationId: workspace.organizationId,
       topicId: topic.id,
       userId: workspace.userId,
     });
     await recordUsageEvent(prisma, {
-      metadata: { eventCount: events.length, fileName, source: "topic-batch-route" },
+      metadata: { eventCount: events.length, fileName, format, source: "topic-batch-route" },
       organizationId: workspace.organizationId,
       quantity: events.length,
       subjectId: topic.id,
@@ -111,16 +186,19 @@ export async function GET(_request: Request, context: TopicExportContext) {
     await completeTaskRun(prisma, taskRun.id, {
       eventCount: events.length,
       fileName,
-      format: "MARKDOWN",
+      format,
       outcome: "generated",
     });
 
-    return new Response(markdown, {
-      headers: {
-        "Content-Disposition": `attachment; filename="${fileName}"`,
-        "Content-Type": "text/markdown; charset=utf-8",
+    return new Response(
+      content instanceof Uint8Array ? new Uint8Array(content) : content,
+      {
+        headers: {
+          "Content-Disposition": `attachment; filename="${fileName}"`,
+          "Content-Type": contentType,
+        },
       },
-    });
+    );
   } catch (error) {
     await failTaskRun(prisma, taskRun.id, error);
     throw error;
@@ -130,7 +208,7 @@ export async function GET(_request: Request, context: TopicExportContext) {
 function buildBatchMarkdown(
   topicName: string,
   events: Array<{
-    id: string;
+    eventId: string;
     title: string;
     summary: string;
     category: string | null;
@@ -139,7 +217,9 @@ function buildBatchMarkdown(
     occurredAt: Date | null;
     entities: string[];
     followUpSuggestion: string | null;
-    primaryItem: { url: string | null; source: { name: string; url: string } } | null;
+    sourceName: string | null;
+    sourceUrl: string | null;
+    url: string | null;
   }>,
   generatedAt: Date,
 ): string {
@@ -152,7 +232,7 @@ function buildBatchMarkdown(
     `event_count: ${events.length}`,
     "---",
     "",
-    `# ${topicName} — Batch Export`,
+    `# ${topicName} - Batch Export`,
     "",
     `Generated at ${generatedAt.toISOString()}. Contains ${events.length} events.`,
     "",
@@ -166,11 +246,11 @@ function buildBatchMarkdown(
       "",
       `- Score: ${Math.round(event.score)}`,
       `- Category: ${event.category ?? "general"}`,
-      `- Source: ${event.primaryItem?.source.name ?? "Unknown source"}`,
+      `- Source: ${event.sourceName ?? "Unknown source"}`,
       event.occurredAt
         ? `- Occurred at: ${event.occurredAt.toISOString()}`
         : undefined,
-      event.primaryItem?.url ? `- Original: ${event.primaryItem.url}` : undefined,
+      event.url ? `- Original: ${event.url}` : undefined,
       event.entities.length > 0 ? `- Entities: ${event.entities.join(", ")}` : undefined,
       event.explanation ? `- Why it matters: ${event.explanation}` : undefined,
       event.followUpSuggestion ? `- Follow up: ${event.followUpSuggestion}` : undefined,
