@@ -67,7 +67,7 @@ export default async function HomePage({ searchParams }: HomePageProps) {
       >
         <form
           action="/"
-          className="flex w-full min-h-11 items-center gap-2 rounded-full bg-muted px-4 text-muted-foreground transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background sm:w-auto sm:max-w-[360px]"
+          className="flex min-h-11 min-w-0 w-full items-center gap-2 rounded-full bg-muted px-4 text-muted-foreground transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background sm:w-auto sm:max-w-[360px]"
         >
           <Search aria-hidden="true" className="shrink-0" size={16} />
           <span className="sr-only">搜索情报</span>
