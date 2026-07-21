@@ -10,8 +10,8 @@
   - 主题编辑按“基本信息 / 主题画像 / 语言与简报偏好”拆成三张工作卡片，标签回归 14px `Label` 原语，说明文字提升可读性，保存动作在移动端占满宽度；新建主题保留文档允许的品牌卡片，但移除内联样式和遗留 `form-actions`。
   - `FRONTEND.md`、`CODEGUIDE.md` 与 `docs/L3-modules.md` 固化报告 editorial 层级、时间线本地化、44px 触点和编辑表单分区规则。
 - Files: `apps/web/src/app/{reports,reports/[reportId],topics/[topicId]/timeline,topics/[topicId]/edit,topics/new,events/[eventId]}/page.tsx`、`apps/web/src/lib/display-text.ts`、`apps/web/scripts/summary-status.fixture.mjs`、`FRONTEND.md`、`CODEGUIDE.md`、`docs/L3-modules.md`。
-- Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过（构建仅保留既有 PDF NFT tracing warnings）；本地 320 / 375 / 414 / 768 / 1024 / 1440px 响应式矩阵通过。375px 定点复查确认新建主题 Card `scrollWidth = clientWidth = 343px`，标签为 14px / 500，返回与生成按钮均 44px，生成主按钮宽 295px，无页面或卡片超框。
-- Notes / Risk: 仅调整显示 helper、布局与安全渲染方式，不改变报告原始 Markdown、导出、查询、Server Action、权限、数据库或 Worker；报告继续使用先转义不可信文本再白名单渲染的安全边界。Railway 真实数据与六档宽度复查将在本提交部署后补充。
+- Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过（构建仅保留既有 PDF NFT tracing warnings）；本地与 Railway 真实数据的 320 / 375 / 414 / 768 / 1024 / 1440px 响应式矩阵均通过（各 1 passed）。Railway 375px 定点复查确认：编辑页 3 张 Card 均 `scrollWidth = clientWidth = 343px`，12 个标签均为 14px / 500，保存按钮 311×44px；报告页 2 张 Card 无内部撑宽，生成按钮 295×44px；时间线页面无横向超框、内部 category / `Unknown` 文案或隐藏裁切。
+- Notes / Risk: 仅调整显示 helper、布局与安全渲染方式，不改变报告原始 Markdown、导出、查询、Server Action、权限、数据库或 Worker；报告继续使用先转义不可信文本再白名单渲染的安全边界。生产工作区当前没有历史报告，报告详情和带事件的时间线状态由安全 renderer fixture、类型测试与响应式结构检查覆盖，后续出现真实数据时继续纳入轮巡。
 
 ### Fix: 第三轮视觉检查收束详情页与主题工作台阅读层级
 
