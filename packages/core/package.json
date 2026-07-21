@@ -8,11 +8,10 @@
       "types": "./src/index.ts",
       "default": "./dist/index.js"
     },
-    "./dist/*.js": {
-      "types": "./dist/*.d.ts",
-      "default": "./dist/*.js"
-    },
-    "./dist/*": "./dist/*"
+    "./dist/render-pdf.js": {
+      "types": "./src/render-pdf.ts",
+      "default": "./dist/render-pdf.js"
+    }
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
