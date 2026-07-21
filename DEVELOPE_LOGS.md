@@ -2,6 +2,16 @@
 
 本文件记录分阶段开发审计和延期功能追踪，辅助 `AGENTS_CHANGELOGS.md` 使用。它不是传统 release changelog；重点是记录每个阶段是否达成 `REFACTOR_PLAN.md` 和 `AGENTS.md` 目标、缺失功能、已知问题、修复情况和后续追踪项。
 
+## 2026-07-21
+
+### 手动摘要重生成 durable queue 闭环
+
+- Phase: 独立线上功能修复（第一阶段）。
+- Scope: 详情页摘要刷新从“仅重置 PENDING、等待全量扫描”改为 event-scoped durable `CONTENT_FETCH`；任务原子绑定 topic/item/event，consumer 单事件采集与 extraction，结构化结果、TaskRun/UsageEvent 审计及重复点击幂等。
+- Alignment: 符合 Worker 长任务边界、TaskRun lease/fencing、tenant scope、正文 READY 门禁与 LLM 不可信输出规则；不新增数据库枚举或 migration。
+- Verification: DB/Web/Worker fixtures 覆盖 atomic enqueue、active duplicate、exact allowlist/dispatch、RSS embedded 成功和正文不足门禁；最终全仓验证记录在同日 `AGENTS_CHANGELOGS.md`。
+- Follow-up: Railway Worker Cron 仍为每小时启动，任务开始延迟最多一个 cron 周期；第二阶段可新增常驻 queue worker，但不影响本阶段持久化、幂等与不饿死保证。
+
 ## 2026-07-18
 
 ## Stage 5 / Task 5.2: Timeline/Saved 导出 + briefings/topics route ?format=（#187）

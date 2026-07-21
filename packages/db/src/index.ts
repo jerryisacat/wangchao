@@ -136,6 +136,7 @@ export {
   classifyTaskRunError,
   completeClaimedTaskRun,
   enqueueTaskRun,
+  enqueueTaskRunWithMutation,
   failClaimedTaskRun,
   recoverExpiredTaskRuns,
   renewTaskRunLease,

@@ -285,6 +285,7 @@ export async function regenerateEventSummaryAction(
 
     const {
       assertMembershipRole,
+      enqueueTaskRunWithMutation,
       getPrismaClient,
     } = await import("@wangchao/db");
     const { getSessionWorkspace } = await import("@/lib/session");
@@ -316,23 +317,30 @@ export async function regenerateEventSummaryAction(
     if (!event.primaryItem) {
       throw new Error("No primary item associated with this event.");
     }
-
-    const sixtySecondsAgo = new Date(Date.now() - 60_000);
-    if (event.summaryRequestedAt && event.summaryRequestedAt > sixtySecondsAgo) {
-      message = "刚刚已请求重新采集，请稍后再试。";
-      type = "notice";
-      revalidatePath(returnTo);
-      redirect(actionRedirectHref(returnTo, type, message));
-      return;
-    }
+    const primaryItem = event.primaryItem;
 
     const canReuseEmbeddedMarkdown =
-      event.primaryItem.contentSource === "RSS_EMBEDDED" &&
-      Boolean(event.primaryItem.rawContent?.trim());
+      primaryItem.contentSource === "RSS_EMBEDDED" &&
+      Boolean(primaryItem.rawContent?.trim());
 
-    await prisma.$transaction([
-      prisma.item.update({
-        where: { id: event.primaryItem.id },
+    const { buildEventSummaryTaskIdempotencyKey } = await import(
+      "@/lib/task-run-enqueue"
+    );
+    const enqueued = await enqueueTaskRunWithMutation(prisma, {
+      organizationId: workspace.organizationId,
+      topicId: event.topicId,
+      itemId: primaryItem.id,
+      eventId: event.id,
+      type: "CONTENT_FETCH",
+      idempotencyKey: buildEventSummaryTaskIdempotencyKey(event.id),
+      maxAttempts: 3,
+      input: {
+        mode: "event-summary-regeneration",
+        userId: workspace.userId,
+      },
+    }, async (tx) => {
+      await tx.item.update({
+        where: { id: primaryItem.id },
         data: canReuseEmbeddedMarkdown
           ? {
               contentErrorCode: null,
@@ -347,16 +355,20 @@ export async function regenerateEventSummaryAction(
               rawContent: null,
               status: "FETCHED",
             },
-      }),
-      prisma.intelligenceEvent.update({
+      });
+      await tx.intelligenceEvent.update({
         where: { id: event.id, organizationId: workspace.organizationId },
         data: {
           summary: "",
           summaryRequestedAt: new Date(),
           summaryStatus: "PENDING",
         },
-      }),
-    ]);
+      });
+    });
+
+    if (!enqueued.created) {
+      message = "该摘要已在重新采集队列中，请稍后查看。";
+    }
   } catch (error) {
     logActionError("regenerateEventSummaryAction", error);
     message = toUserActionError(error);

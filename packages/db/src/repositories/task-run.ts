@@ -114,6 +114,10 @@ export function classifyTaskRunError(error: unknown): TaskRunErrorClass {
 export interface EnqueueTaskRunInput {
   organizationId: string;
   type: TaskRunType;
+  topicId?: string;
+  sourceId?: string;
+  itemId?: string;
+  eventId?: string;
   /** 1..200 chars, no control characters. Required. */
   idempotencyKey: string;
   /** 1..10. */
@@ -128,6 +132,11 @@ export interface EnqueueTaskRunResult {
   taskRun: TaskRun;
   created: boolean;
 }
+
+export type EnqueueTaskRunMutation = (
+  tx: Prisma.TransactionClient,
+  taskRun: TaskRun,
+) => Promise<void>;
 
 export type ClaimedTaskRun = Pick<
   TaskRun,
@@ -357,10 +366,7 @@ function base64Url(bytes: Uint8Array): string {
 
 // ── 1. enqueueTaskRun ──
 
-export async function enqueueTaskRun(
-  prisma: PrismaClient,
-  input: EnqueueTaskRunInput,
-): Promise<EnqueueTaskRunResult> {
+function buildEnqueueCreateData(input: EnqueueTaskRunInput) {
   assertNonEmpty(input.organizationId, "organizationId");
   assertNonEmpty(input.type, "type");
   assertValidIdempotencyKey(input.idempotencyKey);
@@ -370,8 +376,12 @@ export async function enqueueTaskRun(
   }
 
   const scheduledAt = input.scheduledAt ?? new Date();
-  const createData = {
+  return {
     organizationId: input.organizationId,
+    topicId: input.topicId,
+    sourceId: input.sourceId,
+    itemId: input.itemId,
+    eventId: input.eventId,
     type: input.type,
     status: "PENDING" as const,
     attempt: 0,
@@ -388,6 +398,28 @@ export async function enqueueTaskRun(
       ? {}
       : { input: input.input as Prisma.InputJsonValue }),
   };
+}
+
+async function findActiveIdempotencyWinner(
+  prisma: Pick<PrismaClient, "taskRun">,
+  input: EnqueueTaskRunInput,
+): Promise<TaskRun | null> {
+  return prisma.taskRun.findFirst({
+    where: {
+      organizationId: input.organizationId,
+      type: input.type,
+      idempotencyKey: input.idempotencyKey,
+      status: { in: [...ACTIVE_IDEMPOTENCY_STATUSES] },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function enqueueTaskRun(
+  prisma: PrismaClient,
+  input: EnqueueTaskRunInput,
+): Promise<EnqueueTaskRunResult> {
+  const createData = buildEnqueueCreateData(input);
 
   try {
     const taskRun = await prisma.taskRun.create({ data: createData });
@@ -400,20 +432,38 @@ export async function enqueueTaskRun(
     // P2002 winner fallback: another worker won the active-idempotency race.
     // Find the existing active row by the same business key. If not found,
     // rethrow the original P2002 (do not synthesize a phantom row).
-    const existing = await prisma.taskRun.findFirst({
-      where: {
-        organizationId: input.organizationId,
-        type: input.type,
-        idempotencyKey: input.idempotencyKey,
-        status: { in: [...ACTIVE_IDEMPOTENCY_STATUSES] },
-      },
-      // Pick the newest matching row - the partial unique index guarantees
-      // there is at most one, so ordering is for determinism only.
-      orderBy: { createdAt: "desc" },
-    });
+    const existing = await findActiveIdempotencyWinner(prisma, input);
     if (existing === null) {
       throw error;
     }
+    return { taskRun: existing, created: false };
+  }
+}
+
+/**
+ * Atomically enqueue a durable task and apply the producer's local state
+ * transition. This prevents a fast consumer from completing between task
+ * creation and the UI-visible PENDING update. Active-key races are resolved
+ * outside the aborted transaction against the committed winner.
+ */
+export async function enqueueTaskRunWithMutation(
+  prisma: PrismaClient,
+  input: EnqueueTaskRunInput,
+  mutate: EnqueueTaskRunMutation,
+): Promise<EnqueueTaskRunResult> {
+  const createData = buildEnqueueCreateData(input);
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const existing = await findActiveIdempotencyWinner(tx, input);
+      if (existing) return { taskRun: existing, created: false };
+      const taskRun = await tx.taskRun.create({ data: createData });
+      await mutate(tx, taskRun);
+      return { taskRun, created: true };
+    });
+  } catch (error) {
+    if (!isP2002(error)) throw error;
+    const existing = await findActiveIdempotencyWinner(prisma, input);
+    if (!existing) throw error;
     return { taskRun: existing, created: false };
   }
 }

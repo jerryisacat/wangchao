@@ -137,7 +137,7 @@ Beyond daily/weekly/monthly briefings, Wangchao also supports:
 
 - **Topic reports**: On the "Reports" page, ask a natural-language question (e.g., "C919 delivery progress in the last half year"). The system retrieves relevant events from the intelligence library as evidence and generates a structured Markdown report. Report generation is an async task executed by the Worker; the rule path summarizes via evidence retrieval, the AI path adds deeper analysis.
 - **Telegram delivery**: Admins can configure briefing delivery; Plus, Pro, and self-hosted mode can also enable high-score instant push with durable delivery auditing.
-- **Manual summary regeneration**: Click "Regenerate Summary" on the intelligence detail page to manually trigger AI to re-extract a single event's summary (rate-limited).
+- **Manual summary regeneration**: “Recapture” creates a durable single-event task; the next Worker run prioritizes it, recaptures the article, and regenerates the summary, while duplicate active requests reuse the same task.
 
 ## Current Status
 

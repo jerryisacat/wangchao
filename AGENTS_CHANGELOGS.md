@@ -1,5 +1,17 @@
 ## 2026-07-21
 
+### Fix: 手动刷新摘要进入持久任务并按单事件处理
+
+- Cause: 情报详情“重新采集”只把 Item/Event 重置为 `PENDING`，没有创建 durable TaskRun；实际只能依赖每小时全量 Worker 的 Top-20 pending 扫描，旧文章可能长期等待，页面“已加入队列”与事实不符。
+- Changed:
+  - Server Action 使用 event-scoped active idempotency key，将 `CONTENT_FETCH` PENDING 任务与 Item/Event 等待状态原子写入；任务绑定 `topicId/itemId/eventId`，重复点击复用 active task，不重置 RUNNING 状态。
+  - Durable consumer exact allowlist 增加 `CONTENT_FETCH` 并按 type 严格解析 input；新增单事件 handler，复用 RSS embedded Markdown 或仅抓取目标 URL，随后只执行一次摘要 extraction，不触发 workspace 全量 fetch。
+  - 单事件处理校验 organization 与 task subject 绑定，成功写 `READY`，正文失败/不足/不支持或 AI 失败写结构化状态，并保留 extraction TaskRun 与 AI UsageEvent 审计。
+  - 补 DB atomic enqueue、Web key/producer、consumer dispatch、RSS 成功与正文不足门禁 fixtures；同步 L2/L3/L4 文档。
+- Files: `packages/db/src/repositories/task-run.ts`、`packages/db/src/{index,task-run.fixtures}.ts`、`apps/web/src/app/actions/events.ts`、`apps/web/src/lib/task-run-enqueue.ts`、`apps/web/scripts/task-run-enqueue.fixture.mjs`、`apps/worker/src/modules/{task-run-consumer,summary-regeneration}*.ts`、`apps/worker/src/index.fixtures.ts`、`README.md`、`README-en.md`、`docs/L2-domain.md`、`docs/L3-modules.md`、`docs/L4-operations.md`、`DEVELOPE_LOGS.md`、`AGENTS_CHANGELOGS.md`。
+- Verification: `pnpm db:generate`、`pnpm db:validate`、`CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、`git diff --check` 全部通过；fixtures 逐边界验证 Web producer durable 入队、task/event/item 原子状态、active duplicate 不重复重置、consumer exact allowlist 与 subject dispatch、RSS embedded 成功、正文不足不调用 AI、AI transport 失败写状态并交回 durable retry。首次 sandbox build 仅因无法下载既有 Google Roboto 失败，联网重跑成功；保留既有 PDF NFT tracing warnings。当前无 `DATABASE_URL` 且本地没有可用 Postgres/Docker daemon，未执行真实浏览器→Postgres smoke，验证边界已由 repository/consumer/handler fixtures 分层覆盖。
+- Notes / Risk: 复用既有 `TaskRunType.CONTENT_FETCH`，无 schema/migration/环境变量变化。当前 Railway Worker 仍按小时启动，因此任务已真实持久化且不会被 Top-20 饿死，但开始执行仍可能等待下一次 Cron；近实时消费属于第二阶段。
+
 ### Feat: 认证模式可见化与账户访问 UI 闭环
 
 - Cause: 登录/注册页无论 `BETTER_AUTH_SECRET` 是否启用都展示同一凭证表单，导致免登录部署看起来像“认证代码未完成”，提交后才暴露 503；账户菜单缺少查看当前身份、工作区和认证模式的入口，暂停/删除账户回到登录页时也没有解释。`MEMBER` 还会看到无权执行的“新增主题”主行动。

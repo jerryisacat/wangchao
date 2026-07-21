@@ -16,7 +16,7 @@ import { formatSubCycleFailure } from "./fetch-cycle.js";
  * dependency is injected so the unit tests remain hermetic.
  *
  * Contract under test (see Issue #162 Lane 2B):
- *  - exact supported types: SOURCE_FETCH, SOURCE_DISCOVERY only
+ *  - exact supported types: SOURCE_FETCH, SOURCE_DISCOVERY, CONTENT_FETCH only
  *  - recoverExpiredTaskRuns runs first (reaper metrics)
  *  - bounded claim loop, one handler per claim, same Prisma client
  *  - claimed input strict parse: plain object, only mode/userId allowed
@@ -39,6 +39,7 @@ export async function runTaskRunConsumerFixtures(): Promise<void> {
   await verifyReaperMetricsPropagated();
   await verifySourceFetchDispatchAndComplete();
   await verifySourceDiscoveryDispatchAndComplete();
+  await verifyEventSummaryRegenerationDispatchAndComplete();
   await verifyHandlerFailurePendingRetry();
   await verifyHandlerFailureFinalized();
   await verifyMalformedInputFencedFailNoHandler();
@@ -59,7 +60,10 @@ export async function runTaskRunConsumerFixtures(): Promise<void> {
 interface FakeClaimedTask {
   id: string;
   organizationId: string;
-  type: "SOURCE_FETCH" | "SOURCE_DISCOVERY";
+  type: "SOURCE_FETCH" | "SOURCE_DISCOVERY" | "CONTENT_FETCH";
+  topicId?: string | null;
+  itemId?: string | null;
+  eventId?: string | null;
   attempt: number;
   maxAttempts: number;
   input: unknown;
@@ -102,6 +106,11 @@ interface FakeDeps {
     taskRunId: string,
     options: DiscoveryOptions,
   ) => Promise<Record<string, unknown>>;
+  summaryHandler?: (
+    prisma: unknown,
+    scope: FetchScope,
+    task: ClaimedTaskRun,
+  ) => Promise<Record<string, unknown>>;
   nowMs: number;
   timers: Array<() => void>;
 }
@@ -125,6 +134,7 @@ type CompleteFn = TaskRunConsumerDeps["completeClaimedTaskRun"];
 type FailFn = TaskRunConsumerDeps["failClaimedTaskRun"];
 type FetchFn = TaskRunConsumerDeps["runFetchCycleForWorkspace"];
 type DiscoveryFn = TaskRunConsumerDeps["runSourceDiscoveryForWorkspace"];
+type SummaryFn = TaskRunConsumerDeps["runEventSummaryRegeneration"];
 
 function buildDeps(fake: FakeDeps): TaskRunConsumerDeps {
   let renewIdx = 0;
@@ -137,10 +147,10 @@ function buildDeps(fake: FakeDeps): TaskRunConsumerDeps {
       const claimed: ClaimedTaskRun = {
         id: task.id,
         organizationId: task.organizationId,
-        topicId: null,
+        topicId: task.topicId ?? null,
         sourceId: null,
-        itemId: null,
-        eventId: null,
+        itemId: task.itemId ?? null,
+        eventId: task.eventId ?? null,
         type: task.type,
         status: "RUNNING",
         attempt: task.attempt,
@@ -188,6 +198,10 @@ function buildDeps(fake: FakeDeps): TaskRunConsumerDeps {
         opts: DiscoveryOptions,
       ) => fake.discoveryHandler!(_p, scope, id, opts)) as DiscoveryFn
     : noopDiscovery;
+  const noopSummary: SummaryFn = async () => ({ summaryStatus: "READY" });
+  const runEventSummaryRegeneration: SummaryFn = fake.summaryHandler
+    ? (async (_p, scope, task) => fake.summaryHandler!(_p, scope, task)) as SummaryFn
+    : noopSummary;
   return {
     prisma,
     recoverExpiredTaskRuns: async () => fake.reaperResult,
@@ -197,6 +211,7 @@ function buildDeps(fake: FakeDeps): TaskRunConsumerDeps {
     failClaimedTaskRun,
     runFetchCycleForWorkspace,
     runSourceDiscoveryForWorkspace,
+    runEventSummaryRegeneration,
     setIntervalFn: (fn) => {
       const handle = () => fn();
       fake.timers.push(handle);
@@ -252,9 +267,10 @@ async function verifyExactSupportedTypesOnly(): Promise<void> {
   await runTaskRunConsumerCycle(baseOptions(), deps);
   const types = claimedTypes as string[] | null;
   assert(
-    types !== null && types.length === 2 &&
-      types.includes("SOURCE_FETCH") && types.includes("SOURCE_DISCOVERY"),
-    "Consumer must claim exactly SOURCE_FETCH and SOURCE_DISCOVERY (no prefix, no extras).",
+    types !== null && types.length === 3 &&
+      types.includes("SOURCE_FETCH") && types.includes("SOURCE_DISCOVERY") &&
+      types.includes("CONTENT_FETCH"),
+    "Consumer must claim exactly SOURCE_FETCH, SOURCE_DISCOVERY, and CONTENT_FETCH.",
   );
 }
 
@@ -331,6 +347,38 @@ async function verifySourceDiscoveryDispatchAndComplete(): Promise<void> {
  assert(discoveryMode === "manual", "Discovery handler must receive parsed mode.");
  assert(discoveryUserId === "user-2", "Discovery handler must receive parsed userId.");
   assert(result.succeeded === 1, "Successful discovery handler must increment succeeded.");
+}
+
+async function verifyEventSummaryRegenerationDispatchAndComplete(): Promise<void> {
+  let receivedScope: FetchScope | null = null;
+  let receivedTask: ClaimedTaskRun | null = null;
+  const fake = createFakeDeps({
+    claimQueue: [makeTask({
+      id: "summary-1",
+      type: "CONTENT_FETCH",
+      topicId: "topic-1",
+      itemId: "item-1",
+      eventId: "event-1",
+      input: { mode: "event-summary-regeneration", userId: "user-3" },
+    })],
+    summaryHandler: async (_prisma, scope, task) => {
+      receivedScope = scope;
+      receivedTask = task;
+      return { summaryStatus: "READY" };
+    },
+  });
+  const result = await runTaskRunConsumerCycle(baseOptions(), buildDeps(fake));
+  const scope = receivedScope as FetchScope | null;
+  const task = receivedTask as ClaimedTaskRun | null;
+  assert(
+    scope?.organizationId === "org-1" && scope.userId === "user-3",
+    "CONTENT_FETCH summary handler must receive the claimed workspace scope.",
+  );
+  assert(
+    task?.eventId === "event-1" && task.itemId === "item-1" && task.topicId === "topic-1",
+    "CONTENT_FETCH summary handler must receive the bound event/item/topic ids.",
+  );
+  assert(result.succeeded === 1, "Successful summary regeneration must settle the durable task.");
 }
 
 async function verifyHandlerFailurePendingRetry(): Promise<void> {

@@ -4,6 +4,7 @@ import {
   claimNextTaskRun,
   completeClaimedTaskRun,
   enqueueTaskRun,
+  enqueueTaskRunWithMutation,
   failClaimedTaskRun,
   recoverExpiredTaskRuns,
   renewTaskRunLease,
@@ -13,6 +14,7 @@ import {
 
 export async function runTaskRunFixtures(): Promise<void> {
   await verifyEnqueueContract();
+  await verifyAtomicEnqueueMutationContract();
   await verifyEnqueueConflictContract();
   await verifyInputValidation();
   await verifyClaimContract();
@@ -60,8 +62,33 @@ function fakePrisma(options: FakeOptions = {}) {
       calls.push({ method: "queryRaw", value: query });
       return options.queryRaw?.(query) ?? [];
     },
+    $transaction: async (run: (tx: PrismaClient) => Promise<unknown>) => run(prisma as unknown as PrismaClient),
   } as unknown as PrismaClient;
   return { calls, prisma };
+}
+
+async function verifyAtomicEnqueueMutationContract(): Promise<void> {
+  const created = fakePrisma();
+  let mutationCalls = 0;
+  const result = await enqueueTaskRunWithMutation(
+    created.prisma,
+    baseEnqueue({ eventId: "event-1", itemId: "item-1", topicId: "topic-1" }),
+    async (_tx, taskRun) => {
+      mutationCalls += 1;
+      assert(taskRun.eventId === "event-1", "Mutation must receive the newly bound task.");
+    },
+  );
+  assert(result.created && mutationCalls === 1, "New enqueue must run its state mutation exactly once.");
+
+  const winner = taskRow({ id: "winner", status: "PENDING" });
+  const duplicate = fakePrisma({ findFirst: () => winner });
+  mutationCalls = 0;
+  const reused = await enqueueTaskRunWithMutation(
+    duplicate.prisma,
+    baseEnqueue(),
+    async () => { mutationCalls += 1; },
+  );
+  assert(!reused.created && mutationCalls === 0, "Active duplicate must not reset state under the running task.");
 }
 
 function taskRow(overrides: unknown = {}): TaskRun {
@@ -136,13 +163,21 @@ async function expectReject(run: () => Promise<unknown>, message: string): Promi
 
 async function verifyEnqueueContract(): Promise<void> {
   const { prisma, calls } = fakePrisma();
-  const result = await enqueueTaskRun(prisma, baseEnqueue());
+  const result = await enqueueTaskRun(prisma, baseEnqueue({
+    topicId: "topic-1",
+    itemId: "item-1",
+    eventId: "event-1",
+  }));
   assert(result.created, "First enqueue must report created=true.");
   const data = record(record(calls[0]?.value, "create args").data, "create data");
   assert(data.status === "PENDING" && data.attempt === 0, "Enqueue must create an unclaimed PENDING task.");
   assert(data.startedAt === null && data.finishedAt === null, "Enqueue must not claim or finish the task.");
   assert(data.leaseOwner === null && data.leaseToken === null, "Enqueue must not create a lease.");
   assert(data.idempotencyKey === "manual:org-1:1", "Enqueue must persist the business key.");
+  assert(
+    data.topicId === "topic-1" && data.itemId === "item-1" && data.eventId === "event-1",
+    "Enqueue must persist bound task subjects for exact-item dispatch.",
+  );
 }
 
 async function verifyEnqueueConflictContract(): Promise<void> {

@@ -162,11 +162,11 @@ expired RUNNING lease ──reaper──> PENDING（有剩余预算）或 FAILED
 ```
 
 规则：
-- `SOURCE_FETCH` / `SOURCE_DISCOVERY` 使用 durable queue：Web 只调用 `enqueueTaskRun()` 创建 `PENDING` 行；主 Worker 通过单条 PostgreSQL CTE + `FOR UPDATE SKIP LOCKED` 原子 claim，并设置 `leaseOwner`、高熵 `leaseToken`、`leaseExpiresAt`、`heartbeatAt`。其他细粒度 AI/采集审计 TaskRun 继续使用同步 RUNNING→终态 helper，不冒充队列任务。
+- `SOURCE_FETCH` / `SOURCE_DISCOVERY` / 手动摘要重生成 `CONTENT_FETCH` 使用 durable queue：Web 只创建 `PENDING` 行；主 Worker 通过单条 PostgreSQL CTE + `FOR UPDATE SKIP LOCKED` 原子 claim，并设置 `leaseOwner`、高熵 `leaseToken`、`leaseExpiresAt`、`heartbeatAt`。摘要任务必须绑定 `topicId + itemId + eventId`，只处理指定事件，不触发 workspace 全量 fetch；其他细粒度 AI/采集审计 TaskRun 继续使用同步 RUNNING→终态 helper，不冒充队列任务。
 - complete/fail/yield/renew 均以 `id + RUNNING + leaseOwner + leaseToken + leaseExpiresAt > now` 为 fencing 谓词。过期或旧 token 影响 0 行，旧 Worker 不得覆盖新 lease 的结果。
 - claim 时 `attempt + 1`；fail 与 expired-lease recovery 在同一 SQL statement 内按 `attempt < maxAttempts` 决定回到 `PENDING` 或进入 `FAILED`。planned yield 使用 `GREATEST(attempt - 1, 0)` 返还本次 claim 的失败预算。
-- active idempotency 由 PostgreSQL partial unique index保证：同一 `organizationId + type + idempotencyKey` 在 `PENDING/RUNNING` 期间最多一行；终态后同 key 可再次 enqueue。Web 手动任务使用 60 秒 UTC 时间桶抑制双击/请求重试。
-- 主 Worker 只 claim exact allowlist `SOURCE_FETCH` / `SOURCE_DISCOVERY`，严格解析 `{mode,userId}` input；handler 期间约每个 lease 的 1/3 续租，成功/失败都通过 fenced API 收敛。Durable 与 legacy 审计 TaskRun 都不持久化原始 Error、URL、stack，仅保存固定低基数 error class；fetch 子 cycle 日志同样只输出固定 cycle 名与 class。`lease_expired` 是 reaper 专用固定系统标记。
+- active idempotency 由 PostgreSQL partial unique index保证：同一 `organizationId + type + idempotencyKey` 在 `PENDING/RUNNING` 期间最多一行；终态后同 key 可再次 enqueue。Workspace 级手动任务使用 60 秒 UTC 时间桶；摘要重生成使用 event-scoped active key，任务终结前重复点击复用同一行且不得重置运行中状态。
+- 主 Worker 只 claim exact allowlist `SOURCE_FETCH` / `SOURCE_DISCOVERY` / `CONTENT_FETCH`，按 type 严格解析 input；handler 期间约每个 lease 的 1/3 续租，成功/失败都通过 fenced API 收敛。Durable 与 legacy 审计 TaskRun 都不持久化原始 Error、URL、stack，仅保存固定低基数 error class；fetch 子 cycle 日志同样只输出固定 cycle 名与 class。`lease_expired` 是 reaper 专用固定系统标记。
 - fetch pipeline 自身的网络 attempt 上限仍为 `MAX_FETCH_ATTEMPTS=3`；每次抓取审计记录保持独立，不被 durable queue 的 claim attempt 覆盖。
 - LLM extraction 失败但规则 fallback 成功时，`AI_EVENT_EXTRACTION=FAILED`，外层 `AI_RELEVANCE=SUCCEEDED` 且 output 标记 `llmFallback=true`；这不是整轮失败，也不会丢失 provider 错误证据。
 - AI UsageEvent 的 quantity 统计逻辑 adapter 调用数（内部 HTTP retry 不重复计数），包括最终失败的调用；成功数和 fallback 数保留在 metadata。

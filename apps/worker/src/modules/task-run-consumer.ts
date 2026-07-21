@@ -2,12 +2,12 @@
  * Durable TaskRun consumer (Lane 2B, Issue #162).
  *
  * Drains the durable TaskRun queue by claiming PENDING rows of the exact
- * supported types (SOURCE_FETCH, SOURCE_DISCOVERY), executing the
+ * supported types (SOURCE_FETCH, SOURCE_DISCOVERY, CONTENT_FETCH), executing the
  * corresponding Lane 2A workspace handler, and settling the lease.
  *
  * Security:
- *  - Only SOURCE_FETCH and SOURCE_DISCOVERY are ever claimed (exact allowlist).
- *  - Claimed input is strict-parsed: plain object with only mode/userId.
+ *  - Only the three explicit durable command types are claimed (exact allowlist).
+ *  - Claimed input is strict-parsed per type.
  *    Malformed input is fenced as application_error without invoking handler.
  *  - Handler failures are classified into a fixed low-cardinality set
  *    (configuration / timeout / upstream / application_error). Raw error
@@ -29,6 +29,7 @@ import {
 } from "@wangchao/db";
 import { runFetchCycleForWorkspace } from "./fetch-cycle.js";
 import { runSourceDiscoveryForWorkspace } from "./discovery.js";
+import { runEventSummaryRegeneration } from "./summary-regeneration.js";
 import { isCycleShuttingDown, isCycleTimeExhausted } from "./lifecycle.js";
 import type { WorkspaceScope } from "./types.js";
 
@@ -37,7 +38,7 @@ import type { WorkspaceScope } from "./types.js";
 type PrismaClient = ReturnType<typeof getPrismaClient>;
 type TaskRunType = ClaimedTaskRun["type"];
 
-const SUPPORTED_TYPES: TaskRunType[] = ["SOURCE_FETCH", "SOURCE_DISCOVERY"];
+const SUPPORTED_TYPES: TaskRunType[] = ["SOURCE_FETCH", "SOURCE_DISCOVERY", "CONTENT_FETCH"];
 const CONTROL_CHARS_PATTERN = /[\u0000-\u001F\u007F]/;
 const MAX_WORKER_ID_LENGTH = 128;
 const MAX_USER_ID_LENGTH = 128;
@@ -126,6 +127,11 @@ export interface TaskRunConsumerDeps {
     taskRunId: string,
     options: { mode: string; userId: string },
   ) => Promise<Record<string, unknown>>;
+  runEventSummaryRegeneration: (
+    prisma: PrismaClient,
+    scope: WorkspaceScope,
+    claimed: ClaimedTaskRun,
+  ) => Promise<Record<string, unknown>>;
   setIntervalFn: (fn: () => void, intervalMs: number) => unknown;
   clearIntervalFn: (handle: unknown) => void;
   nowFn: () => Date;
@@ -135,10 +141,17 @@ export interface TaskRunConsumerDeps {
 
 // ── Internal types ──
 
-interface ParsedInput {
+interface ParsedWorkspaceInput {
   mode: "manual" | "worker";
   userId: string;
 }
+
+interface ParsedSummaryInput {
+  mode: "event-summary-regeneration";
+  userId: string;
+}
+
+type ParsedInput = ParsedWorkspaceInput | ParsedSummaryInput;
 
 interface HeartbeatHandle {
   timerHandle: unknown;
@@ -195,7 +208,7 @@ async function processClaimedTask(
   metrics: TaskRunConsumerMetrics,
 ): Promise<void> {
   metrics.claimed++;
-  const parsed = parseTaskRunInput(claimed.input);
+  const parsed = parseTaskRunInput(claimed.type, claimed.input);
   if (parsed === null) {
     await fencedFail(claimed, opts, deps, metrics, "application_error");
     return;
@@ -235,10 +248,16 @@ async function dispatchHandler(
   if (claimed.type === "SOURCE_FETCH") {
     return deps.runFetchCycleForWorkspace(deps.prisma, scope);
   }
-  return deps.runSourceDiscoveryForWorkspace(deps.prisma, scope, claimed.id, {
-    mode: parsed.mode,
-    userId: parsed.userId,
-  });
+  if (claimed.type === "SOURCE_DISCOVERY" && parsed.mode !== "event-summary-regeneration") {
+    return deps.runSourceDiscoveryForWorkspace(deps.prisma, scope, claimed.id, {
+      mode: parsed.mode,
+      userId: parsed.userId,
+    });
+  }
+  if (claimed.type === "CONTENT_FETCH" && parsed.mode === "event-summary-regeneration") {
+    return deps.runEventSummaryRegeneration(deps.prisma, scope, claimed);
+  }
+  throw new Error("Task input does not match its claimed type.");
 }
 
 // ── Settle helpers ──
@@ -388,7 +407,7 @@ async function stopHeartbeat(
 
 // ── Input parsing ──
 
-function parseTaskRunInput(input: unknown): ParsedInput | null {
+function parseTaskRunInput(type: TaskRunType, input: unknown): ParsedInput | null {
   if (input === null || typeof input !== "object" || Array.isArray(input)) {
     return null;
   }
@@ -399,7 +418,10 @@ function parseTaskRunInput(input: unknown): ParsedInput | null {
   }
   const mode = obj["mode"];
   const userId = obj["userId"];
-  if (typeof mode !== "string" || !ALLOWED_MODES.has(mode)) {
+  const validMode = type === "CONTENT_FETCH"
+    ? mode === "event-summary-regeneration"
+    : typeof mode === "string" && ALLOWED_MODES.has(mode);
+  if (!validMode) {
     return null;
   }
   if (
@@ -410,7 +432,9 @@ function parseTaskRunInput(input: unknown): ParsedInput | null {
   ) {
     return null;
   }
-  return { mode: mode as "manual" | "worker", userId };
+  return type === "CONTENT_FETCH"
+    ? { mode: "event-summary-regeneration", userId }
+    : { mode: mode as "manual" | "worker", userId };
 }
 
 // ── Backoff ──
@@ -488,6 +512,8 @@ function createDefaultDeps(): TaskRunConsumerDeps {
         mode: opts.mode as "manual" | "worker",
         userId: opts.userId,
       }) as unknown as Promise<Record<string, unknown>>,
+    runEventSummaryRegeneration: (p, scope, claimed) =>
+      runEventSummaryRegeneration(p, scope, claimed),
     setIntervalFn: (fn, ms) => setInterval(fn, ms),
     clearIntervalFn: (handle) =>
       clearInterval(handle as ReturnType<typeof setInterval>),

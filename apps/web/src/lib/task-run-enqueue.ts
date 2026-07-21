@@ -10,8 +10,9 @@
  * Security:
  *  - Key is derived only from type + userId + UTC minute bucket.
  *  - No URL, secret, or arbitrary form input is embedded in the key.
- *  - Only SOURCE_FETCH / SOURCE_DISCOVERY are accepted (web manual
- *    producers). Other types are rejected.
+ *  - Only SOURCE_FETCH / SOURCE_DISCOVERY are accepted by the minute-bucket
+ *    helper. Event-summary regeneration uses a subject-scoped key that stays
+ *    active until the durable CONTENT_FETCH task reaches a terminal state.
  */
 
 const ALLOWED_MANUAL_TYPES = new Set(["SOURCE_FETCH", "SOURCE_DISCOVERY"] as const);
@@ -78,6 +79,34 @@ export function buildManualTaskRunIdempotencyKey(
   const bucket = `${year}${month}${day}T${hours}${minutes}`;
 
   const key = `manual:${type}:${userId}:${bucket}`;
+  if (key.length > MAX_KEY_LENGTH) {
+    throw new Error(
+      `idempotencyKey length must be <= ${MAX_KEY_LENGTH} (got ${key.length}).`,
+    );
+  }
+  return key;
+}
+
+const MAX_SUBJECT_ID_LENGTH = 128;
+
+/**
+ * One active regeneration task per event. Unlike workspace-wide manual
+ * actions, this key deliberately has no time bucket: a second click must
+ * reuse the PENDING/RUNNING task instead of resetting data underneath it.
+ */
+export function buildEventSummaryTaskIdempotencyKey(eventId: string): string {
+  if (typeof eventId !== "string" || eventId.length === 0) {
+    throw new Error("eventId must not be blank.");
+  }
+  if (eventId.length > MAX_SUBJECT_ID_LENGTH) {
+    throw new Error(
+      `eventId length must be <= ${MAX_SUBJECT_ID_LENGTH} (got ${eventId.length}).`,
+    );
+  }
+  if (CONTROL_CHARS.test(eventId)) {
+    throw new Error("eventId must not contain control characters.");
+  }
+  const key = `manual:CONTENT_FETCH:event:${eventId}`;
   if (key.length > MAX_KEY_LENGTH) {
     throw new Error(
       `idempotencyKey length must be <= ${MAX_KEY_LENGTH} (got ${key.length}).`,

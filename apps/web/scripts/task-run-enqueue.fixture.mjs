@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { buildManualTaskRunIdempotencyKey } from "../src/lib/task-run-enqueue.ts";
+import {
+  buildEventSummaryTaskIdempotencyKey,
+  buildManualTaskRunIdempotencyKey,
+} from "../src/lib/task-run-enqueue.ts";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -62,6 +65,14 @@ assert.throws(
   /type/i,
   "Unknown type must be rejected.",
 );
+
+// Event summary tasks remain idempotent for the full active task lifetime.
+const summaryKey = buildEventSummaryTaskIdempotencyKey("event-123");
+assert.equal(summaryKey, buildEventSummaryTaskIdempotencyKey("event-123"));
+assert.notEqual(summaryKey, buildEventSummaryTaskIdempotencyKey("event-456"));
+assert.match(summaryKey, /^manual:CONTENT_FETCH:event:/);
+assert.throws(() => buildEventSummaryTaskIdempotencyKey(""), /eventId/i);
+assert.throws(() => buildEventSummaryTaskIdempotencyKey("x".repeat(129)), /eventId/i);
 
 // Empty userId
 assert.throws(
@@ -126,6 +137,17 @@ assert.doesNotMatch(
   sourcesContent,
   /status:\s*["']RUNNING["']/,
   "Web must not create initial RUNNING TaskRun.",
+);
+
+const eventsPath = join(__dirname, "..", "src", "app", "actions", "events.ts");
+const eventsContent = readFileSync(eventsPath, "utf8");
+assert.ok(
+  eventsContent.includes('type: "CONTENT_FETCH"') && eventsContent.includes("enqueueTaskRunWithMutation"),
+  "Summary regeneration must enqueue a durable CONTENT_FETCH task.",
+);
+assert.ok(
+  eventsContent.includes("buildEventSummaryTaskIdempotencyKey"),
+  "Summary regeneration must use event-scoped active idempotency.",
 );
 
 process.stdout.write("Task run enqueue fixture passed.\n");
