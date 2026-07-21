@@ -14,6 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { isHttpUrl } from "@wangchao/core";
+import { decodeHtmlEntities, normalizeKnownExplanation } from "@/lib/display-text";
 
 function formatDateTime(value: string): string {
   return new Intl.DateTimeFormat("zh-CN", {
@@ -44,12 +45,12 @@ export function IntelligenceCard({
     >
       <div className="flex flex-wrap items-center gap-2">
         <Badge className="max-w-full min-w-0 truncate" variant="default">
-          {event.topicName}
+          {decodeHtmlEntities(event.topicName)}
         </Badge>
         {event.entities && event.entities.length > 0
           ? event.entities.slice(0, 3).map((entity) => (
               <Badge key={entity} variant="outline">
-                {entity}
+                {decodeHtmlEntities(entity)}
               </Badge>
             ))
           : null}
@@ -61,10 +62,10 @@ export function IntelligenceCard({
               rel="noreferrer"
               target="_blank"
             >
-              {event.sourceName}
+              {decodeHtmlEntities(event.sourceName)}
             </a>
           ) : (
-            event.sourceName
+            decodeHtmlEntities(event.sourceName)
           )}
           {event.mergedSourceCount > 1 ? (
             <span>
@@ -86,7 +87,7 @@ export function IntelligenceCard({
           className="inline-flex min-h-11 min-w-0 items-center text-foreground decoration-none [overflow-wrap:anywhere] transition-colors hover:text-primary"
           href={`/events/${event.eventId}`}
         >
-          {event.title}
+          {decodeHtmlEntities(event.title)}
         </Link>
       </h3>
 
@@ -94,13 +95,15 @@ export function IntelligenceCard({
         className="text-base leading-relaxed text-foreground line-clamp-4 break-words"
         data-summary-status={event.summaryStatus}
       >
-        {event.summary}
+        {decodeHtmlEntities(event.summary)}
       </p>
 
       {event.explanation ? (
         <div className="flex items-start gap-1.5 rounded-[16px] bg-muted p-3 text-sm text-muted-foreground">
           <Sparkles aria-hidden="true" className="mt-0.5 shrink-0" size={13} />
-          <span className="min-w-0 break-words">{event.explanation}</span>
+          <span className="min-w-0 break-words">
+            {normalizeKnownExplanation(decodeHtmlEntities(event.explanation))}
+          </span>
         </div>
       ) : null}
 

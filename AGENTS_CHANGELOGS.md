@@ -1,5 +1,18 @@
 ## 2026-07-21
 
+### Fix: 第五轮视觉检查收束草案确认、已保存与账户入口
+
+- Cause: 剩余页面巡检发现主题草案确认仍依赖已淘汰的 `topic-profile-*`、`form-actions`、`topic-select` 等 bespoke class 和内联样式，在 MD3 迁移后退化成长而无层级的单卡表单；已保存事件标题不足 44px，移动端三项操作会作为窄列挤压正文，相关性解释仍可能展示工程英文；登录与注册缺少语义主标题，互跳入口只有行内文字可点击。
+- Changed:
+  - 草案确认改为“名称与目标 / 主题画像 / 语言与简报偏好”三张 `Card variant=work`，生成模式用 `StatusBanner` 明示，重新生成与确认创建在移动端占满宽度；异常 Cookie 状态统一为 `EmptyState`，移除全部页面 bespoke class 与内联样式。
+  - 已保存标题改为 ≥44px 主要入口，移动端操作使用“已读 / 取消收藏”两列加“原文”整行的 2+1 布局；主题、来源、标题、摘要和解释统一解码 HTML 实体，已知相关性模板本地化为简体中文。
+  - 首页情报卡同步复用显示 helper，防止实体编码与 `Matched topic ...` 工程模板继续出现在主信息流。
+  - 登录与注册补语义 `h1`，主提交保持整行 44px，互跳入口改为整行 44px 次级按钮；响应式矩阵新增登录、注册和带测试草案 Cookie 的完整确认页。
+  - `FRONTEND.md`、`CODEGUIDE.md` 与 `docs/L3-modules.md` 固化草案核对、已保存操作、账户入口和显示文本规则。
+- Files: `apps/web/src/app/{login,register,saved,topics/new/preview}/**`、`apps/web/src/components/intelligence/intelligence-card.tsx`、`apps/web/src/lib/display-text.ts`、`apps/web/scripts/summary-status.fixture.mjs`、`tests/smoke/responsive.spec.ts`、`FRONTEND.md`、`CODEGUIDE.md`、`docs/L3-modules.md`。
+- Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过（构建仅保留既有 PDF NFT tracing warnings）；扩展后的本地 320 / 375 / 414 / 768 / 1024 / 1440px 响应式矩阵通过（1 passed）。375px 定点复查确认：草案确认 3 张 Card 均 `scrollWidth = clientWidth = 343px`，11 个标签均为 14px / 500，重新生成 295×44px、确认创建 311×44px；登录 / 注册分别具有语义 `h1`，输入 56px、提交与互跳按钮 44px，页面宽度均为 375px。
+- Notes / Risk: 仅调整展示、布局、响应式测试与已知固定解释的显示层转换，不改变草案 Cookie 契约、确认创建写入时机、认证流程、事件原始存储、查询、权限、数据库或 Worker；显示文本继续交给 React 安全转义。Railway 真实数据与扩展矩阵将在部署后复查。
+
 ### Fix: 第四轮视觉检查收束报告、时间线与主题表单
 
 - Cause: Railway 与代码巡检发现专题报告正文仍用等宽 `<pre>` 承载，标题、列表和外链缺乏阅读层级；报告历史行和提交区会在窄屏挤压主内容；主题时间线暴露内部 category、英文 `Unknown`、11px 等宽来源信息和小原文链接；主题编辑把十余个字段压在单一卡片中，12px 重标签与巨型名称输入使重点不清。

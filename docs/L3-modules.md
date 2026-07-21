@@ -323,6 +323,7 @@ apps/web/src/
 │   ├── topics/[topicId]/page.tsx    # 主题详情页（状态、统计、管理操作、时间线/批量导出入口）
 │   ├── topics/[topicId]/edit/page.tsx # 主题编辑页（三段工作表单：基本信息/画像/简报偏好）
 │   ├── topics/[topicId]/timeline/page.tsx # 主题时间线页（按 occurredAt 倒序、分类/来源显示本地化）
+│   ├── topics/new/preview/*          # 主题草案确认页（三段核对表单与统一异常态）
 │   ├── sources/page.tsx              # 信源治理页
 │   ├── briefings/page.tsx            # 简报列表页（DAILY/WEEKLY/MONTHLY 筛选；阅读详情 + Markdown 导出双入口）
 │   ├── briefings/[briefingId]/page.tsx # 简报详情页（安全 Markdown、editorial 正文、44px 情报入口）
@@ -360,7 +361,7 @@ apps/web/src/
 │       └── textarea.tsx              # Textarea
 └── lib/
     ├── briefing-markdown.ts          # 简报安全 Markdown 白名单渲染与固定解释模板本地化
-    ├── display-text.ts               # 浏览器展示文本的 HTML 实体解码与事件分类本地化
+    ├── display-text.ts               # 浏览器展示文本的实体解码、事件分类与已知解释模板本地化
     ├── event-display.ts              # 前端展示清洗：HTML/RSS 摘要转用户文案、实体解码、原文链接提取、解释文案本地化；re-export sanitize 函数
     ├── sanitize.ts                   # 安全净化：sanitizeForDisplay（HTML 逃逸）、sanitizeMarkdownSource（剥离危险标签）
     ├── report-data.ts                # 专题报告数据读取：`getReportsPage()`（分页列表）、`getReportDetail()`（单条详情）
@@ -390,12 +391,14 @@ apps/web/src/
 | `apps/web/src/app/briefings/page.tsx` | organization-scoped 完整简报历史分页：总数、周期（DAILY/WEEKLY/MONTHLY 筛选 tabs）、UTC 日期窗口、更新时间、上一页/下一页和 Markdown 导出。 |
 | `apps/web/src/app/briefings/[briefingId]/page.tsx` | 简报详情页：72ch editorial 正文、安全 Markdown、固定生成解释本地化、Markdown 下载、批量已读与 44px Event 入口。 |
 | `apps/web/src/lib/briefing-markdown.ts` | 简报 Markdown 白名单 renderer：转义不可信文本、仅允许 HTTP/HTTPS 外链，并在浏览器显示层本地化已知相关性解释模板。 |
-| `apps/web/src/lib/display-text.ts` | 纯显示 helper：解码常见命名、零填充十进制和十六进制 HTML 实体，并把事件内部 category 映射为中文显示标签；结果仍交给 React 文本节点或安全 renderer 转义。 |
+| `apps/web/src/lib/display-text.ts` | 纯显示 helper：解码常见命名、零填充十进制和十六进制 HTML 实体，把事件内部 category 映射为中文显示标签，并本地化已知相关性解释模板；结果仍交给 React 文本节点或安全 renderer 转义。 |
 | `apps/web/src/app/topics/[topicId]/timeline/page.tsx` | 主题时间线页：按 `occurredAt` 倒序分页展示主题全部正式事件（含 merged sources、score、source link），分类与来源在显示层本地化并解码，标题和原文入口保持 ≥44px，提供上一页/下一页。 |
 | `apps/web/src/app/saved/page.tsx` | 已收藏情报页：通过 dedicated user-scoped repository 分页读取完整收藏集合，显示总数和上一页/下一页；标题可进入详情，已读、取消收藏、原文动作保留在当前页面，取消收藏不写负反馈。 |
 | `apps/web/src/app/preferences/page.tsx` | 偏好记忆页：权重、置信度、解释；置信度条提供 `progressbar` 语义；支持权重调整（`updatePreferenceWeightAction`）和删除偏好（`deletePreferenceAction`）。 |
 | `apps/web/src/app/reports/page.tsx` | 专题报告列表页：用户提交自然语言问题（`createReportAction`），异步触发报告生成；展示响应式历史报告列表（分页），标题为主要入口，含状态 Badge（排队中/生成中/已完成/失败/信息不足）。 |
 | `apps/web/src/app/reports/[reportId]/page.tsx` | 专题报告详情页：Markdown 经安全白名单 renderer 转为 72ch editorial 正文，统计使用 2/4 列 tonal surface，并展示覆盖说明和状态；PENDING/GENERATING 显示“生成中”提示。 |
+| `apps/web/src/app/topics/new/preview/page.tsx`、`topic-draft-preview-form.tsx` | 主题草案确认：生成模式用 `StatusBanner` 明示，名称与目标、主题画像、语言与简报偏好拆为 `work` Card；重新生成不落库，确认创建才提交；缺失/损坏 Cookie 使用统一异常态。 |
+| `apps/web/src/app/saved/page.tsx` | 已保存情报：标题为 ≥44px 主要入口，移动端状态操作使用 2+1 栅格；主题、来源、标题、摘要和解释在显示层完成实体解码与已知模板本地化。 |
 | `apps/web/src/lib/report-data.ts` | 报告数据读取 helper：`getReportsPage()` 分页列表、`getReportDetail()` 单条详情；使用 `getSessionWorkspace()` 获取 workspace scope；`DATABASE_URL` 未配置时抛错。 |
 | `apps/web/src/app/admin/settings/telegram-form.tsx` | `"use client"` Telegram 凭证表单组件：Bot Token 密码显隐、Chat ID 输入、测试当前配置（`testTelegramCredentialAction`）、测试通过后可保存（`upsertTelegramCredentialAction`）。 |
 | `apps/web/src/app/admin/settings/page.tsx` | Admin API Key 配置页（`/admin/settings`）：2/3/6 列响应式 Tabs（AI 凭证 / 搜索凭证 / Telegram 投递 / BYOK / CCPayment / 自用模式），移动端不依赖横向滚动；展示 AI/search/Telegram 凭证状态（脱敏 hint + key-value 布局 + 更新时间）；AI tab 提供新增/覆盖 AI Key（`aiApiKey`/`aiBaseUrl`/`aiProvider`/`aiModel`）、测试连接、清除凭证操作；Search tab 提供新增/覆盖搜索 Key（`searchApiKey`/`searchProvider`）、测试连接、清除凭证操作；Telegram tab 提供 Bot Token + Chat ID 配置、测试连接、清除凭证操作；BYOK tab 提供 per-user BYOK 凭证管理（加密存储、脱敏展示、Plus 必填/Pro 可选）；CCPayment tab 配置加密支付；自用模式开关跳过所有配额检查。OWNER/ADMIN 可访问，不展示完整 Key。 |

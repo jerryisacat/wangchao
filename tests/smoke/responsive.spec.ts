@@ -190,6 +190,27 @@ test("all app pages stay in frame with touch-sized, readable controls", async ({
 
 async function discoverAppPaths(page: Page): Promise<string[]> {
   await page.goto("/");
+  await page.evaluate(() => {
+    const previewDraft = {
+      description: "关注 AI 基础设施、模型供应商、Agent 平台和部署生态。",
+      draft: {
+        digestStyle: { detailLevel: "standard", maxEvents: 10, structure: "standard" },
+        entities: ["OpenAI"],
+        excludeScope: ["消费电子"],
+        generationMode: "rules",
+        importanceRules: ["重大产品更新"],
+        includeScope: ["模型部署"],
+        keywords: ["AI 基础设施"],
+        languagePreferences: {
+          outputLanguage: "zh-CN",
+          terminologyRules: ["OpenAI 不译"],
+        },
+        name: "AI 基础设施",
+        schemaVersion: 1,
+      },
+    };
+    document.cookie = `wc_topic_draft=${encodeURIComponent(JSON.stringify(previewDraft))}; path=/topics/new; SameSite=Lax`;
+  });
   const eventLinks = page.locator('main a[href^="/events/"]');
   const eventHref =
     (await eventLinks.count()) > 0 ? await eventLinks.first().getAttribute("href") : null;
@@ -218,14 +239,17 @@ async function discoverAppPaths(page: Page): Promise<string[]> {
     "/briefings",
     briefingHref,
     "/history",
+    "/login",
     "/reports",
     reportHref,
     "/saved",
     "/preferences",
     "/pricing",
+    "/register",
     "/sources",
     "/topics",
     "/topics/new",
+    "/topics/new/preview",
     topicHref,
     topicHref ? `${topicHref}/edit` : null,
     topicHref ? `${topicHref}/timeline` : null,

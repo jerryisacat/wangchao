@@ -47,7 +47,7 @@ export default function RegisterPage() {
     <div className="flex min-h-screen items-center justify-center px-4 py-12">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>注册望潮</CardTitle>
+          <CardTitle><h1>注册望潮</h1></CardTitle>
           <CardDescription>创建账号，开始构建你的情报工作区。</CardDescription>
         </CardHeader>
         <CardContent>
@@ -99,12 +99,9 @@ export default function RegisterPage() {
               {loading ? "注册中…" : "注册"}
             </Button>
           </form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            已有账号？
-            <Link className="ml-1 font-medium text-primary hover:underline" href="/login">
-              登录
-            </Link>
-          </p>
+          <Button asChild className="mt-4 w-full" size="sm" variant="ghost">
+            <Link href="/login">已有账号？立即登录</Link>
+          </Button>
         </CardContent>
       </Card>
     </div>

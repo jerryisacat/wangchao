@@ -5,11 +5,12 @@ import { ArrowLeft, RefreshCw, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { confirmCreateTopicAction, generateTopicDraftAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PageHeader } from "@/components/common/page-header";
+import { StatusBanner } from "@/components/common/status-banner";
 
 export interface TopicDraftPreviewInitial {
   schemaVersion: number;
@@ -107,7 +108,7 @@ export function TopicDraftPreviewForm({
 
   return (
     <>
-      <PageHeader eyebrow="REVIEW DRAFT" title="确认主题画像">
+      <PageHeader eyebrow="检查草案" title="确认主题画像">
         <Button asChild size="sm" variant="ghost">
           <Link href="/topics/new">
             <ArrowLeft aria-hidden="true" size={14} />
@@ -116,57 +117,69 @@ export function TopicDraftPreviewForm({
         </Button>
       </PageHeader>
 
-      <div className="topic-draft-mode-hint" aria-live="polite">
-        {initial.generationMode === "ai"
-          ? "当前草案由 AI 基于自然语言目标生成，请核对后再确认创建。"
-          : "未检测到可用的 AI 配置，当前草案为规则兜底生成。建议配置 AI 后重新生成，或直接修改后确认。"}
-      </div>
+      <StatusBanner
+        icon={<Sparkles aria-hidden="true" size={16} />}
+        message={
+          initial.generationMode === "ai"
+            ? "当前草案由 AI 基于自然语言目标生成，请核对后再确认创建。"
+            : "未检测到可用的 AI 配置，当前草案为规则兜底生成。建议配置 AI 后重新生成，或直接修改后确认。"
+        }
+        tone={initial.generationMode === "ai" ? "info" : "warning"}
+      />
 
-      <Card className="topic-lab" variant="kinetic">
-        <div style={{ position: "relative", zIndex: 1, padding: "24px 20px 20px" }}>
-          <form action={generateTopicDraftAction} className="topic-regenerate-form">
-            <div className="topic-profile-heading">
-              <strong>主题名称与目标</strong>
-              <span>修改名称或描述后点「重新生成」可让 AI 重新起草画像。</span>
+      <form action={generateTopicDraftAction} className="grid gap-3">
+        <Card variant="work">
+          <CardHeader>
+            <CardTitle><h2>主题名称与目标</h2></CardTitle>
+            <p className="text-sm leading-6 text-muted-foreground">
+              修改名称或描述后点“重新生成草案”，可让 AI 重新起草画像。
+            </p>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="draftName">主题名称</Label>
+              <Input
+                id="draftName"
+                name="topicName"
+                value={name}
+                maxLength={120}
+                required
+                onChange={(event) => setName(event.target.value)}
+              />
             </div>
-            <Label htmlFor="draftName">主题名称</Label>
-            <Input
-              id="draftName"
-              name="topicName"
-              value={name}
-              maxLength={120}
-              onChange={(event) => setName(event.target.value)}
-            />
-            <Label htmlFor="draftDescription">主题描述</Label>
-            <Textarea
-              id="draftDescription"
-              name="topicDescription"
-              value={descriptionValue}
-              maxLength={2_000}
-              rows={3}
-              onChange={(event) => setDescriptionValue(event.target.value)}
-            />
-            <div className="form-actions">
-              <span />
-              <Button type="submit" variant="ghost">
-                <RefreshCw aria-hidden="true" size={16} />
-                重新生成草案
-              </Button>
+            <div className="grid gap-2">
+              <Label htmlFor="draftDescription">主题描述</Label>
+              <Textarea
+                id="draftDescription"
+                name="topicDescription"
+                value={descriptionValue}
+                maxLength={2_000}
+                rows={3}
+                onChange={(event) => setDescriptionValue(event.target.value)}
+              />
             </div>
-          </form>
+            <Button className="w-full sm:ml-auto sm:w-auto" type="submit" variant="secondary">
+              <RefreshCw aria-hidden="true" size={16} />
+              重新生成草案
+            </Button>
+          </CardContent>
+        </Card>
+      </form>
 
-          <form action={confirmCreateTopicAction} className="topic-form grid gap-3">
+      <form action={confirmCreateTopicAction} className="grid gap-3">
             <input type="hidden" name="topicDraftJson" value={draftJson} />
             <input type="hidden" name="topicDescription" value={descriptionValue} />
 
-            <div className="topic-profile-fields">
-              <div className="topic-profile-heading">
-                <strong>主题画像</strong>
-                <span>
+        <Card variant="work">
+          <CardHeader>
+            <CardTitle><h2>主题画像</h2></CardTitle>
+            <p className="text-sm leading-6 text-muted-foreground">
                   关键词用于信源发现；关键词、实体和覆盖/排除范围进入规则与 AI
                   筛选；重要性规则由 AI 用于评分。
-                </span>
-              </div>
+            </p>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <div className="grid gap-2">
               <Label htmlFor="draftKeywords">关键词（每行或逗号分隔）</Label>
               <Textarea
                 id="draftKeywords"
@@ -175,6 +188,8 @@ export function TopicDraftPreviewForm({
                 maxLength={5_000}
                 onChange={(event) => setKeywords(event.target.value)}
               />
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="draftEntities">关键实体（每行或逗号分隔）</Label>
               <Textarea
                 id="draftEntities"
@@ -183,6 +198,8 @@ export function TopicDraftPreviewForm({
                 maxLength={5_000}
                 onChange={(event) => setEntities(event.target.value)}
               />
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="draftIncludeScope">应覆盖范围（每行一项）</Label>
               <Textarea
                 id="draftIncludeScope"
@@ -191,6 +208,8 @@ export function TopicDraftPreviewForm({
                 maxLength={5_000}
                 onChange={(event) => setIncludeScope(event.target.value)}
               />
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="draftExcludeScope">应排除范围（每行一项）</Label>
               <Textarea
                 id="draftExcludeScope"
@@ -199,6 +218,8 @@ export function TopicDraftPreviewForm({
                 maxLength={5_000}
                 onChange={(event) => setExcludeScope(event.target.value)}
               />
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="draftImportanceRules">重要性规则（每行一项）</Label>
               <Textarea
                 id="draftImportanceRules"
@@ -208,14 +229,18 @@ export function TopicDraftPreviewForm({
                 onChange={(event) => setImportanceRules(event.target.value)}
               />
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="topic-profile-fields">
-              <div className="topic-profile-heading">
-                <strong>语言与简报偏好</strong>
-                <span>
+        <Card variant="work">
+          <CardHeader>
+            <CardTitle><h2>语言与简报偏好</h2></CardTitle>
+            <p className="text-sm leading-6 text-muted-foreground">
                   摘要当前使用简体中文；术语规则影响 AI 摘要生成，简报风格控制日报结构和详细程度。
-                </span>
-              </div>
+            </p>
+          </CardHeader>
+          <CardContent className="grid gap-4">
+            <div className="grid gap-2">
               <Label htmlFor="draftTerminologyRules">术语规则（每行一项）</Label>
               <Textarea
                 id="draftTerminologyRules"
@@ -225,10 +250,12 @@ export function TopicDraftPreviewForm({
                 placeholder="例如：OpenAI 不译、LLM 保留英文"
                 onChange={(event) => setTerminologyRules(event.target.value)}
               />
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="draftDigestStructure">简报结构</Label>
               <select
                 id="draftDigestStructure"
-                className="topic-select"
+                className="h-14 w-full min-w-0 rounded-t-[12px] border-0 border-b-2 border-outline bg-muted px-4 text-base text-foreground outline-none transition-[border-color] duration-200 focus-visible:border-primary"
                 value={structure}
                 onChange={(event) =>
                   setStructure(
@@ -240,10 +267,12 @@ export function TopicDraftPreviewForm({
                 <option value="detailed">详尽（含 Executive Summary）</option>
                 <option value="compact">紧凑（仅事件列表 + 跟进）</option>
               </select>
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="draftDigestDetail">详细程度</Label>
               <select
                 id="draftDigestDetail"
-                className="topic-select"
+                className="h-14 w-full min-w-0 rounded-t-[12px] border-0 border-b-2 border-outline bg-muted px-4 text-base text-foreground outline-none transition-[border-color] duration-200 focus-visible:border-primary"
                 value={detailLevel}
                 onChange={(event) =>
                   setDetailLevel(
@@ -255,10 +284,11 @@ export function TopicDraftPreviewForm({
                 <option value="comprehensive">全面</option>
                 <option value="brief">简略</option>
               </select>
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="draftMaxEvents">最大事件数</Label>
               <Input
                 id="draftMaxEvents"
-                className="topic-number-input"
                 type="number"
                 min={1}
                 max={50}
@@ -266,17 +296,17 @@ export function TopicDraftPreviewForm({
                 onChange={(event) => setMaxEvents(Number(event.target.value))}
               />
             </div>
+          </CardContent>
+        </Card>
 
-            <div className="form-actions">
-              <span>确认后才会写入主题与候选信源。</span>
-              <Button type="submit" variant="primary">
-                <Sparkles aria-hidden="true" size={16} />
-                确认创建主题
-              </Button>
-            </div>
-          </form>
+        <div className="grid gap-3 rounded-[16px] bg-muted p-4 text-sm leading-6 text-muted-foreground sm:flex sm:items-center sm:justify-between">
+          <span>确认后才会写入主题与候选信源。</span>
+          <Button className="w-full sm:w-auto" type="submit" variant="primary">
+            <Sparkles aria-hidden="true" size={16} />
+            确认创建主题
+          </Button>
         </div>
-      </Card>
+      </form>
     </>
   );
 }

@@ -34,3 +34,21 @@ export function formatCategoryLabel(category: string): string {
   };
   return `${kindLabel[rawKind.toLowerCase()] ?? "内容方向"} · ${value}`;
 }
+
+/** 仅本地化生成链路中的已知固定解释模板，不改写自由文本。 */
+export function normalizeKnownExplanation(value: string): string {
+  return value
+    .replace(
+      /Matched topic keywords:\s*([^.。\n]+)[.。]?/gi,
+      (_match, keywords: string) => `命中主题关键词：${keywords.trim()}。`,
+    )
+    .replace(
+      /Matched topic entities:\s*([^.。\n]+)[.。]?/gi,
+      (_match, entities: string) => `命中关键实体：${entities.trim()}。`,
+    )
+    .replace(
+      /Matched include scope:\s*([^.。\n]+)[.。]?/gi,
+      (_match, scope: string) => `命中覆盖范围：${scope.trim()}。`,
+    )
+    .replace(/Matched default relevance threshold[.。]?/gi, "达到默认相关性阈值。");
+}

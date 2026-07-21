@@ -14,6 +14,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import { getSavedEventsPage } from "@/lib/topic-source-data";
+import { decodeHtmlEntities, normalizeKnownExplanation } from "@/lib/display-text";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +56,7 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
               <div className="divide-y divide-border">
                 {savedEvents.map((event) => (
                   <article
-                    className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3 py-4 transition-colors hover:bg-primary/5 first:pt-0 last:pb-0"
+                    className="grid items-start gap-3 py-4 transition-colors hover:bg-primary/5 first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_auto]"
                     key={event.eventId}
                   >
                     <div className="min-w-0">
@@ -64,37 +65,39 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
                           className="max-w-full min-w-0 truncate"
                           variant="default"
                         >
-                          {event.topicName}
+                          {decodeHtmlEntities(event.topicName)}
                         </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {event.sourceName} · {formatDateTime(event.occurredAt)}
+                        <span className="text-sm text-muted-foreground">
+                          {decodeHtmlEntities(event.sourceName)} · {formatDateTime(event.occurredAt)}
                         </span>
                       </div>
                       <h3 className="m-0 mt-1.5 break-words text-base font-medium leading-snug line-clamp-2">
                         <Link
-                          className="text-foreground hover:text-primary"
+                          className="flex min-h-11 min-w-0 items-center rounded-[10px] text-foreground [overflow-wrap:anywhere] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                           href={`/events/${event.eventId}`}
                         >
-                          {event.title}
+                          {decodeHtmlEntities(event.title)}
                         </Link>
                       </h3>
                       <div className="mt-1.5 text-sm leading-relaxed line-clamp-3">
-                        {event.summary}
+                        {decodeHtmlEntities(event.summary)}
                       </div>
                       {event.explanation ? (
                         <div className="mt-2 inline-flex items-center gap-1.5 rounded-[16px] bg-muted p-3 text-xs leading-relaxed text-muted-foreground">
                           <Sparkles aria-hidden="true" size={13} />
-                          {event.explanation}
+                          <span className="min-w-0 [overflow-wrap:anywhere]">
+                            {normalizeKnownExplanation(decodeHtmlEntities(event.explanation))}
+                          </span>
                         </div>
                       ) : null}
                     </div>
-                    <div className="flex flex-wrap items-center justify-end gap-1.5">
-                      <Badge variant="accent">已收藏</Badge>
-                      <form action={updateDashboardEventStateAction}>
+                    <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
+                      <form action={updateDashboardEventStateAction} className="min-w-0">
                         <input name="eventId" type="hidden" value={event.eventId} />
                         <input name="returnTo" type="hidden" value="/saved" />
                         <Button
                           aria-label="标记已读"
+                          className="w-full"
                           name="action"
                           size="sm"
                           title="标记已读"
@@ -106,11 +109,12 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
                           已读
                         </Button>
                       </form>
-                      <form action={updateDashboardEventStateAction}>
+                      <form action={updateDashboardEventStateAction} className="min-w-0">
                         <input name="eventId" type="hidden" value={event.eventId} />
                         <input name="returnTo" type="hidden" value="/saved" />
                         <Button
                           aria-label="取消收藏"
+                          className="w-full"
                           name="action"
                           size="sm"
                           title="取消收藏"
@@ -123,7 +127,7 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
                         </Button>
                       </form>
                       {event.primaryItemUrl ? (
-                        <Button asChild size="sm" variant="ghost">
+                        <Button asChild className="col-span-2 w-full sm:w-auto" size="sm" variant="ghost">
                           <a
                             aria-label="查看原文"
                             href={event.primaryItemUrl}

@@ -50,7 +50,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center px-4 py-12">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle>登录望潮</CardTitle>
+          <CardTitle><h1>登录望潮</h1></CardTitle>
           <CardDescription>输入邮箱和密码进入你的情报工作区。</CardDescription>
         </CardHeader>
         <CardContent>
@@ -88,12 +88,9 @@ export default function LoginPage() {
               {loading ? "登录中…" : "登录"}
             </Button>
           </form>
-          <p className="mt-4 text-center text-sm text-muted-foreground">
-            还没有账号？
-            <Link className="ml-1 font-medium text-primary hover:underline" href="/register">
-              注册
-            </Link>
-          </p>
+          <Button asChild className="mt-4 w-full" size="sm" variant="ghost">
+            <Link href="/register">还没有账号？立即注册</Link>
+          </Button>
         </CardContent>
       </Card>
     </div>

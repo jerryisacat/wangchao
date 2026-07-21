@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FileWarning } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import {
   TopicDraftPreviewForm,
@@ -18,27 +19,7 @@ export default async function TopicDraftPreviewPage() {
   const envelope = cookieStore.get(TOPIC_DRAFT_COOKIE)?.value;
 
   if (!envelope) {
-    return (
-      <>
-        <PageHeader eyebrow="REVIEW DRAFT" title="确认主题画像">
-          <Button asChild size="sm" variant="ghost">
-            <Link href="/topics/new">
-              <ArrowLeft aria-hidden="true" size={14} />
-              <span>返回新建</span>
-            </Link>
-          </Button>
-        </PageHeader>
-        <Card className="topic-lab" variant="kinetic">
-          <div
-            style={{ position: "relative", zIndex: 1, padding: "24px 20px 20px" }}
-          >
-            <p className="text-muted-foreground">
-              草案已过期或未生成，请返回重新填写主题目标。
-            </p>
-          </div>
-        </Card>
-      </>
-    );
+    return <DraftUnavailable message="草案已过期或未生成，请返回重新填写主题目标。" />;
   }
 
   let parsed: { draft: TopicDraftPreviewInitial; description?: string };
@@ -48,51 +29,11 @@ export default async function TopicDraftPreviewPage() {
       description?: string;
     };
   } catch {
-    return (
-      <>
-        <PageHeader eyebrow="REVIEW DRAFT" title="确认主题画像">
-          <Button asChild size="sm" variant="ghost">
-            <Link href="/topics/new">
-              <ArrowLeft aria-hidden="true" size={14} />
-              <span>返回新建</span>
-            </Link>
-          </Button>
-        </PageHeader>
-        <Card className="topic-lab" variant="kinetic">
-          <div
-            style={{ position: "relative", zIndex: 1, padding: "24px 20px 20px" }}
-          >
-            <p className="text-muted-foreground">
-              草案数据无法解析，请返回重新生成。
-            </p>
-          </div>
-        </Card>
-      </>
-    );
+    return <DraftUnavailable message="草案数据无法解析，请返回重新生成。" />;
   }
 
   if (!parsed.draft || typeof parsed.draft !== "object") {
-    return (
-      <>
-        <PageHeader eyebrow="REVIEW DRAFT" title="确认主题画像">
-          <Button asChild size="sm" variant="ghost">
-            <Link href="/topics/new">
-              <ArrowLeft aria-hidden="true" size={14} />
-              <span>返回新建</span>
-            </Link>
-          </Button>
-        </PageHeader>
-        <Card className="topic-lab" variant="kinetic">
-          <div
-            style={{ position: "relative", zIndex: 1, padding: "24px 20px 20px" }}
-          >
-            <p className="text-muted-foreground">
-              草案数据不完整，请返回重新生成。
-            </p>
-          </div>
-        </Card>
-      </>
-    );
+    return <DraftUnavailable message="草案数据不完整，请返回重新生成。" />;
   }
 
   return (
@@ -100,5 +41,29 @@ export default async function TopicDraftPreviewPage() {
       initial={parsed.draft}
       description={parsed.description ?? ""}
     />
+  );
+}
+
+function DraftUnavailable({ message }: { message: string }) {
+  return (
+    <>
+      <PageHeader eyebrow="检查草案" title="确认主题画像">
+        <Button asChild size="sm" variant="ghost">
+          <Link href="/topics/new">
+            <ArrowLeft aria-hidden="true" size={14} />
+            <span>返回新建</span>
+          </Link>
+        </Button>
+      </PageHeader>
+      <Card variant="work">
+        <CardContent>
+          <EmptyState
+            description={message}
+            icon={<FileWarning aria-hidden="true" size={18} />}
+            title="草案不可用"
+          />
+        </CardContent>
+      </Card>
+    </>
   );
 }
