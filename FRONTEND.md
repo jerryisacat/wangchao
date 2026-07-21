@@ -232,6 +232,7 @@ App Shell 使用顶部导航（`components/layout/app-shell.tsx` + `top-nav.tsx`
 - 周期筛选：顶部 DAILY / WEEKLY / MONTHLY 周期 pill tabs（≥44px，`data-active` 标识当前项，URL 参数服务端筛选）。
 - 列表标题必须可进入简报详情；“阅读”是主要行动，“Markdown”是次级导出行动。周期、主题、覆盖日期、生成时间分层展示，不把它们压成同一行元数据。
 - 详情正文限制在约 72ch，以 16px / 1.75 行高呈现，标题、段落、列表、分隔线和外链具有稳定 editorial 层级；正文外链与“简报内情报”入口保留 ≥44px 触达高度。
+- `Card` 与正文容器必须保留 `min-w-0` 和长词换行；禁止只依赖根节点 `overflow-x: clip` 掩盖被长标题、URL 或 nowrap 控件撑宽的内部内容。
 - 浏览器显示层须把 `Matched topic keywords/entities/include scope` 等生成链路固定模板转换为简体中文；仅转换已知模板，不改写自由文本、原始存储或导出文件。
 - Obsidian-friendly 文件名：简报导出 `{date}-{period}-{slug}.md`（如 `2026-07-11-weekly-ai-infrastructure.md`）。
 - 主题批量导出：主题详情页“批量导出”下载 Top 100 事件为单个 Markdown（`{date}-batch-{slug}.md`）。

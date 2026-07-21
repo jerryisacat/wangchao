@@ -9,6 +9,7 @@
   - 简报详情建立 editorial 正文层级、72ch measure、16px / 1.75 行高和 44px 外链 / Event 入口；显示层本地化已知相关性解释模板，保持原始存储与导出不变并补安全 renderer fixture。
   - 信源治理与信源健康显示层统一解码常见 HTML 实体后交给 React 转义；页面头动作允许自然换行，主题编辑页 eyebrow 改为简体中文且表单回归稳定的 `work` Card。
   - 响应式 smoke 改用稳定 href 发现 Event / Topic / Briefing / Report 详情并纳入 history、reports、pricing、usage、topic timeline，避免视觉迁移后深层页面漏测。
+  - Railway 首轮复查发现长简报会把 Card 内部撑到 518px、再被根节点 `clip` 掩盖；Card 原语补 `min-w-0`，正文补长词 / URL 换行，并给 smoke 新增内部 `scrollWidth > clientWidth` 裁切检测。
   - `FRONTEND.md` 与 `docs/L3-modules.md` 固化详情页阅读宽度、动作层级、触达尺寸、实体解码和动态路由回归要求。
 - Files: `apps/web/src/app/{events/[eventId],briefings/[briefingId],sources,topics/[topicId],topics/[topicId]/edit}/page.tsx`、`apps/web/src/components/{common/page-header,intelligence/topic-dashboard-view,intelligence/trend-chart}.tsx`、`apps/web/src/lib/{briefing-markdown,event-display}.ts`、`apps/web/scripts/briefing-detail.fixture.mjs`、`tests/smoke/responsive.spec.ts`、`FRONTEND.md`、`docs/L3-modules.md`。
 - Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过；本地 production server 的 320 / 375 / 414 / 768 / 1024 / 1440px 响应式矩阵通过（1 passed）。本地未配置 `DATABASE_URL`，真实数据详情页在 Railway 部署后补全矩阵与实图复查。

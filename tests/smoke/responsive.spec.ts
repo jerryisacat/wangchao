@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 interface ViewportAuditResult {
+  clippedContainers: Array<{ className: string; clientWidth: number; scrollWidth: number; tag: string }>;
   documentWidth: number;
   overflow: Array<{ className: string; label: string; right: number; tag: string }>;
   smallControls: Array<{ height: number; label: string; tag: string; width: number }>;
@@ -137,8 +138,21 @@ test("all app pages stay in frame with touch-sized, readable controls", async ({
             (result): result is { label: string; ratio: number } =>
               result !== null && result.ratio < 4.5,
           );
+        const clippedContainers = Array.from(
+          document.querySelectorAll('main, [data-slot="card"], [data-slot="card-content"]'),
+        )
+          .filter(isVisible)
+          .filter((element) => element.scrollWidth > element.clientWidth + 1)
+          .slice(0, 12)
+          .map((element) => ({
+            className: element.className,
+            clientWidth: element.clientWidth,
+            scrollWidth: element.scrollWidth,
+            tag: element.tagName,
+          }));
 
         return {
+          clippedContainers,
           documentWidth: Math.max(
             document.documentElement.scrollWidth,
             document.body.scrollWidth,
@@ -157,6 +171,10 @@ test("all app pages stay in frame with touch-sized, readable controls", async ({
       expect(
         audit.overflow,
         `${path} should not contain off-frame elements at ${viewport.width}px`,
+      ).toEqual([]);
+      expect(
+        audit.clippedContainers,
+        `${path} should not hide over-wide content at ${viewport.width}px`,
       ).toEqual([]);
       expect(
         audit.smallControls,

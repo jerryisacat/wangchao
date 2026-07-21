@@ -352,7 +352,7 @@ apps/web/src/
 │   │   └── page-header.tsx           # 页面标题 + eyebrow + meta
 │   └── ui/                           # shadcn/Radix/Tailwind v4 组件
 │       ├── button.tsx                # Button (primary/secondary/ghost/danger + asChild)
-│       ├── card.tsx                  # Card (work/kinetic variant)
+│       ├── card.tsx                  # Card (work/kinetic variant；min-w-0 防长内容撑宽)
 │       ├── badge.tsx                 # Badge (default/muted/success/warning/danger/accent)
 │       ├── tabs.tsx                  # Tabs 基于 Radix，完整键盘导航和 ARIA
 │       ├── input.tsx                 # Input（React.forwardRef，支持 ref 转发）
@@ -420,7 +420,7 @@ apps/web/src/
 | `apps/web/src/app/exports/briefings/[briefingId]/route.ts` | 简报 Markdown 下载 route。 |
 | `apps/web/src/app/exports/events/[eventId]/route.ts` | 单条情报 Markdown 下载 route。 |
 | `apps/web/src/app/globals.css` | 全局 MD3 token、兼容布局样式、motion/reduced-motion、焦点状态、safe-area padding 和响应式规则；颜色与字体语义以 `FRONTEND.md` 为准，根节点使用 `overflow-x: clip` 保留 sticky 并阻止页面横向滚动。 |
-| `tests/smoke/responsive.spec.ts` | 全站响应式回归：自动发现 Event / Topic / Briefing / Report 动态详情路由，逐页验证 320/375/414/768/1024/1440px 无横向滚动/超框，主要控件不少于 44px，主按钮对比度不少于 4.5:1。 |
+| `tests/smoke/responsive.spec.ts` | 全站响应式回归：自动发现 Event / Topic / Briefing / Report 动态详情路由，逐页验证 320/375/414/768/1024/1440px 无横向滚动、超框或被 clip 掩盖的内部撑宽，主要控件不少于 44px，主按钮对比度不少于 4.5:1。 |
 | `tests/smoke/auth.spec.ts` | 条件性 auth E2E：注册/自动登录、reload session 恢复、登出/重登录、OWNER Membership 和两用户 Organization 隔离，并自动清理 fixture。统一受保护路由门属于 #166，当前对应用例明确 `fixme`，Task 1.3 完成时解除。 |
 | `FRONTEND.md` | `apps/web` 前端设计规范，定义 Material You（MD3）风格、token、组件变体、页面组合、动效、响应式和可访问性边界。 |
 
