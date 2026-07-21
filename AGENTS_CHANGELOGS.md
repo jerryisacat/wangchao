@@ -7,9 +7,10 @@
   - 全局 token 恢复为 `FRONTEND.md` 指定的 MD3 tonal 调色板与 Roboto/Geist Mono 字体角色，根节点改用 `overflow-x: clip`，同步修复亮色模式下旧状态链接的对比度。
   - 顶部导航收束为 4 个日常阅读入口、`新增主题` 主行动、`更多` 分组菜单；保留工作区切换、角色门禁与登录前极简品牌头，移动端工作区入口收成 44px 图标触点以规避长名称挤压。
   - 情报卡片移动端采用 2 列动作并让原文入口占满末行，桌面改为 5 列；归档动作回归 Button 原语，来源与标题触达高度补足 44px。
+  - Railway 部署后复查发现 `更多` 菜单项仅 40px 高，统一补足为 44px 移动触达目标。
   - 移除按钮、Tabs、简报筛选和 meter 的 `transition-all`，避免焦点环与布局宽度被隐式动画。
   - `CODEGUIDE.md`、`docs/L3-modules.md` 统一为 Material You（MD3）实现口径。
-- Files: `apps/web/src/app/globals.css`、`apps/web/src/components/layout/{top-nav,workspace-switcher}.tsx`、`apps/web/src/components/intelligence/intelligence-card.tsx`、`apps/web/src/components/ui/{button,tabs}.tsx`、`apps/web/src/app/{briefings,preferences,sources,usage}/page.tsx`、`CODEGUIDE.md`、`docs/L3-modules.md`。
+- Files: `apps/web/src/app/globals.css`、`apps/web/src/components/layout/{top-nav,workspace-switcher}.tsx`、`apps/web/src/components/intelligence/intelligence-card.tsx`、`apps/web/src/components/ui/{button,dropdown-menu,tabs}.tsx`、`apps/web/src/app/{briefings,preferences,sources,usage}/page.tsx`、`CODEGUIDE.md`、`docs/L3-modules.md`。
 - Verification: Railway 生产首页与信源页完成 1440px / 375px 基线检查；本地壳层在 320 / 375 / 414 / 768 / 1024 / 1440px 均无页面横向滚动、导航文字换行或小于 44px 的可见触达目标；`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build`、`git diff --check` 通过（构建仅保留既有 PDF NFT tracing warnings）。
 - Notes / Risk: 本地未配置 `DATABASE_URL`，数据页本地视觉复查覆盖壳层、错误态与菜单，真实情报内容以 Railway 生产基线为准；`globals.css` 仍保留 #190 合并带回的部分 legacy bespoke 类，后续轮次需按页面逐步下沉到 MD3 原语，避免一次性删除影响新功能页面。
 
