@@ -13,7 +13,7 @@
   - Railway 二轮定点复查发现 RSS 实际使用零填充 `&#039;`；展示层补齐常见命名、零填充十进制与十六进制实体解码，并加入 fixture 锁定。
   - `FRONTEND.md` 与 `docs/L3-modules.md` 固化详情页阅读宽度、动作层级、触达尺寸、实体解码和动态路由回归要求。
 - Files: `apps/web/src/app/{events/[eventId],briefings/[briefingId],sources,topics/[topicId],topics/[topicId]/edit}/page.tsx`、`apps/web/src/components/{common/page-header,intelligence/topic-dashboard-view,intelligence/trend-chart,ui/card}.tsx`、`apps/web/src/lib/{briefing-markdown,display-text,event-display}.ts`、`apps/web/scripts/{briefing-detail,summary-status}.fixture.mjs`、`tests/smoke/responsive.spec.ts`、`CODEGUIDE.md`、`FRONTEND.md`、`docs/L3-modules.md`。
-- Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过；本地 production server 的 320 / 375 / 414 / 768 / 1024 / 1440px 响应式矩阵通过（1 passed）。本地未配置 `DATABASE_URL`，真实数据详情页在 Railway 部署后补全矩阵与实图复查。
+- Verification: `pnpm lint`、`pnpm typecheck`、`pnpm test`、`pnpm build`、`git diff --check` 通过；本地 production server 与 Railway 最终版本的 320 / 375 / 414 / 768 / 1024 / 1440px 动态路由响应式矩阵均通过（各 1 passed）。Railway 375px 定点复查确认：主题趋势 tabs 与最近简报入口均 44px、情报类别已人类化且动作分组完整、长简报 Card / CardContent 无内部撑宽或屏外内容、简报解释无 `Matched topic`、信源页 `&#039;` 计数从 4 归零并正确显示 `What's new`。
 - Notes / Risk: 仅调整浏览器显示层、布局和测试发现器，不改变查询、Server Action、权限、数据库、Worker、原始简报或导出内容；HTML 实体解码后仍由 React 安全转义，Markdown renderer 保持先 escape 再白名单渲染的安全边界。
 
 ### Fix: 第二轮视觉检查收束二级页面层级与可读性
