@@ -46,7 +46,7 @@ export default async function SourcesPage({ searchParams }: SourcesPageProps) {
     <>
       <PageHeader eyebrow="信源治理" title="信源管理">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/">← 返回情报流</Link>
+          <Link href="/app">← 返回情报流</Link>
         </Button>
       </PageHeader>
 

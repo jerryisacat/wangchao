@@ -13,9 +13,10 @@ import { authClient } from "@/lib/auth-client";
 
 interface RegisterFormProps {
   authEnabled: boolean;
+  returnPath: string;
 }
 
-export function RegisterForm({ authEnabled }: RegisterFormProps) {
+export function RegisterForm({ authEnabled, returnPath }: RegisterFormProps) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -38,7 +39,7 @@ export function RegisterForm({ authEnabled }: RegisterFormProps) {
         return;
       }
 
-      router.push("/");
+      router.push(returnPath);
       router.refresh();
     } catch {
       setError("暂时无法连接认证服务，请稍后重试。");
@@ -52,7 +53,9 @@ export function RegisterForm({ authEnabled }: RegisterFormProps) {
       footer={
         authEnabled ? (
           <Button asChild className="w-full" variant="ghost">
-            <Link href="/login">已有账号？立即登录</Link>
+            <Link href={`/login?next=${encodeURIComponent(returnPath)}`}>
+              已有账号？立即登录
+            </Link>
           </Button>
         ) : (
           <p className="text-center text-sm leading-relaxed text-muted-foreground">

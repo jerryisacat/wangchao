@@ -4,6 +4,14 @@
 
 ## 2026-07-22
 
+### 公开品牌落地页与 `/app` 工作台分离
+
+- Phase: Issues #191-#195 公开获客入口、路由迁移与发布验收。
+- Scope: `/` 改为无需登录的编辑式品牌落地页，原未读情报流迁移至 `/app`；新增 Marketing/Auth/Product 三类 Shell、静态潮汐演示、匿名安全定价、认证回跳与旧查询迁移，并以本地 Geist 字体移除 production build 的 Google Fonts 网络依赖。独立审计后补齐情报卡、手动抓取、主题创建和工作区切换的 `/app` 回跳，保留当前筛选查询；公开无 Session Cookie 请求在加载 Auth/Prisma 前短路。
+- Alignment: Hero 匿名零 API/AI/数据库调用；桌面约 11.5 秒、移动约 9 秒，支持入视口播放一次、页面隐藏暂停、重播、reduced-motion 终态与无 JavaScript fallback；登录/注册默认安全回到 `/app`。
+- Verification: Prisma generate、全仓 lint/typecheck/test/build、`git diff --check` 与 production Playwright 全部通过；Playwright 覆盖 320/375/414/768/1024/1440、真实移动时间轴、legacy 307、安全响应头、无 JavaScript、SEO metadata、零 Product RSC 预取与匿名 pricing。Lighthouse production desktop 为 99/100/100/100，mobile 模拟为 84/100/100/100；两者 CLS 均为 0。仅保留既有 PDF NFT tracing warnings。
+- Follow-up: 当前环境为 self-hosted 免认证模式，正式 Better Auth + PostgreSQL 的 `/app` 浏览器回跳由既有认证 E2E 和新增纯策略 fixture 覆盖；商业部署发布时应在有库环境重跑认证 E2E。
+
 ### Railway 对客认证部署模式
 
 - Phase: 商用部署安全边界切换。

@@ -14,6 +14,7 @@ import {
   ACTIVE_WORKSPACE_COOKIE,
   ACTIVE_WORKSPACE_MAX_AGE,
 } from "@/lib/workspace-switch";
+import { APP_HOME_PATH } from "@/lib/web-routes";
 
 /**
  * Issue #155 — 切换 active workspace。
@@ -71,5 +72,5 @@ export async function setActiveWorkspaceAction(formData: FormData): Promise<void
   }
 
   revalidatePath("/", "layout");
-  redirect(actionRedirectHref("/", type, message));
+  redirect(actionRedirectHref(APP_HOME_PATH, type, message));
 }

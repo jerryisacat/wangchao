@@ -57,6 +57,7 @@ export function TopicDashboardView({
                 event={event}
                 eventStateAction={eventStateAction}
                 key={event.eventId}
+                returnTo={`/topics/${dashboard.topic.id}`}
               />
             ))}
           </div>
@@ -81,6 +82,7 @@ export function TopicDashboardView({
                 event={event}
                 eventStateAction={eventStateAction}
                 key={event.eventId}
+                returnTo={`/topics/${dashboard.topic.id}`}
               />
             ))}
           </div>

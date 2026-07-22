@@ -71,5 +71,5 @@ function buildTopicHref(input: {
   }
 
   const query = params.toString();
-  return query ? `/?${query}` : "/";
+  return query ? `/app?${query}` : "/app";
 }

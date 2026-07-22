@@ -50,7 +50,7 @@ export default async function TopicsPage({ searchParams }: TopicsPageProps) {
     <>
       <PageHeader eyebrow="主题" title="主题管理">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/">← 返回情报流</Link>
+          <Link href="/app">← 返回情报流</Link>
         </Button>
         <Button asChild size="sm" variant="primary">
           <Link href="/topics/new">

@@ -13,7 +13,7 @@ export default function NewTopicPage() {
     <>
       <PageHeader eyebrow="TRACK WHAT MATTERS" title="新建观察主题">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/">← 返回情报流</Link>
+          <Link href="/app">← 返回情报流</Link>
         </Button>
       </PageHeader>
 

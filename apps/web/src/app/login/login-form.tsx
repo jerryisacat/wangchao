@@ -59,7 +59,9 @@ export function LoginForm({
       footer={
         authEnabled ? (
           <Button asChild className="w-full" variant="ghost">
-            <Link href="/register">还没有账号？立即注册</Link>
+            <Link href={`/register?next=${encodeURIComponent(returnPath)}`}>
+              还没有账号？立即注册
+            </Link>
           </Button>
         ) : (
           <p className="text-center text-sm leading-relaxed text-muted-foreground">

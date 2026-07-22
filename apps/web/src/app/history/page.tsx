@@ -47,7 +47,7 @@ export default async function HistoryPage({ searchParams }: HistoryPageProps) {
     <>
       <PageHeader eyebrow="历史" title="阅读历史与归档">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/">← 返回情报流</Link>
+          <Link href="/app">← 返回情报流</Link>
         </Button>
       </PageHeader>
 

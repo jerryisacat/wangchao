@@ -33,7 +33,7 @@ export default function Error({
           重试
         </Button>
         <Button asChild variant="ghost">
-          <Link href="/">
+          <Link href="/app">
             <Home aria-hidden="true" size={16} />
             返回未读情报
           </Link>

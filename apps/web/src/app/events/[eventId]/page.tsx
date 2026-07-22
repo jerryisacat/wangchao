@@ -74,7 +74,7 @@ export default async function EventDetailPage({
         title="情报详情"
       >
         <Button asChild size="sm" variant="ghost">
-          <Link href="/">
+          <Link href="/app">
             <ArrowLeft aria-hidden="true" size={14} />
             返回情报流
           </Link>

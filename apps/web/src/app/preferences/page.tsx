@@ -20,7 +20,7 @@ export default async function PreferencesPage() {
     <>
       <PageHeader eyebrow="学习记录" title="偏好记忆">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/">← 返回情报流</Link>
+          <Link href="/app">← 返回情报流</Link>
         </Button>
       </PageHeader>
 

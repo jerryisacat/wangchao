@@ -28,7 +28,7 @@ export default async function BriefingsPage({ searchParams }: BriefingsPageProps
     <>
       <PageHeader eyebrow="简报中心" title="情报简报">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/">
+          <Link href="/app">
             <ArrowLeft aria-hidden="true" size={14} />
             返回情报流
           </Link>

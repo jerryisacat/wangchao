@@ -9,6 +9,7 @@ function assert(condition, message) {
 }
 
 for (const path of [
+  "/",
   "/login",
   "/login/",
   "/register",
@@ -22,7 +23,7 @@ for (const path of [
   assert(isPublicAuthPath(path), `${path} must remain public.`);
 }
 
-for (const path of ["/", "/sources", "/admin/settings", "/api/billing/stripe/checkout"]) {
+for (const path of ["/app", "/sources", "/admin/settings", "/api/billing/stripe/checkout"]) {
   assert(!isPublicAuthPath(path), `${path} must require authentication.`);
 }
 
@@ -30,11 +31,11 @@ assert(
   normalizeAuthReturnPath("/sources?status=ACTIVE") === "/sources?status=ACTIVE",
   "Internal path and query must be preserved.",
 );
-assert(normalizeAuthReturnPath("https://evil.example") === "/", "Absolute URL must be rejected.");
-assert(normalizeAuthReturnPath("//evil.example") === "/", "Protocol-relative URL must be rejected.");
-assert(normalizeAuthReturnPath("/\\evil.example") === "/", "Backslash URL must be rejected.");
-assert(normalizeAuthReturnPath("/safe\nheader") === "/", "Control characters must be rejected.");
-assert(normalizeAuthReturnPath(null) === "/", "Missing return path must use root fallback.");
+assert(normalizeAuthReturnPath("https://evil.example") === "/app", "Absolute URL must be rejected.");
+assert(normalizeAuthReturnPath("//evil.example") === "/app", "Protocol-relative URL must be rejected.");
+assert(normalizeAuthReturnPath("/\\evil.example") === "/app", "Backslash URL must be rejected.");
+assert(normalizeAuthReturnPath("/safe\nheader") === "/app", "Control characters must be rejected.");
+assert(normalizeAuthReturnPath(null) === "/app", "Missing return path must use app fallback.");
 assert(
   buildLoginPath("/sources?status=ACTIVE") ===
     "/login?next=%2Fsources%3Fstatus%3DACTIVE",

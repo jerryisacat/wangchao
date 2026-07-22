@@ -5,12 +5,16 @@ import { useTransition } from "react";
 import { runFetchCycleAction } from "@/app/actions";
 import { Button } from "@/components/ui/button";
 
-export function FetchRefreshButton() {
+interface FetchRefreshButtonProps {
+  returnTo: string;
+}
+
+export function FetchRefreshButton({ returnTo }: FetchRefreshButtonProps) {
   const [isPending, startTransition] = useTransition();
 
   function handleRefresh() {
     startTransition(async () => {
-      await runFetchCycleAction();
+      await runFetchCycleAction(returnTo);
     });
   }
 

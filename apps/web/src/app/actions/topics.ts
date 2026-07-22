@@ -20,6 +20,7 @@ import {
   withTimeout,
 } from "./_shared";
 import { readPositiveIntegerEnv } from "@wangchao/core";
+import { APP_HOME_PATH, normalizeProductReturnPath } from "@/lib/web-routes";
 
 export async function createTopicAction(formData: FormData): Promise<void> {
   let message = "主题已创建。";
@@ -37,7 +38,7 @@ export async function createTopicAction(formData: FormData): Promise<void> {
     type = "error";
   }
 
-  revalidatePath("/");
+  revalidatePath(APP_HOME_PATH);
   revalidatePath("/sources");
   redirect(actionRedirectHref("/sources", type, message));
 }
@@ -204,8 +205,8 @@ export async function createTopicWithSourceAction(
     type = "error";
   }
 
-  revalidatePath("/");
-  redirect(actionRedirectHref("/", type, message));
+  revalidatePath(APP_HOME_PATH);
+  redirect(actionRedirectHref(APP_HOME_PATH, type, message));
 }
 
 async function createTopicWithSource(formData: FormData) {
@@ -314,9 +315,10 @@ export async function updateTopicAction(formData: FormData): Promise<void> {
   let message = "主题已更新。";
   let type: ActionRedirectType = "notice";
   const topicId = readOptionalField(formData, "topicId");
-  const returnTo =
-    readSafeReturnPath(formData, "returnTo") ??
-    (topicId ? `/topics/${topicId}` : "/topics");
+  const returnTo = normalizeProductReturnPath(
+    readSafeReturnPath(formData, "returnTo"),
+    topicId ? `/topics/${topicId}` : "/topics",
+  );
 
   try {
     if (!topicId) {
@@ -333,7 +335,7 @@ export async function updateTopicAction(formData: FormData): Promise<void> {
   if (topicId) {
     revalidatePath(`/topics/${topicId}`);
   }
-  revalidatePath("/");
+  revalidatePath(APP_HOME_PATH);
   redirect(actionRedirectHref(returnTo, type, message));
 }
 
@@ -454,7 +456,7 @@ export async function updateTopicStatusAction(
 
   revalidatePath("/topics");
   revalidatePath(`/topics/${topicId}`);
-  revalidatePath("/");
+  revalidatePath(APP_HOME_PATH);
   redirect(actionRedirectHref(`/topics/${topicId}`, type, message));
 }
 
@@ -541,7 +543,7 @@ export async function deleteTopicAction(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/topics");
-  revalidatePath("/");
+  revalidatePath(APP_HOME_PATH);
   redirect(actionRedirectHref("/topics", type, message));
 }
 
@@ -681,7 +683,7 @@ export async function confirmCreateTopicAction(formData: FormData): Promise<void
   const cookieStore = await cookies();
   cookieStore.delete(TOPIC_DRAFT_COOKIE);
 
-  revalidatePath("/");
+  revalidatePath(APP_HOME_PATH);
   revalidatePath("/sources");
   redirect(actionRedirectHref("/sources", type, message));
 }

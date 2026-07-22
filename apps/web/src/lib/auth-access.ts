@@ -1,6 +1,9 @@
 const INTERNAL_ORIGIN = "http://wangchao.internal";
+const BETTER_AUTH_SESSION_COOKIE =
+  /(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=[^;]+/;
 export const UNAUTHENTICATED_ERROR = "UNAUTHENTICATED";
 const PUBLIC_EXACT_PATHS = new Set([
+  "/",
   "/login",
   "/register",
   "/pricing",
@@ -18,9 +21,21 @@ export function isPublicAuthPath(pathname: string): boolean {
   );
 }
 
+export function hasBetterAuthSessionCookie(cookieHeader: string | null): boolean {
+  return typeof cookieHeader === "string" && BETTER_AUTH_SESSION_COOKIE.test(cookieHeader);
+}
+
+export async function resolveBetterAuthSessionCandidate<T>(
+  cookieHeader: string | null,
+  loadSession: () => Promise<T>,
+): Promise<T | null> {
+  if (!hasBetterAuthSessionCookie(cookieHeader)) return null;
+  return loadSession();
+}
+
 export function normalizeAuthReturnPath(
   value: string | null | undefined,
-  fallback = "/",
+  fallback = "/app",
 ): string {
   if (!value || !value.startsWith("/") || value.startsWith("//")) return fallback;
   if (value.includes("\\") || /[\u0000-\u001f\u007f]/.test(value)) return fallback;

@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 import type { UserMembershipSummary } from "@wangchao/db";
 
 const readingLinks = [
-  { href: "/", label: "未读情报" },
+  { href: "/app", label: "未读情报" },
   { href: "/briefings", label: "简报" },
   { href: "/reports", label: "报告" },
   { href: "/saved", label: "已保存" },
@@ -79,9 +79,9 @@ export function TopNav({
 
   const brand = (
     <Link
-      aria-label="望潮首页"
+      aria-label="望潮工作台首页"
       className="flex min-h-11 shrink-0 items-center gap-2.5 text-foreground"
-      href="/"
+      href="/app"
     >
       <span className="grid size-9 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm">
         <Sparkles aria-hidden="true" size={18} />
@@ -126,8 +126,8 @@ export function TopNav({
         >
           {readingLinks.map((link) => {
             const isActive =
-              link.href === "/"
-                ? pathname === "/"
+              link.href === "/app"
+                ? pathname === "/app"
                 : pathname.startsWith(link.href);
 
             return (

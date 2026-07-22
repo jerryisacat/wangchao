@@ -4,6 +4,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { buildContentSecurityPolicy } from "@/lib/content-security-policy";
 import { buildLoginPath, isApiPath, isPublicAuthPath } from "@/lib/auth-access";
 import { isAuthEnabled } from "@/lib/auth";
+import {
+  buildLegacyDashboardRedirect,
+  REQUEST_PATHNAME_HEADER,
+} from "@/lib/web-routes";
 import { evaluateAccountGate, shouldRevokeSessions } from "@/lib/account-gate";
 
 const isDev = process.env.NODE_ENV === "development";
@@ -11,11 +15,29 @@ const isDev = process.env.NODE_ENV === "development";
 export async function proxy(request: NextRequest) {
   const nonce = isDev ? null : Buffer.from(randomUUID(), "utf8").toString("base64");
   const contentSecurityPolicy = nonce ? buildContentSecurityPolicy(nonce) : null;
-  const gatedResponse = await createAuthGateResponse(request);
-  const response = gatedResponse ?? createNextResponse(request, nonce, contentSecurityPolicy);
+  const legacyRedirect = createLegacyDashboardRedirect(request);
+  const gatedResponse = legacyRedirect ? null : await createAuthGateResponse(request);
+  const response =
+    legacyRedirect ?? gatedResponse ?? createNextResponse(request, nonce, contentSecurityPolicy);
 
   applySecurityHeaders(response, contentSecurityPolicy);
   return response;
+}
+
+function createLegacyDashboardRedirect(request: NextRequest): NextResponse | null {
+  if (request.nextUrl.pathname !== "/") return null;
+
+  const params: Record<string, string | string[] | undefined> = {};
+  for (const key of ["q", "topic", "view"] as const) {
+    const values = request.nextUrl.searchParams.getAll(key);
+    if (values.length === 1) params[key] = values[0];
+    if (values.length > 1) params[key] = values;
+  }
+
+  const destination = buildLegacyDashboardRedirect(params);
+  return destination
+    ? NextResponse.redirect(new URL(destination, request.url))
+    : null;
 }
 
 async function createAuthGateResponse(request: NextRequest): Promise<NextResponse | null> {
@@ -124,11 +146,14 @@ function createNextResponse(
   nonce: string | null,
   contentSecurityPolicy: string | null,
 ): NextResponse {
-  if (!nonce || !contentSecurityPolicy) return NextResponse.next();
-
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-nonce", nonce);
-  requestHeaders.set("Content-Security-Policy", contentSecurityPolicy);
+  requestHeaders.set(REQUEST_PATHNAME_HEADER, request.nextUrl.pathname);
+
+  if (nonce && contentSecurityPolicy) {
+    requestHeaders.set("x-nonce", nonce);
+    requestHeaders.set("Content-Security-Policy", contentSecurityPolicy);
+  }
+
   return NextResponse.next({ request: { headers: requestHeaders } });
 }
 

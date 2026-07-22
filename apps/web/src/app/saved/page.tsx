@@ -33,7 +33,7 @@ export default async function SavedPage({ searchParams }: SavedPageProps) {
     <>
       <PageHeader eyebrow="已收藏" title="已保存情报">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/">
+          <Link href="/app">
             <ArrowLeft aria-hidden="true" size={14} />
             返回情报流
           </Link>
