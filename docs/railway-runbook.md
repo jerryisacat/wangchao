@@ -284,8 +284,8 @@ App 回滚不需要 DB migration 回滚，前提是 **migrations 保持 forward-
 | 失败阶段 | 表现 | 处理 |
 |---|---|---|
 | Build failed | Railway deployment 卡在 build 步骤 | 查看 build logs；通常是 TS 编译错误或依赖缺失 |
-| Predeploy failed | `pnpm db:wait && pnpm db:deploy && pnpm db:seed` 失败 | 确认 Postgres service 正常；确认 migration 无冲突 |
-| Healthcheck failed | `healthcheckPath: /api/health` 超时或返回 503 | 确认 Next.js 已启动；确认 DB 连接 |
+| Predeploy failed | `pnpm railway:web:predeploy` 失败 | 先检查 commercial mode/secret/HTTPS URL，再确认 Postgres 与 migration |
+| Healthcheck failed | `healthcheckPath: /api/health` 超时或返回 503 | 确认 Next.js、DB 与 `checks.authentication` 均正常 |
 | Runtime crashed | 进程启动后立即退出 | 查看 Railway logs；确认 `dist/` 输出完整 |
 | DB unavailable | Prisma connection error | 确认 Railway Postgres service 运行中；确认 `DATABASE_URL` 正确 |
 
@@ -346,7 +346,7 @@ Railway managed Postgres 提供内置备份能力。当前策略：
 | Variable | Web | Queue Worker | Worker Cron | Discovery | Instant Push | Report | Source |
 |---|---|---|---|---|---|---|---|
 | `DATABASE_URL` | ✅ ref | ✅ ref | ✅ ref | ✅ ref | ✅ ref | ✅ ref | Railway Postgres |
-| 默认组织/用户变量 | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 手动设置 |
+| 默认组织/用户变量 | self-hosted | self-hosted | self-hosted | self-hosted | self-hosted | self-hosted | 商用不作为客户身份 |
 | `ENCRYPTION_KEY` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 手动设置 |
 | `WANGCHAO_QUEUE_*` | — | 可选 | — | — | — | — | 有安全默认值 |
 | AI provider fallback | — | ✅ | ✅ | 可选 | — | ✅ | Admin 后台优先 |
@@ -356,6 +356,8 @@ Railway managed Postgres 提供内置备份能力。当前策略：
 | Telegram fallback | — | — | ✅ | — | ✅ | — | Admin 后台优先 |
 | `WANGCHAO_DB_WAIT_*` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 有安全默认值 |
 | Seed / topic-create variables | ✅ | — | — | — | — | — | 首次部署 / 可选 |
+| `WANGCHAO_DEPLOYMENT_MODE` | ✅ | — | — | — | — | — | 对客设为 `commercial` |
+| `BETTER_AUTH_SECRET` / `BETTER_AUTH_URL` | ✅ | — | — | — | — | — | 商用必需；Railway Secret + HTTPS origin |
 | `PORT` | Railway 注入 | — | — | — | — | — | Railway |
 
 `WANGCHAO_RAILWAY_ROLE` 仅用于 root `railway.json` 的本地 `railway up` fallback；GitHub service-level config 不需要设置。
@@ -379,6 +381,7 @@ Railway managed Postgres 提供内置备份能力。当前策略：
   - Source Discovery 不需要 `AI_API_KEY`（source recommendation 使用 `AI_MODEL_L1`，由 Admin 后台或 fallback env 提供）。
 - **Admin 后台是 secret 主配置入口**：API Key 通过 `/admin/settings` 配置，AES-256-GCM 加密存储。环境变量仅作为 DB 未配置时的 fallback。
 - **变量变更会触发 redeploy**：Railway 中修改变量会自动触发该 service 重新部署。
+- **商用切换必须原子配置**：在 Web service 同一次变量变更中设置 mode、secret、URL；predeploy 会在 migration 前校验，失败部署不可切流。商用 smoke 必须确认 health 的 `database/authentication` 均为 `ok`、匿名首页 307 登录跳转及注册后的独立 OWNER 工作区。
 
 ### 5.4 生产变量审计 Checklist
 

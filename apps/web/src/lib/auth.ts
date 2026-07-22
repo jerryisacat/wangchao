@@ -1,14 +1,22 @@
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { nextCookies } from "better-auth/next-js";
+import {
+  assertDeploymentConfiguration,
+  getDeploymentConfiguration,
+} from "@/lib/deployment-mode";
 
 export function isAuthEnabled(): boolean {
-  return Boolean(process.env.BETTER_AUTH_SECRET);
+  return getDeploymentConfiguration().authEnabled;
 }
 
 let authPromise: ReturnType<typeof createAuth> | null = null;
 
 async function createAuth() {
+  assertDeploymentConfiguration();
+  if (!process.env.BETTER_AUTH_SECRET) {
+    throw new Error("AUTH_SECRET_MISSING");
+  }
   const { getPrismaClient } = await import("@wangchao/db");
   return betterAuth({
     appName: "望潮 Wangchao",

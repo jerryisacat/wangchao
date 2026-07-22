@@ -1,6 +1,9 @@
+import { getDeploymentConfiguration } from "@/lib/deployment-mode";
+
 export async function GET() {
   const generatedAt = new Date();
   const checks: Record<string, HealthCheck> = {
+    authentication: checkAuthentication(),
     database: await checkDatabase(),
   };
   const status = Object.values(checks).some((check) => check.status === "down")
@@ -18,6 +21,23 @@ export async function GET() {
       status: status === "ok" ? 200 : 503,
     },
   );
+}
+
+function checkAuthentication(): HealthCheck {
+  const configuration = getDeploymentConfiguration();
+  if (!configuration.ready) {
+    return {
+      message: "Commercial authentication is not configured safely.",
+      status: "down",
+    };
+  }
+  if (!configuration.authEnabled) {
+    return {
+      message: "Authentication is disabled in self-hosted mode.",
+      status: "skipped",
+    };
+  }
+  return { status: "ok" };
 }
 
 interface HealthCheck {

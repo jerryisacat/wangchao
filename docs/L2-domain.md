@@ -10,8 +10,8 @@
 
 | 模型 | 职责 |
 |------|------|
-| `User` | 人类账户。承载 Better Auth 1.6.23 core 字段（`email`、`name` NOT NULL、`emailVerified`、`image`）和用户生命周期状态（`accountStatus`、`suspendedAt`/`suspendedReason`/`suspendEndsAt`、`deletionRequestedAt`、`deletedAt`、`lastLoginAt`、`lastActivityAt`）。设置 `BETTER_AUTH_SECRET` 时使用真实注册/session；未设置时兼容默认用户。 |
-| `Organization` | 租户和计费边界。认证模式下，新用户首次进入工作台时获得确定性、独立的个人组织；兼容模式使用默认组织。 |
+| `User` | 人类账户。承载 Better Auth 1.6.23 core 字段（`email`、`name` NOT NULL、`emailVerified`、`image`）和用户生命周期状态（`accountStatus`、`suspendedAt`/`suspendedReason`/`suspendEndsAt`、`deletionRequestedAt`、`deletedAt`、`lastLoginAt`、`lastActivityAt`）。`commercial` 部署强制真实注册/session；`self-hosted` 可兼容默认用户。 |
+| `Organization` | 租户和计费边界。商用认证模式下，新用户首次进入工作台时获得确定性、独立的个人组织；免登录自托管模式使用默认组织。 |
 | `Membership` | User-to-Organization 角色映射（OWNER/ADMIN/MEMBER）。自动创建的个人工作区 Membership 为 OWNER；既有 Membership 优先复用。 |
 | `Subscription` | Organization 的 1:1 订阅与计费配置。仅承载 plan/status/isSelfHosted/Stripe/周期字段，不再存储凭证或即时推送开关。 |
 | `OrganizationCredential` | Organization 的凭证分区表。每行一类凭证（AI/SEARCH/BYOK/TELEGRAM/CCPAYMENT），通过 `credentialType` 分区。存储 AES-256-GCM 密文 + 脱敏 hint + provider/model/baseUrl/chatId/appId 等配置字段；Telegram 行同时承载即时推送开关和首次启用时间。`organizationId + credentialType` 唯一。 |
@@ -354,7 +354,7 @@ Source Observation 指标口径：
 - `duplicateRate`：Item 已为 `DUPLICATE`，或只以 SECONDARY 角色关联未归档事件的比例；用于兼容旧数据未回填状态的情况。
 - `eventCount`：上述关联中的未归档 event id 去重数量，不把归档的语义合并旧事件继续计入报告。
 | **Source Discovery** | 自动信源发现流程。三条渠道：`keyword-search`（Brave Search API + RSS 探测）、`backlink-from-highscore`（高分事件原文页反查）、`outlink-network`（active source 外链网络）。 |
-| **Tenant Scope** | 租户作用域。所有 tenant-owned 数据必须带 `organizationId`，user-specific state 必须带 `userId`。当前个人版使用默认 organization/user。 |
+| **Tenant Scope** | 租户作用域。所有 tenant-owned 数据必须带 `organizationId`，user-specific state 必须带 `userId`。self-hosted 兼容模式可使用默认身份；commercial 必须从真实 Session 解析用户与 Organization。 |
 | **Deterministic Fallback** | AI 调用失败或未配置时的可解释规则降级路径。source recommendation 在无 `AI_API_KEY`/`AI_BASE_URL` 时使用此路径。 |
 | **L1/L2 Staged Processing** | 阶段化情报处理。L1 = relevance/noise 过滤，L2 = event extraction/scoring/deduplication。源自旧 Python 原型，在 TypeScript 主路径中保留为可解释管线。 |
 | **Topic-scoped** | 主题作用域。所有 Topic/Source/Item/IntelligenceEvent 数据都归属到特定 `topicId`。 |

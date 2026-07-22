@@ -137,7 +137,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 - Topic/Source 写入必须先通过默认 organization/user 获取 `organizationId`/`userId`，再写入。
 - Topic mutation 的 Prisma `where` 必须同时包含 `topicId + organizationId`；不能只依赖 Server Action 先做 membership 检查。
 - `usage events` 记录 AI 调用、抓取、导出、简报生成等用量。
-- MVP 可以使用默认 user/organization，不阻塞核心体验；真实商业化前必须替换为正式 auth/session provider。
+- `WANGCHAO_DEPLOYMENT_MODE=self-hosted` 可使用默认 user/organization；`commercial` 必须使用正式 auth/session，配置缺失时 predeploy 与 health fail closed，不能回退到默认工作区。
 - Prisma schema 和 migrations 进入版本控制；不直接手改生产数据库。schema 变更必须包含 migration、测试、查询层更新和文档更新。
 
 ### L1.4 不可信输入处理
@@ -181,7 +181,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 - 不提交 `.env`、密钥、token、`data/*`、生成 JSON、`.venv`、本地缓存。
 - `.env_example` 只能放占位符。
 - 导出内容必须保留来源链接和生成时间。
-- 商业化阶段必须补 tenant isolation、权限测试、usage audit。
+- 商用模式必须启用 tenant isolation、权限测试、usage audit；当前 Better Auth Session、Organization/Membership scope 与多用户隔离 E2E 已作为上线门禁。
 - AI 凭证与搜索凭证相互独立：UI 通过独立表单实例各自管理状态，`upsertAiCredential` 和 `upsertSearchCredential` 分别操作 `Subscription` 表的不同字段，不互相阻断。删除某一类凭证不会影响另一类。
 - Next.js 16 proxy（`apps/web/src/proxy.ts`）同时承担 Web 认证门和安全响应头：认证启用时对受保护请求调用 Better Auth `getSession()` 验证数据库 Session，页面缺失/过期 Session 时 `307` 到 `/login?next=<站内路径>`，受保护 API/Server Action 返回稳定 `401 UNAUTHENTICATED`；认证基础设施异常返回 `503 AUTH_UNAVAILABLE`，不误报为登出。`/login`、`/register`、`/pricing`、auth/health 与签名 webhook 保持公开；`next` 必须通过 `auth-access.ts` 站内路径校验。认证关闭时完全保留 self-hosted 默认工作区兼容模式。所有 next/redirect/401/503 response 继续强制 HSTS、X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy；production CSP 使用每请求随机 nonce，根 layout 强制 request-time rendering；开发环境不启用 CSP，避免阻断 dev HMR。
 - 外部 URL 在 fetch 前必须经过 SSRF 防护（`packages/sources/src/ssrf.ts`）：私有 IP、loopback、cloud metadata 一律阻断。

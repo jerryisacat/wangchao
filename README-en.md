@@ -25,7 +25,7 @@ This repo may be useful if any of the following apply to you:
 - You want your read / save / dismiss / not-interested actions to train the system in return, instead of seeing the same low-value content every day.
 - You want to沉淀 important intelligence into Markdown / Obsidian, not just let it vanish in the daily feed.
 
-The current version is a **personal / single-user** edition. The primary deployment path is **GitHub auto-sync to Railway**: Railway hosts the Web service, a persistent Queue Worker, scheduled jobs, and managed Postgres. Multi-tenancy, team permissions, and payment systems are later phases and don't block the current experience.
+The current version has two explicit deployment modes: the open-source default **no-login self-hosted mode**, and an **authenticated hosted mode** for customers. Hosted mode uses Better Auth database sessions and provisions an isolated personal Organization for every registered user. Advanced team permissions and the complete billing lifecycle remain later phases.
 
 ## How sources enter the system
 
@@ -281,7 +281,7 @@ Development is organized by `AGENTS.md` and `REFACTOR_PLAN.md`. After each phase
 - Passes `pnpm db:generate`, `pnpm db:validate`, `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`, and `pnpm worker:health`.
 - Railway Web + Postgres production smoke tests have passed; GitHub integration is connected. Deployment target is GitHub auto-sync to Railway (Web + Queue Worker + scheduled jobs).
 - GitHub Actions CI is configured: push/PR to `master` triggers install → typecheck → lint → build → test → db:validate → http-smoke-check.
-- Designed for personal workspace use; default workspace identity is configured via environment variables.
+- `WANGCHAO_DEPLOYMENT_MODE=self-hosted` uses the default workspace; `commercial` requires login and tenant isolation and fails deployment closed when auth configuration is unsafe.
 - Worker handles fetching, analysis, briefing generation, topic report generation, and Telegram delivery; Railway Cron handles scheduled execution. Worker outputs structured JSON logs consumable by Railway logs.
 - The AI intelligence pipeline supports dual paths: LLM-first with rule fallback; `packages/ai` provides the OpenAI-compatible boundary, source recommendation has JSON parsing and fallback recommendations, semantic dedup uses an independent LLM prompt for event-pair semantic comparison.
 - Auto source discovery supports high-score link reverse lookup, outlink networks, and keyword search for RSS; Railway Source Discovery Cron can be triggered periodically via `pnpm worker:source-discovery`.

@@ -1059,7 +1059,7 @@ upsert PreferenceMemory
 - 系统可以统计每个 organization 的用量。
 - 商业化能力不破坏单用户本地使用体验。
 
-> 现状：商业化基础（`Subscription` / `OrganizationCredential` / `PaymentInvoice` / Better Auth）已落地（migration `0010_subscription_plan_auth`、`0012_instant_push`）。平台运营后台（#152-#159）尚未开始，按依赖分阶段推进：
+> 现状：商业化基础（`Subscription` / `OrganizationCredential` / `PaymentInvoice` / Better Auth）已落地（migration `0010_subscription_plan_auth`、`0012_instant_push`）。部署通过 `WANGCHAO_DEPLOYMENT_MODE=self-hosted|commercial` 显式区分：`commercial` 强制真实 Session 与独立 Organization，缺少强随机认证密钥或生产 HTTPS base URL 时 Web predeploy/health fail closed，且不再 seed 默认工作区；`self-hosted` 保留免登录兼容模式。平台运营后台（#152-#159）尚未完成，按依赖分阶段推进：
 
 ```text
 Phase 7a（P0）：#153 认证 Schema 与用户生命周期 + #154 平台 RBAC 与不可变审计 + #155 工作区/平台边界分离

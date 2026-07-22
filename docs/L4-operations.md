@@ -74,7 +74,7 @@ pnpm db:deploy
 说明：
 
 - 部署主路径是 **GitHub push/merge → Railway 自动构建和部署**，不需要手动运行上述脚本（除非使用 `railway up` 本地 fallback）。详细运维操作见 `docs/railway-runbook.md`。
-- `deploy/railway/web.railway.json` 使用 `pnpm railway:build` 执行完整 monorepo 构建，避免 Railway/Railpack 在 Web-only 构建时裁掉 `@wangchao/*` workspace 包；在 pre-deploy 阶段运行 `pnpm db:wait && pnpm db:deploy && pnpm db:seed`，先等待 Railway Postgres 私网端口可达，再执行 migration/seed，启动命令为 `pnpm railway:web:start`，健康检查路径为 `/api/health`。
+- `deploy/railway/web.railway.json` 使用 `pnpm railway:build` 执行完整 monorepo 构建，避免 Railway/Railpack 在 Web-only 构建时裁掉 `@wangchao/*` workspace 包；pre-deploy 运行 `pnpm railway:web:predeploy`，先校验部署模式，再等待 Postgres、执行 migration，并仅在 self-hosted 模式 seed；启动命令为 `pnpm railway:web:start`，健康检查路径为 `/api/health`。
 - `deploy/railway/worker-cron.railway.json` 使用 `pnpm railway:build` 执行完整 monorepo 构建，避免 worker runtime 缺少 `@wangchao/*/dist`；在 pre-deploy 阶段运行 `pnpm railway:worker:predeploy`（即 `pnpm db:wait && pnpm db:deploy`），确保数据库可达且 migration 已应用后再启动；按 `0 * * * *` UTC 每小时执行一次 `pnpm railway:worker:start`。
 - `deploy/railway/queue-worker.railway.json` 使用相同完整构建与 pre-deploy，但不配置 cron；`pnpm railway:queue-worker:start` 启动常驻 durable TaskRun consumer，进程异常由 Railway 重启，部署停止时在 draining window 内优雅退出。
 - `deploy/railway/source-discovery-cron.railway.json` 使用 `pnpm railway:build` 执行完整 monorepo 构建，避免 source discovery runtime 缺少 `@wangchao/*/dist`；在 pre-deploy 阶段同样运行 `pnpm railway:worker:predeploy`；按 `0 2 * * 1` UTC 每周执行一次 `pnpm --filter @wangchao/worker source-discovery`。
@@ -176,13 +176,16 @@ DATABASE_URL="postgresql://wangchao:wangchao@127.0.0.1:55433/wangchao?schema=pub
 
 ### 默认工作区
 
-- `WANGCHAO_DEFAULT_ORGANIZATION_SLUG`、`WANGCHAO_DEFAULT_ORGANIZATION_NAME`、`WANGCHAO_DEFAULT_USER_EMAIL`、`WANGCHAO_DEFAULT_USER_NAME` 是当前个人版默认工作区/用户配置；真实商业化前必须替换为正式 auth/session provider。
+- `WANGCHAO_DEPLOYMENT_MODE` 可取 `self-hosted`（默认）或 `commercial`。前者可使用默认工作区；后者禁止回退到默认身份，并在 Web predeploy 跳过 seed。
+- `WANGCHAO_DEFAULT_ORGANIZATION_SLUG`、`WANGCHAO_DEFAULT_ORGANIZATION_NAME`、`WANGCHAO_DEFAULT_USER_EMAIL`、`WANGCHAO_DEFAULT_USER_NAME` 只属于免登录自托管模式，不是商用用户初始化入口。
 
 ### Auth（Better Auth）
 
-- `BETTER_AUTH_SECRET` Required for auth。设置后激活 Better Auth（email/password + session）：`apps/web/src/proxy.ts` 在进入受保护页面/API/Server Action 前调用 Better Auth `getSession()` 验证数据库 Session，不能只凭 cookie 存在放行；页面无 Session/Session 过期时跳转 `/login?next=<原站内路径+query>`，API/Action 返回 `401 UNAUTHENTICATED`，认证依赖不可用返回 `503 AUTH_UNAVAILABLE`。未设置时 proxy 跳过认证门，`getSessionWorkspace()` fallback 到 `ensureDefaultWorkspace()`，使用默认 workspace/user，不要求登录。
-- `BETTER_AUTH_URL` Required for auth。Better Auth 的 base URL（如 `https://wangchao.jerryiscat.one`），用于 session callback URL 和邮件链接生成。
-- 当 `BETTER_AUTH_SECRET` 未设置时，`/login` 和 `/register` 页面不作为访问前置条件，应用直接使用默认 workspace，适合个人版和本地开发。发布前必须同时 smoke `/` 与 `/sources` 为 200，防止误把 self-hosted 模式锁在登录页外。
+- `BETTER_AUTH_SECRET` 在 `commercial` 中 Required，必须是至少 32 字符的强随机值（推荐 `openssl rand -hex 32`）；设置后激活 Better Auth（email/password + database session）。不得提交、打印或频繁轮换该值。
+- `BETTER_AUTH_URL` 在 `commercial` 中 Required。production 必须是无 path/query 的 HTTPS origin（如 `https://wangchao.jerryiscat.one`），用于 session callback URL 和邮件链接生成。
+- `apps/web/src/proxy.ts` 在进入受保护页面/API/Server Action 前调用 Better Auth `getSession()`；无 Session 页面跳转 `/login?next=<原站内路径+query>`，API/Action 返回 `401 UNAUTHENTICATED`，认证依赖不可用返回 `503 AUTH_UNAVAILABLE`。
+- `pnpm --filter @wangchao/web validate:deployment` 可在发布前验证 mode/secret/URL；Railway Web predeploy 已内置此门禁。`/api/health` 返回 `checks.authentication=down` 时为 503，不能继续切流。
+- 仅 `self-hosted` 且未配置 `BETTER_AUTH_SECRET` 时，`/login` 和 `/register` 不作为访问前置条件。商用发布必须 smoke 未登录 `/` 为 307、`/api/health` 的 database/authentication 均为 `ok`，再完成注册→独立 OWNER 工作区→登出→重登录闭环。
 - 公开路由为 `/login`、`/register`、`/pricing`、`/api/auth/*`、`/api/health` 和 CCPayment/Stripe 签名 webhook；checkout、管理页、导出和产品工作台均受保护。新增公开入口时必须显式评审 `auth-access.ts` allowlist，禁止宽泛放行 `/api/*`。
 - 登录 `next` 只接受站内绝对 path；绝对 URL、`//`、反斜杠和控制字符统一回退 `/`。不要在页面或 Action 中直接 `router.push(searchParams.get("next"))`。
 - production 请求由 `apps/web/src/proxy.ts` 生成随机 CSP nonce，并通过 request header 交给 Next.js 为 framework/React Flight 内联脚本加 nonce；redirect/401/503 同样保留 CSP 与全部安全响应头。根 layout 使用 request-time rendering，因为静态预渲染页面无法获得每请求 nonce。不要把 `script-src` 简化回只有 `'self'`，也不要以 `'unsafe-inline'` 作为长期修复。

@@ -158,6 +158,7 @@ App Shell 使用顶部导航（`components/layout/app-shell.tsx` + `top-nav.tsx`
   - 登出（仅 `authEnabled`）。
 - 登录前路由（`/login`、`/register`）渲染极简品牌头，不显示应用导航。
 - 角色由 `AppShell`（async server）经 `getSessionWorkspace` 解析（`UNAUTHENTICATED` -> `null`；self-hosted -> `OWNER`）传入。
+- `commercial` 部署只允许正式认证分支；配置异常由 predeploy/health 阻止切流，不得降级展示“免登录自托管模式”。
 
 规则：
 

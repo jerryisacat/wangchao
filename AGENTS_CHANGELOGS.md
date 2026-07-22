@@ -1,5 +1,21 @@
 ## 2026-07-22
 
+### Security: Railway 对客部署强制正式认证并 fail closed
+
+- Cause: Railway Web 仍因缺少显式认证部署契约运行在免登录默认用户/工作区模式；仅靠 `BETTER_AUTH_SECRET` 是否碰巧存在来启用认证，会让对客环境在漏配变量时静默暴露同一租户，并且每次部署继续 seed 默认身份。
+- Changed: 新增 `WANGCHAO_DEPLOYMENT_MODE=self-hosted|commercial`；commercial 强制 ≥32 字符 secret 与 production HTTPS auth origin，未知模式同样 fail closed；Web auth route、Session 初始化、predeploy 和 health 共用校验，商用 predeploy 不再 seed 默认工作区。补纯策略 fixtures、Railway 变量/上线 smoke/runbook，并同步产品、架构、领域、模块、前端和运维文档。
+- Files: `apps/web/src/lib/{deployment-mode,auth}.ts`、`apps/web/src/app/api/{auth/[...all],health}/route.ts`、`apps/web/scripts/{deployment-mode.fixture,validate-deployment-env}.mjs`、`apps/web/package.json`、`package.json`、`.env_example`、`deploy/railway/web.railway.json`、`README.md`、`README-en.md`、`SPEC.md`、`CODEGUIDE.md`、`FRONTEND.md`、`docs/{L2-domain,L3-modules,L4-operations,deployment,railway-deployment,railway-runbook}.md`、`DEVELOPE_LOGS.md`、`AGENTS_CHANGELOGS.md`。
+- Verification: `CI=true pnpm typecheck`、`CI=true pnpm lint`、`CI=true pnpm test`、`CI=true pnpm build`、valid/invalid commercial validator、Railway/Package JSON 解析与 `git diff --check` 全部通过；首次 sandbox build 仅因无法下载项目既有 Google Roboto 失败，联网重跑成功，保留既有 PDF NFT tracing warnings。当前未连接 disposable PostgreSQL，未重复执行已有 Better Auth Playwright DB E2E。
+- Notes / Risk: 未写入任何生产密钥，也未直接修改 Railway 外部状态；代码发布后仍需在 Web service 同一次变量更新中设置 mode/secret/URL。已有默认工作区数据不会暴露给新注册用户，也不会被自动删除或迁移；付费、邮箱验证/找回密码、MFA 和完整平台运营后台不在本次范围。
+
+### Docs: 对齐 README 与常驻 Queue Worker 部署实况
+
+- Cause: 第二阶段上线后，根 README 仍把手动摘要描述为等待下一轮 Worker，部署表缺少 Report/Instant Push；Railway 子目录 README 还保留“两个服务”、不完整 Web pre-deploy 与模糊 Config File Path 等旧说明。
+- Changed: 根 README 对齐近实时 durable task 消费、六个 application service、双 Worker 架构、Queue Worker 参数和生产 heartbeat 验证；Railway README 重写为可执行的服务拓扑、设置步骤、构建/启动契约、CLI 示例和在线验证说明。
+- Files: `README.md`、`deploy/railway/README.md`、`AGENTS_CHANGELOGS.md`。
+- Verification: 对照六份 `deploy/railway/*.railway.json`、根脚本、`.env_example` 与 L4 运维文档逐项核验；运行 Markdown 引用/路径扫描和 `git diff --check`。
+- Notes / Risk: 仅更新开源文档，不改代码、数据库、环境变量或 Railway 运行配置；未写入生产 ID、连接串或密钥。
+
 ### Feat: 常驻 Railway Queue Worker 即时消费持久任务
 
 - Cause: 第一阶段已让手动摘要刷新可靠写入 durable `CONTENT_FETCH`，但生产只有每小时 Worker Cron，任务开始执行仍可能等待近一小时；常驻进程还必须避免复用一次性 cycle deadline 后永久停止 claim，并能在 Railway 部署切换时安全退出。

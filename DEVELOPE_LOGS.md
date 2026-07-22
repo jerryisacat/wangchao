@@ -4,6 +4,14 @@
 
 ## 2026-07-22
 
+### Railway 对客认证部署模式
+
+- Phase: 商用部署安全边界切换。
+- Scope: 新增显式 `self-hosted | commercial` 部署契约；commercial 强制 Better Auth secret/HTTPS origin、predeploy 与 health fail-closed、匿名访问认证门，并停止 seed 默认身份。
+- Alignment: 保留 MIT 开源自托管免登录体验，同时把托管客户按 User → Membership → Organization 隔离；不改变 Worker 长任务和租户查询边界。
+- Verification: Web deployment-mode fixtures、类型检查、测试与全仓发布验证；结果记录在同日 `AGENTS_CHANGELOGS.md`。
+- Follow-up: Railway 实际变量需在 Web service 同时配置；付费结算、邮箱验证/找回密码、MFA 和完整平台运营后台仍是独立商用阶段，不由本次认证模式切换伪装为完成。
+
 ### 手动摘要重生成 durable queue 第二阶段：常驻消费
 
 - Phase: 独立线上功能修复（第二阶段）。

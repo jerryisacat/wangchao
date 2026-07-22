@@ -375,6 +375,7 @@ apps/web/src/
     ├── report-data.ts                # 专题报告数据读取：`getReportsPage()`（分页列表）、`getReportDetail()`（单条详情）
     ├── auth.ts                       # Better Auth 服务端配置；Promise 单例 + ESM 动态加载 DB
     ├── auth-client.ts                # Better Auth 同源浏览器客户端
+    ├── deployment-mode.ts            # self-hosted/commercial 模式、认证配置校验与 fail-closed 策略
     ├── session.ts                    # Session helper：真实 Session + 认证用户 workspace；兼容模式默认 workspace
     ├── utils.ts                      # cn() = twMerge(clsx(...)) 标准 shadcn helper
     └── topic-source-data.ts          # 工作台与 dedicated audit 数据读取；DATABASE_URL 未配置时抛错
@@ -415,6 +416,7 @@ apps/web/src/
 | `apps/web/src/app/admin/settings/credential-form.tsx` | `"use client"` 凭证表单组件：密码显隐切换（Eye/EyeOff）、Provider 下拉选择（AI: OpenAI/Azure/Anthropic/Groq/DeepSeek/自定义；Search: Brave/SerpAPI/Tavily/自定义）+ 已知 Provider 自动填充 Base URL（ref 实现）、帮助链接、必填/可选标记、`useFormStatus` 提交 loading 态；`onSubmit` 客户端前置校验（API Key 非空 + 红色错误提示 + 自动聚焦）；AI 凭证表单支持"刷新模型列表"嗅探 OpenAI-compatible 端点可用模型并填充下拉选择；自定义 provider 支持"手动确认" checkbox 跳过自动测试；计费提示文案。 |
 | `apps/web/src/app/admin/settings/providers.ts` | Provider 常量集中定义：`AI_PROVIDERS`（AI provider 选项 + defaultBaseUrl）、`SEARCH_PROVIDERS`（搜索 provider 选项）、`defaultAiBaseUrl(provider)` 函数。替代前端 credential-form 内联常量与后端 actions.ts 独立函数，确保前后端使用同一份 Provider 元数据。 |
 | `apps/web/src/lib/auth.ts` | Better Auth 服务端配置。使用 Promise-backed 单例和 ESM `import("@wangchao/db")`，避免 Next 16 production bundle 的 CJS interop 失效；初始化 Promise 拒绝时重置单例，允许后续请求重试；core `emailVerified/image` 不重复声明为 additionalFields。 |
+| `apps/web/src/lib/deployment-mode.ts` | 纯部署策略：默认 `self-hosted`；`commercial` 强制 ≥32 字符认证密钥和 production HTTPS origin，未知 mode 同样 fail closed。供 predeploy validator、auth、route 与 health 共用，错误只暴露低敏 code。 |
 | `apps/web/src/lib/auth-client.ts` | Better Auth 同源客户端，不读取 server-only `BETTER_AUTH_URL`，避免反向代理/非默认端口下跨 origin 请求被 CSP 阻止。 |
 | `apps/web/src/lib/auth-access.ts` | 纯认证访问策略：公开 exact/prefix allowlist；`normalizeAuthReturnPath()` 仅允许站内绝对 path，拒绝绝对 URL、`//`、反斜杠和控制字符；`buildLoginPath()` 生成编码后的 `/login?next=`。 |
 | `apps/web/src/lib/session.ts` | `getSessionWorkspace()`：认证模式验证数据库 Session 后调用 `ensureUserWorkspace()`，缺失/过期时抛稳定 `UNAUTHENTICATED`；兼容模式调用 `ensureDefaultWorkspace()`。 |
@@ -456,9 +458,10 @@ apps/web/src/
 
 ### Auth 与 Proxy 规则
 
-- 当 `BETTER_AUTH_SECRET` 环境变量设置时，Better Auth 激活：`/login` 和 `/register` 页面可用，`/api/auth/[...all]` 处理认证请求，数据访问通过 `getSessionWorkspace()` 校验 session。
-- 当 `BETTER_AUTH_SECRET` 未设置时，应用运行在兼容模式：`getSessionWorkspace()` fallback 到 `ensureDefaultWorkspace()`，使用默认 workspace/user，不要求登录。这是当前个人版和本地开发的默认行为。
-- `proxy.ts` 不读取认证状态；它在匹配路由上统一设置安全响应头，并在 production 注入每请求 nonce CSP。认证边界仍由 session helper、Server Components、Server Actions 与 Route Handlers 承担。
+- `WANGCHAO_DEPLOYMENT_MODE=commercial` 时 Better Auth 必须激活：`BETTER_AUTH_SECRET` 至少 32 字符，production `BETTER_AUTH_URL` 必须是无 path/query/credential 的 HTTPS origin；predeploy 和 `/api/health` 任一校验失败即阻止上线，未知 mode 也 fail closed。
+- `WANGCHAO_DEPLOYMENT_MODE=self-hosted` 是开源默认值；设置 `BETTER_AUTH_SECRET` 时仍可启用认证，未设置时 `getSessionWorkspace()` 才 fallback 到 `ensureDefaultWorkspace()`。
+- `proxy.ts` 在 auth 启用时验证真实数据库 Session：页面跳转登录、API/Action 返回 401；它同时在 production 注入每请求 nonce CSP 和安全响应头。
+- 商用 Web predeploy 只执行配置校验、数据库 readiness 与 migration，不运行默认工作区 seed；注册用户首次访问时由 `ensureUserWorkspace()` 原子创建独立 Organization/Membership。
 
 ### 数据访问模式
 

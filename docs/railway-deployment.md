@@ -81,6 +81,9 @@ railway add --service wangchao-queue-worker
 | `DATABASE_URL` | queue worker | 与其他服务相同的 Postgres service reference。 |
 | `WANGCHAO_RAILWAY_ROLE` | web | 设为 `web` |
 | `WANGCHAO_RAILWAY_ROLE` | worker | 设为 `worker` |
+| `WANGCHAO_DEPLOYMENT_MODE` | web | 对客部署设为 `commercial`；免登录自托管设为 `self-hosted` |
+| `BETTER_AUTH_SECRET` | web | 商用必需，至少 32 字符的强随机 secret |
+| `BETTER_AUTH_URL` | web | 商用必需，Web 对外 HTTPS origin |
 | `WANGCHAO_DEFAULT_ORGANIZATION_SLUG` | web, worker | 默认工作区 slug，如 `default` |
 | `WANGCHAO_DEFAULT_ORGANIZATION_NAME` | web, worker | 默认工作区名称，如 `Wangchao` |
 | `WANGCHAO_DEFAULT_USER_EMAIL` | web, worker | 默认用户邮箱 |
@@ -97,6 +100,16 @@ railway add --service wangchao-queue-worker
 | `AI_MODEL_L1` / `AI_MODEL_L2` | worker (未来) | AI pipeline 默认模型 |
 
 ### 4.3 通过 CLI 设置变量
+
+对客 Web 服务应一次设置完整认证变量（示例占位符不能直接用于生产）：
+
+```bash
+railway variables --service wangchao-web set WANGCHAO_DEPLOYMENT_MODE=commercial BETTER_AUTH_SECRET=<generated-secret> BETTER_AUTH_URL=https://<public-web-domain>
+```
+
+商用 Web predeploy 会先校验这三个变量，缺失、弱 secret、非 HTTPS 生产 URL 或未知 mode 都会终止部署，避免自动回退到默认用户。
+
+以下默认工作区变量只用于 `self-hosted`：
 
 ```bash
 railway variables --service wangchao-web set WANGCHAO_RAILWAY_ROLE=web
@@ -129,8 +142,8 @@ railway up --service wangchao-web --detach
 
 Web 服务的部署流程（由 `deploy/railway/web.railway.json` 定义）：
 
-1. **Build**: `pnpm railway:web:build`（生成 Prisma client + 构建 Next.js）
-2. **Pre-deploy**: `pnpm db:deploy && pnpm db:seed`（运行 migration + seed 默认工作区）
+1. **Build**: `pnpm railway:build`（生成 Prisma client + 构建 monorepo）
+2. **Pre-deploy**: `pnpm railway:web:predeploy`（校验部署模式、等待数据库、运行 migration；仅 self-hosted seed 默认工作区）
 3. **Start**: `pnpm railway:web:start`（启动 Next.js production server）
 4. **Health check**: Railway 探测 `/api/health`，超时 300s
 
