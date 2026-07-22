@@ -22,13 +22,16 @@ import {
   isValidEnhancedFeedbackKind,
   shouldRecordCategoryPreference,
 } from "./enhanced-feedback-kinds";
+import { APP_HOME_PATH, normalizeProductReturnPath } from "@/lib/web-routes";
 
 export async function updateDashboardEventStateAction(
   formData: FormData,
 ): Promise<void> {
   let message = "情报状态已更新。";
   let type: ActionRedirectType = "notice";
-  const returnTo = readSafeReturnPath(formData, "returnTo") ?? "/";
+  const returnTo = normalizeProductReturnPath(
+    readSafeReturnPath(formData, "returnTo"),
+  );
 
   try {
     await updateDashboardEventStateFromForm(formData);
@@ -38,7 +41,7 @@ export async function updateDashboardEventStateAction(
     type = "error";
   }
 
-  revalidatePath("/");
+  revalidatePath(APP_HOME_PATH);
   revalidatePath(returnTo);
   redirect(actionRedirectHref(returnTo, type, message));
 }
@@ -96,7 +99,9 @@ async function updateDashboardEventStateFromForm(formData: FormData) {
 export async function updateCategoryPreferenceAction(
   formData: FormData,
 ): Promise<void> {
-  const returnTo = readSafeReturnPath(formData, "returnTo") ?? "/";
+  const returnTo = normalizeProductReturnPath(
+    readSafeReturnPath(formData, "returnTo"),
+  );
   let message = "类别偏好已更新。";
   let type: ActionRedirectType = "notice";
 
@@ -113,7 +118,7 @@ export async function updateCategoryPreferenceAction(
     type = "error";
   }
 
-  revalidatePath("/");
+  revalidatePath(APP_HOME_PATH);
   revalidatePath("/preferences");
   revalidatePath(returnTo);
   redirect(actionRedirectHref(returnTo, type, message));
@@ -201,7 +206,10 @@ export async function markBriefingAsReadAction(
   // SPEC §5.5 / Plan Task 3.2 (#173): 按当日 Briefing snapshot 批量标记当前用户已读。
   // 复用 #172 UserItemState 隔离；不写 IntelligenceEvent.status；保留 saved；幂等。
   const briefingId = readRequiredField(formData, "briefingId");
-  const returnTo = readSafeReturnPath(formData, "returnTo") ?? `/briefings`;
+  const returnTo = normalizeProductReturnPath(
+    readSafeReturnPath(formData, "returnTo"),
+    "/briefings",
+  );
   let message = "简报内的事件已批量标记为已读。";
   let type: ActionRedirectType = "notice";
 
@@ -264,7 +272,7 @@ export async function markBriefingAsReadAction(
     type = "error";
   }
 
-  revalidatePath("/");
+  revalidatePath(APP_HOME_PATH);
   revalidatePath(returnTo);
   redirect(actionRedirectHref(returnTo, type, message));
 }
@@ -273,8 +281,10 @@ export async function regenerateEventSummaryAction(
   formData: FormData,
 ): Promise<void> {
   const eventId = readRequiredField(formData, "eventId");
-  const returnTo =
-    readSafeReturnPath(formData, "returnTo") ?? `/events/${eventId}`;
+  const returnTo = normalizeProductReturnPath(
+    readSafeReturnPath(formData, "returnTo"),
+    `/events/${eventId}`,
+  );
   let message = "已加入重新采集与摘要队列。";
   let type: ActionRedirectType = "notice";
 
@@ -376,7 +386,7 @@ export async function regenerateEventSummaryAction(
   }
 
   revalidatePath(returnTo);
-  revalidatePath("/");
+  revalidatePath(APP_HOME_PATH);
   redirect(actionRedirectHref(returnTo, type, message));
 }
 
@@ -389,7 +399,9 @@ export async function recordEnhancedFeedbackAction(
   const rawKind = readRequiredField(formData, "feedbackKind");
   const eventId = readOptionalField(formData, "eventId") || undefined;
   const sourceId = readOptionalField(formData, "sourceId") || undefined;
-  const returnTo = readSafeReturnPath(formData, "returnTo") ?? "/";
+  const returnTo = normalizeProductReturnPath(
+    readSafeReturnPath(formData, "returnTo"),
+  );
   let message = "反馈已记录。";
   let type: ActionRedirectType = "notice";
 

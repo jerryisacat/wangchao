@@ -1,5 +1,22 @@
 ## 2026-07-22
 
+### Feat: 公开品牌落地页、`/app` 工作台与匿名安全定价
+
+- Cause: 根路由原为受保护未读情报流，首次访问者无法在登录前理解产品价值；营销导航与产品壳没有边界，登录/注册默认回根路由，公开定价会解析工作区和数据库；Google Roboto 还让 production build 依赖外部字体下载。
+- Changed:
+  - `/` 重建为面向研究者、投资人、创业者和行业从业者的编辑式品牌页，包含 Hero、静态 fixture 情报演示、三项核心价值、最终 CTA 和轻量开源 Footer；原工作台迁移到 `/app`，产品内首页链接、表单与 TopicFilter 查询全部同步。
+  - AppShell 按 proxy 注入的受控 pathname header 分为 Marketing/Auth/Product；`/` 与 `/pricing` 保持公开，`/app` 受保护，登录/注册在互跳和完成后保留经过开放重定向防护的 `next`，缺省 `/app`。
+  - legacy `q/topic/view=all|high|saved` 在 proxy 渲染前 307 到 `/app`，营销 UTM 不触发迁移；redirect 继续携带 HSTS、nosniff、frame、referrer、permissions 与 production CSP。
+  - Hero 纯前端、零匿名 API/AI/DB：桌面约 11.5 秒、移动约 9 秒，入视口播放一次、页面隐藏暂停、终态重播；reduced-motion 直接终态并隐藏无效重播。Marketing Shell 提供真正服务端可见的 `<noscript>` Hero/最终情报/价值/CTA fallback。
+  - `/pricing` 先渲染公共 Plan registry，匿名不 provision workspace 或读取 BYOK/订阅；登录 overlay 失败不阻断公开方案。Marketing CTA 只解析 Session、不查询/创建 Membership。
+  - 独立审计修复旧 Dashboard 动作残留：情报卡、手动抓取、主题创建和工作区切换统一回到 `/app`，情报卡与刷新保留当前 `q/topic/view`；所有 Dashboard action 改为 revalidate `/app`，不再误刷新营销首页。
+  - commercial 公开请求无 Better Auth Session Cookie 时在动态加载 Auth/Prisma 前直接判匿名；同一请求的 Session 通过 React `cache()` 复用，避免 AppShell 与 Pricing 重复解析。Hero、终态 CTA 与 no-JS fallback 共享认证状态，self-hosted/已登录直达 `/topics/new`。
+  - 禁用 Marketing 到 Product Shell 的 Next 自动预取，避免匿名首页后台触发 `/app`/`topics` RSC 与工作区数据加载；互动演示达到 55% 可见后才动态加载，首屏保留等高预览并维持 CLS=0。补 canonical、Open Graph URL、本地 SVG favicon 与 Lighthouse 发现的 heading/ARIA 修复。
+  - 统一改用仓库已有的本地 Geist Sans/Mono，移除 `next/font/google` 构建网络单点；同步 `FRONTEND.md`、`CODEGUIDE.md`、L3 模块文档与发布测试。
+- Files: `apps/web/src/app/{page,app/page,pricing/page,layout,login/login-form,register/**}.tsx`、`apps/web/src/components/{layout,marketing,intelligence/topic-filter}/**`、`apps/web/src/lib/{auth-access,session,web-routes}.ts`、`apps/web/src/proxy.ts`、`apps/web/scripts/{auth-access,landing-routes}.fixture.mjs`、`apps/web/{package.json,src/app/globals.css}`、`tests/smoke/landing.spec.ts`、`FRONTEND.md`、`CODEGUIDE.md`、`docs/L3-modules.md`、`DEVELOPE_LOGS.md`、`AGENTS_CHANGELOGS.md`。
+- Verification: `pnpm db:generate`、AI package build、`CI=true pnpm lint`、`CI=true pnpm typecheck`、`CI=true pnpm test`、`CI=true pnpm build`、`git diff --check` 全部通过；production Playwright 5 项通过，覆盖 320/375/414/768/1024/1440 reduced-motion 全页截图、375px 真实约 9 秒时间轴/重播、legacy 307 与安全头、禁用 JavaScript 可读终态、匿名 pricing、SEO metadata 与零 Product RSC 预取。Lighthouse 12.8.2 production desktop：Performance 99 / Accessibility 100 / Best Practices 100 / SEO 100，LCP 0.8s、TBT 40ms、CLS 0；mobile 模拟为 84 / 100 / 100 / 100，LCP 3.5s、TBT 300ms、CLS 0。纯 fixture 额外验证无 Cookie 时 Auth/Prisma loader 调用数为 0、有 Cookie 时仅调用一次，并以源码契约阻止产品 action 回营销 `/`；三路独立审计 findings 经父级复核和修复。人工复核 320/1440 无横向溢出、裁切、Footer 拥挤或阻断级失衡；build 仅保留既有 PDF NFT tracing warnings。
+- Notes / Risk: 当前验证环境为 self-hosted 免认证模式且没有 disposable PostgreSQL，因此未重复执行 Better Auth 数据库浏览器 E2E；`isPublicAuthPath`、`normalizeAuthReturnPath`、Shell variant 与 legacy 查询由无数据库 fixture 覆盖，既有认证 E2E 继续负责有库 session 流。页面不包含生产密钥、匿名生成端点或第三方分析脚本。
+
 ### Security: Railway 对客部署强制正式认证并 fail closed
 
 - Cause: Railway Web 仍因缺少显式认证部署契约运行在免登录默认用户/工作区模式；仅靠 `BETTER_AUTH_SECRET` 是否碰巧存在来启用认证，会让对客环境在漏配变量时静默暴露同一租户，并且每次部署继续 seed 默认身份。

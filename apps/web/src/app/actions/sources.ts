@@ -12,6 +12,7 @@ import {
   readSourceGovernanceAction,
   toUserActionError,
 } from "./_shared";
+import { APP_HOME_PATH, normalizeProductReturnPath } from "@/lib/web-routes";
 
 export async function createCandidateSourceAction(
   formData: FormData,
@@ -160,7 +161,8 @@ async function runSourceDiscoveryFromDashboard() {
   return { candidateSourcesWritten: 0, existingSourcesObserved: 0, enqueued: true };
 }
 
-export async function runFetchCycleAction(): Promise<void> {
+export async function runFetchCycleAction(requestedReturnTo = APP_HOME_PATH): Promise<void> {
+  const returnTo = normalizeProductReturnPath(requestedReturnTo);
   let message = "信源发现任务已提交，将在后台执行。";
   let type: ActionRedirectType = "notice";
 
@@ -173,8 +175,9 @@ export async function runFetchCycleAction(): Promise<void> {
     type = "error";
   }
 
-  revalidatePath("/");
-  redirect(actionRedirectHref("/", type, message));
+  revalidatePath(APP_HOME_PATH);
+  revalidatePath(returnTo);
+  redirect(actionRedirectHref(returnTo, type, message));
 }
 
 async function runFetchCycleFromDashboard() {

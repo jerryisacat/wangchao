@@ -30,7 +30,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
     <>
       <PageHeader eyebrow="按需分析" title="专题报告">
         <Button asChild size="sm" variant="ghost">
-          <Link href="/">
+          <Link href="/app">
             <ArrowLeft aria-hidden="true" size={14} />
             返回情报流
           </Link>

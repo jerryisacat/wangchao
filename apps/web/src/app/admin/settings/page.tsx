@@ -128,7 +128,7 @@ export default async function AdminSettingsPage({
           </Link>
         </Button>
         <Button asChild size="sm" variant="ghost">
-          <Link href="/">← 返回情报流</Link>
+          <Link href="/app">← 返回情报流</Link>
         </Button>
       </PageHeader>
 

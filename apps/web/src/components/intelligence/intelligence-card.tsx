@@ -28,11 +28,13 @@ function formatDateTime(value: string): string {
 interface IntelligenceCardProps {
   event: DashboardEventSummary;
   eventStateAction: (formData: FormData) => void;
+  returnTo: string;
 }
 
 export function IntelligenceCard({
   event,
   eventStateAction,
+  returnTo,
 }: IntelligenceCardProps) {
   const sourceUrl = isHttpUrl(event.sourceUrl) ? event.sourceUrl : null;
   const itemUrl = isHttpUrl(event.primaryItemUrl) ? event.primaryItemUrl : null;
@@ -110,7 +112,7 @@ export function IntelligenceCard({
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         <form action={eventStateAction} className="min-w-0">
           <input name="eventId" type="hidden" value={event.eventId} />
-          <input name="returnTo" type="hidden" value="/" />
+          <input name="returnTo" type="hidden" value={returnTo} />
           <Button
             aria-label="标记已读"
             className="w-full justify-center"
@@ -127,7 +129,7 @@ export function IntelligenceCard({
         </form>
         <form action={eventStateAction} className="min-w-0">
           <input name="eventId" type="hidden" value={event.eventId} />
-          <input name="returnTo" type="hidden" value="/" />
+          <input name="returnTo" type="hidden" value={returnTo} />
           <Button
             aria-label="收藏"
             className="w-full justify-center"
@@ -144,7 +146,7 @@ export function IntelligenceCard({
         </form>
         <form action={eventStateAction} className="min-w-0">
           <input name="eventId" type="hidden" value={event.eventId} />
-          <input name="returnTo" type="hidden" value="/" />
+          <input name="returnTo" type="hidden" value={returnTo} />
           <Button
             aria-label="忽略此条"
             className="w-full justify-center"
@@ -161,7 +163,7 @@ export function IntelligenceCard({
         </form>
         <form action={eventStateAction} className="min-w-0">
           <input name="eventId" type="hidden" value={event.eventId} />
-          <input name="returnTo" type="hidden" value="/" />
+          <input name="returnTo" type="hidden" value={returnTo} />
           <Button
             aria-label="归档此条"
             className="w-full justify-center"

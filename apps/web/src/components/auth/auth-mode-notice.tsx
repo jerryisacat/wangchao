@@ -25,7 +25,7 @@ export function AuthModeNotice({ enabled }: AuthModeNoticeProps) {
         tone="warning"
       />
       <Button asChild className="w-full" variant="primary">
-        <Link href="/">
+        <Link href="/app">
           进入工作台
           <ArrowRight aria-hidden="true" size={16} />
         </Link>

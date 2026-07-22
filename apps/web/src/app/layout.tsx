@@ -1,17 +1,11 @@
 import type { Metadata } from "next";
-import { Roboto } from "next/font/google";
 import { GeistMono } from "geist/font/mono";
+import { GeistSans } from "geist/font/sans";
 import { AppShell } from "@/components/layout/app-shell";
 import "./globals.css";
 
-const roboto = Roboto({
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  variable: "--font-roboto",
-  display: "swap",
-});
-
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.BETTER_AUTH_URL ?? "http://localhost:3000"),
   title: "Wangchao Intelligence",
   description: "Theme-first AI intelligence workspace for topic monitoring.",
 };
@@ -26,8 +20,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN" className={`${roboto.variable} ${GeistMono.variable}`}>
-      <body className={roboto.className}>
+    <html lang="zh-CN" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+      <body className={GeistSans.className}>
         <AppShell>{children}</AppShell>
       </body>
     </html>

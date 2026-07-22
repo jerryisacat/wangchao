@@ -62,7 +62,7 @@ Postgres
 | 前端 | `apps/web` Next.js App Router |
 | 后台任务 | `apps/worker` Node.js worker |
 | 包管理 | `pnpm` workspace |
-| Web app | `apps/web`，Next.js App Router，提供顶部导航产品壳、首页未读情报流、创建主题、信源管理、简报、已收藏、偏好记忆、`/api/health`、loading/error 状态和 shadcn/Radix/Tailwind v4 组件链。按 `FRONTEND.md` 采用 Material You（MD3）视觉体系。 |
+| Web app | `apps/web`，Next.js App Router，提供公开 `/` 落地页、`/app` 未读情报工作台、Marketing/Auth/Product 三类壳、创建主题、信源管理、简报、已收藏、偏好记忆、`/api/health`、loading/error 状态和 shadcn/Radix/Tailwind v4 组件链。按 `FRONTEND.md` 采用 Material You（MD3）视觉体系。 |
 | Worker | `apps/worker`，Node.js TypeScript worker；Railway Queue Worker 以 `--queue-worker` 常驻消费 durable SOURCE_FETCH/SOURCE_DISCOVERY/CONTENT_FETCH TaskRun，小时 Cron 再按稳定顺序与动态公平预算串行执行全部 eligible Organization 的 fetch pipeline；支持独立 `--task-runs`、source discovery、instant push 与 `--health`。 |
 | 共享包 | `packages/core`, `packages/ai`, `packages/db`, `packages/sources` |
 | DB 基础 | `packages/db`，Prisma/Postgres schema、migration、seed、lazy client、tenant/member role guard、usage event 与查询 helper |
@@ -183,7 +183,7 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 - 导出内容必须保留来源链接和生成时间。
 - 商用模式必须启用 tenant isolation、权限测试、usage audit；当前 Better Auth Session、Organization/Membership scope 与多用户隔离 E2E 已作为上线门禁。
 - AI 凭证与搜索凭证相互独立：UI 通过独立表单实例各自管理状态，`upsertAiCredential` 和 `upsertSearchCredential` 分别操作 `Subscription` 表的不同字段，不互相阻断。删除某一类凭证不会影响另一类。
-- Next.js 16 proxy（`apps/web/src/proxy.ts`）同时承担 Web 认证门和安全响应头：认证启用时对受保护请求调用 Better Auth `getSession()` 验证数据库 Session，页面缺失/过期 Session 时 `307` 到 `/login?next=<站内路径>`，受保护 API/Server Action 返回稳定 `401 UNAUTHENTICATED`；认证基础设施异常返回 `503 AUTH_UNAVAILABLE`，不误报为登出。`/login`、`/register`、`/pricing`、auth/health 与签名 webhook 保持公开；`next` 必须通过 `auth-access.ts` 站内路径校验。认证关闭时完全保留 self-hosted 默认工作区兼容模式。所有 next/redirect/401/503 response 继续强制 HSTS、X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy；production CSP 使用每请求随机 nonce，根 layout 强制 request-time rendering；开发环境不启用 CSP，避免阻断 dev HMR。
+- Next.js 16 proxy（`apps/web/src/proxy.ts`）同时承担 Web 认证门、安全响应头和受控 pathname 注入：认证启用时对受保护请求调用 Better Auth `getSession()` 验证数据库 Session，页面缺失/过期 Session 时 `307` 到 `/login?next=<站内路径>`，受保护 API/Server Action 返回稳定 `401 UNAUTHENTICATED`；认证基础设施异常返回 `503 AUTH_UNAVAILABLE`，不误报为登出。`/`、`/login`、`/register`、`/pricing`、auth/health 与签名 webhook 保持公开，`/app` 是受保护工作台；`next` 必须通过 `auth-access.ts` 站内路径校验且缺省回到 `/app`。proxy 覆盖写入 `x-wangchao-pathname`，`AppShell` 据此选择 Marketing/Auth/Product 壳，不能信任客户端自带同名 header。认证关闭时完全保留 self-hosted 默认工作区兼容模式。所有 next/redirect/401/503 response 继续强制 HSTS、X-Content-Type-Options、X-Frame-Options、Referrer-Policy、Permissions-Policy；production CSP 使用每请求随机 nonce，根 layout 强制 request-time rendering；开发环境不启用 CSP，避免阻断 dev HMR。
 - 外部 URL 在 fetch 前必须经过 SSRF 防护（`packages/sources/src/ssrf.ts`）：私有 IP、loopback、cloud metadata 一律阻断。
 - 加密模块（`packages/db/src/crypto.ts`）使用 per-credential 随机 salt + scrypt KDF；旧格式密文保持向后兼容。
 - AI 生成内容渲染前需经 HTML entity 逃逸（`sanitizeForDisplay`），入库前剥离危险标签（`sanitizeMarkdownSource`）。
@@ -240,6 +240,9 @@ L3 应用入口（web/worker）     ← 编排 L0+L1，不反向依赖
 | `apps/web/src/lib/report-data.ts` | 报告数据读取 helper（`getReportsPage`/`getReportDetail`）。 |
 | `apps/web/src/proxy.ts` | Next.js 16 request proxy：真实 Better Auth Session 认证门、页面安全重定向、API/Action 401、每请求 nonce CSP 与 Web 安全响应头。 |
 | `apps/web/src/lib/auth-access.ts` | 公开路由 allowlist、站内 `next` 归一化、登录路径与 API path 纯策略。 |
+| `apps/web/src/lib/web-routes.ts` | Marketing/Auth/Product Shell 分类、`/app` 常量与旧 `/?q/topic/view` 工作台链接迁移策略。 |
+| `apps/web/src/app/page.tsx` + `apps/web/src/components/marketing/*` | 公开落地页与纯静态自动演示；禁止匿名 API/AI/DB 请求，移动端/reduced-motion 必须保留完整最终情报。 |
+| `apps/web/src/app/app/page.tsx` | 未读情报工作台；旧 `/` 产品首页迁移到 `/app`，产品内返回情报流与品牌入口必须指向该路径。 |
 | `apps/web/src/app/account/page.tsx` + `apps/web/src/components/auth/*` | 账户与访问页及认证 UI 复用层：显式区分正式认证/免登录模式，展示当前身份、工作区、角色与登出，并提供紧凑 MD3 登录/注册表单状态。 |
 | `apps/web/src/lib/content-security-policy.ts` | Production CSP policy builder，约束 nonce/strict-dynamic 与 script/object 安全边界。 |
 | `apps/web/scripts/auth-access.fixture.mjs` | Auth route policy 与开放重定向防护 fixture。 |

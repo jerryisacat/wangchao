@@ -9,12 +9,14 @@ interface IntelligenceFeedProps {
   events: DashboardEventSummary[];
   eventStateAction: (formData: FormData) => void;
   query: string;
+  returnTo: string;
 }
 
 export function IntelligenceFeed({
   eventStateAction,
   events,
   query,
+  returnTo,
 }: IntelligenceFeedProps) {
   if (events.length === 0) {
     return (
@@ -37,6 +39,7 @@ export function IntelligenceFeed({
           event={event}
           eventStateAction={eventStateAction}
           key={event.eventId}
+          returnTo={returnTo}
         />
       ))}
     </div>

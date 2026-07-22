@@ -1,11 +1,26 @@
+import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import type { WorkspaceSeed } from "@wangchao/db";
-import { UNAUTHENTICATED_ERROR } from "@/lib/auth-access";
+import {
+  resolveBetterAuthSessionCandidate,
+  UNAUTHENTICATED_ERROR,
+} from "@/lib/auth-access";
 import { isAuthEnabled } from "@/lib/auth";
 import {
   ACTIVE_WORKSPACE_COOKIE,
   readActiveWorkspaceCookie,
 } from "@/lib/workspace-switch";
+
+const getCurrentAuthSession = cache(async () => {
+  if (!isAuthEnabled()) return null;
+
+  const requestHeaders = await headers();
+  return resolveBetterAuthSessionCandidate(requestHeaders.get("cookie"), async () => {
+    const { getAuth } = await import("@/lib/auth");
+    const auth = await getAuth();
+    return auth.api.getSession({ headers: requestHeaders });
+  });
+});
 
 export async function getSessionWorkspace(): Promise<WorkspaceSeed> {
   const authEnabled = isAuthEnabled();
@@ -18,21 +33,16 @@ export async function getSessionWorkspace(): Promise<WorkspaceSeed> {
     return ensureDefaultWorkspace(prisma);
   }
 
-  const { getAuth } = await import("@/lib/auth");
+  const session = await getCurrentAuthSession();
+  if (!session) {
+    throw new Error(UNAUTHENTICATED_ERROR);
+  }
+
   const {
     ensureUserWorkspace,
     getPrismaClient,
     resolveActiveWorkspace,
   } = await import("@wangchao/db");
-
-  const auth = await getAuth();
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
-
-  if (!session) {
-    throw new Error(UNAUTHENTICATED_ERROR);
-  }
 
   const prisma = getPrismaClient();
 
@@ -64,6 +74,31 @@ export async function getSessionWorkspace(): Promise<WorkspaceSeed> {
     name: session.user.name,
     userId: session.user.id,
   });
+}
+
+export async function hasAuthenticatedSession(): Promise<boolean> {
+  if (!isAuthEnabled()) return true;
+
+  try {
+    const session = await getCurrentAuthSession();
+    return Boolean(session?.user?.id);
+  } catch {
+    // Public marketing pages remain useful when the optional auth overlay is unavailable.
+    return false;
+  }
+}
+
+export async function getOptionalSessionWorkspace(): Promise<WorkspaceSeed | null> {
+  if (!isAuthEnabled()) return null;
+
+  try {
+    return await getSessionWorkspace();
+  } catch (error) {
+    if (error instanceof Error && error.message === UNAUTHENTICATED_ERROR) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /**
